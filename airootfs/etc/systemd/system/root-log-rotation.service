@@ -1,0 +1,8 @@
+[Unit]
+Description=FeralFile Log Rotation Service
+
+[Service]
+Type=simple
+ExecStart=/root/log-rotation.sh
+StandardOutput=append:/var/logs/log-rotation.log
+StandardError=append:/var/logs/log-rotation.log

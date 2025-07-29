@@ -1,0 +1,9 @@
+[Unit]
+Description=FeralFile Updater Instance - %i
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/root/scripts/feral-updater.sh
+StandardOutput=append:/var/log/updaterd.log
+StandardError=append:/var/log/updaterd.log

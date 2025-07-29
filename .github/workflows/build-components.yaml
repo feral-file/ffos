@@ -1,0 +1,251 @@
+name: Build Component
+
+on:
+  workflow_call:
+    inputs:
+      component:
+        description: 'Component to build'
+        required: true
+        type: string
+      version:
+        description: 'Package version'
+        required: true
+        type: string
+      description:
+        description: 'Package description'
+        required: false
+        type: string
+        default: 'Go application packaged for Arch Linux'
+      maintainer:
+        description: 'Package maintainer'
+        required: false
+        type: string
+        default: 'GitHub Actions'
+      environment:
+        description: 'Environment for Sentry release'
+        required: true
+        type: string
+        default: 'Development'
+      ffos_user_ref:
+        description: 'ffos-user repository reference'
+        required: true
+        type: string
+        default: 'develop'
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+      CLOUDFLARE_ACCESS_KEY_ID:
+        required: true
+      CLOUDFLARE_SECRET_ACCESS_KEY:
+        required: true
+      SENTRY_AUTH_TOKEN:
+        required: false
+      SENTRY_ORG:
+        required: false
+      REPO_ACCESS_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to build'
+        required: true
+        type: choice
+        options:
+          - feral-connectd
+          - feral-setupd
+          - feral-sys-monitord
+          - feral-app-monitord
+          - feral-watchdog
+          - launcher-ui
+      version:
+        description: 'Package version'
+        required: true
+        type: string
+      environment:
+        description: "Environment to build"
+        required: true
+        default: "Development"
+        type: choice
+        options:
+          - Development
+          - Production
+      maintainer:
+        description: 'Package maintainer'
+        required: false
+        type: string
+        default: 'GitHub Actions'
+      description:
+        description: 'Package description'
+        required: false
+        type: string
+        default: 'Go application packaged for Arch Linux'
+      ffos_user_ref:
+        description: 'ffos-user repository reference'
+        required: true
+        type: string
+        default: 'develop'
+
+jobs:
+  build-component:
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Checkout ffos-user Repository
+        uses: actions/checkout@v4
+        with:
+          repository: feral-file/ffos-user
+          ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
+          path: ffos-user
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Determine Build Type
+        id: build-type
+        working-directory: ffos-user/components/${{ inputs.component }}
+        run: |
+          if [ -f "Cargo.toml" ]; then
+            echo "type=rust" >> $GITHUB_OUTPUT
+            # Get the binary name from Cargo.toml if possible
+            if [ -f "Cargo.toml" ]; then
+              BINARY_NAME=$(grep -m 1 'name\s*=' Cargo.toml | cut -d '"' -f 2 || echo "${{ inputs.component }}")
+              echo "binary_name=${BINARY_NAME}" >> $GITHUB_OUTPUT
+            else
+              echo "binary_name=${{ inputs.component }}" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "type=go" >> $GITHUB_OUTPUT
+            echo "binary_name=${{ inputs.component }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Go Dependencies
+        if: steps.build-type.outputs.type == 'go'
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm go git base-devel shadow
+
+      - name: Install Rust Dependencies
+        if: steps.build-type.outputs.type == 'rust'
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm rust cargo git base-devel shadow
+
+      - name: Set Version
+        id: set-version
+        run: |
+          VERSION="${{ inputs.version }}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build Pacman Package
+        working-directory: ffos-user/components/${{ inputs.component }}
+        run: |
+          set -euo pipefail
+          COMP=${{ inputs.component }}
+          VER=${VERSION}
+          TARBALL="${COMP}_${VER}.tar.gz"
+
+          mkdir -p /tmp
+
+          # 1) Create the tarball in /tmp to avoid it being seen mid–archive
+          tar czf "/tmp/${TARBALL}" --exclude="${TARBALL}" .
+
+          # 2) Move it back into the component directory
+          mv "/tmp/${TARBALL}" .
+
+          # 3) Emit a clean, un-indented PKGBUILD
+          if [ "${{ steps.build-type.outputs.type }}" == "rust" ]; then
+            # PKGBUILD for Rust component
+            cat <<EOF > PKGBUILD
+          # Maintainer: ${{ inputs.maintainer }}
+          pkgname=${COMP}
+          pkgver=${VER}
+          pkgrel=1
+          pkgdesc="${{ inputs.description }}"
+          arch=('x86_64' 'aarch64')
+          url="https://github.com/${{ github.repository }}"
+          license=('MIT')
+          depends=()
+          makedepends=('rust' 'cargo')
+          options=(!strip)
+
+          source=("${TARBALL}")
+          sha256sums=('SKIP')
+
+          build() {
+            cd "\$srcdir"
+            cargo build --release
+          }
+
+          package() {
+            install -Dm755 "\$srcdir/target/release/${{ steps.build-type.outputs.binary_name }}" "\$pkgdir/usr/bin/${COMP}"
+          }
+          EOF
+          else
+            # PKGBUILD for Go component
+            cat <<EOF > PKGBUILD
+          # Maintainer: ${{ inputs.maintainer }}
+          pkgname=${COMP}
+          pkgver=${VER}
+          pkgrel=1
+          pkgdesc="${{ inputs.description }}"
+          arch=('x86_64' 'aarch64')
+          url="https://github.com/${{ github.repository }}"
+          license=('MIT')
+          depends=()
+          makedepends=('go')
+          options=(!strip)
+
+          source=("${TARBALL}")
+          sha256sums=('SKIP')
+
+          build() {
+            cd "\$srcdir"
+            go build -v -o "${COMP}"
+          }
+
+          package() {
+            install -Dm755 "\$srcdir/${COMP}" "\$pkgdir/usr/bin/${COMP}"
+          }
+          EOF
+          fi
+
+          useradd -m builder
+          chown -R builder:builder .
+          su builder -c "makepkg -f --skipinteg"
+
+      - name: Rclone to r2
+        working-directory: ffos-user/components/${{ inputs.component }}
+        run: |
+          pacman -S --noconfirm rclone
+
+          # Configure rclone
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf << EOF
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+          secret_access_key = ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+          endpoint = https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          acl = private
+          no_check_bucket = true
+          EOF
+
+          rclone copy . \
+            "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${{ github.ref_name }}/os/x86_64/" \
+            --include="*.pkg.tar.zst" \
+            --s3-upload-cutoff=100M \
+            --s3-chunk-size=100M \
+            --transfers=7 \
+            --verbose \
+            --stats=1s
+      - name: Component Info
+        run: |
+          echo "Component ${{ inputs.component }} version ${{ env.VERSION }} built successfully"
+          echo "Built as pacman package and uploaded to R2"
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf /components 
