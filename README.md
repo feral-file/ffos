@@ -32,7 +32,7 @@ ffos/
 │   ├── pacman-repo.yaml        # Pacman repository management
 │   ├── build-image-to-cf.yml   # Complete build pipeline
 │   └── pure-build-image-to-cf.yml # Pure ISO build
-├── archiso-radxa-x4/           # Archiso configuration
+├── archiso-ffx1/           # Archiso configuration
 │   ├── airootfs/               # Root filesystem template
 │   ├── efiboot/                # EFI boot configuration
 │   ├── packages.x86_64         # Package list

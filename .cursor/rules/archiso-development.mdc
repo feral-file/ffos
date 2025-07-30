@@ -6,7 +6,7 @@ alwaysApply: false
 # ArchISO Development Guidelines
 
 ## Image Configuration
-Working with the ArchISO profile in `archiso-radxa-x4/` to build the Radxa X4 device image.
+Working with the ArchISO profile in `archiso-ffx1/` to build the Radxa X4 device image.
 
 ## Key Configuration Files
 - `profiledef.sh` - Main profile definition with build settings

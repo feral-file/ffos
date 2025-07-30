@@ -172,23 +172,23 @@ jobs:
       - name: Copy archiso profile and setup home directories
         run: |
           mkdir -p /build
-          cp -r archiso-radxa-x4 /build/
+          cp -r archiso-ffx1 /build/
           
           # Create home directory structure
-          mkdir -p /build/archiso-radxa-x4/airootfs/home
+          mkdir -p /build/archiso-ffx1/airootfs/home
           
           # Copy user data from ffos-user repository
-          cp -r ffos-user/users/feralfile /build/archiso-radxa-x4/airootfs/home/
+          cp -r ffos-user/users/feralfile /build/archiso-ffx1/airootfs/home/
           
           if [ "${{ inputs.soak-test }}" == "false" ]; then
             # Remove soaktest if not needed
-            rm -f /build/archiso-radxa-x4/efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf
-            rm -f /build/archiso-radxa-x4/airootfs/usr/local/bin/websocat
+            rm -f /build/archiso-ffx1/efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf
+            rm -f /build/archiso-ffx1/airootfs/usr/local/bin/websocat
           else 
             # Copy soaktest user data
-            cp -r ffos-user/users/soaktest /build/archiso-radxa-x4/airootfs/home/
+            cp -r ffos-user/users/soaktest /build/archiso-ffx1/airootfs/home/
             
-            cat >> /build/archiso-radxa-x4/packages.x86_64 << EOF
+            cat >> /build/archiso-ffx1/packages.x86_64 << EOF
           # soak test tools
           foot
           bc
@@ -201,7 +201,7 @@ jobs:
       - name: Update EFI boot option
         if: ${{ (inputs.install_to_emmc == true) || (github.event.inputs.install_to_emmc == true) }}
         run: |
-          cat >> /build/archiso-radxa-x4/efiboot/loader/loader.conf << EOF
+          cat >> /build/archiso-ffx1/efiboot/loader/loader.conf << EOF
           default archiso-x86_64-linux-emmc-installation.conf
           timeout 0
           EOF
@@ -210,13 +210,13 @@ jobs:
         if: ${{ (inputs.is_development == true) || (github.event.inputs.is_development == true) }}
         run: |
           # Remove --kiosk flag from start-kiosk.sh
-          sed -i 's/--kiosk//' /build/archiso-radxa-x4/airootfs/home/feralfile/scripts/start-kiosk.sh
+          sed -i 's/--kiosk//' /build/archiso-ffx1/airootfs/home/feralfile/scripts/start-kiosk.sh
 
       - name: Add development tools to packages list
         if: ${{ (inputs.is_development == true) || (github.event.inputs.is_development == true) }}
         run: |
           # Add Go and Rust to packages list
-          cat >> /build/archiso-radxa-x4/packages.x86_64 << EOF
+          cat >> /build/archiso-ffx1/packages.x86_64 << EOF
 
           # Development tools
           go
@@ -231,15 +231,15 @@ jobs:
         if: ${{ (inputs.is_development == true) || (github.event.inputs.is_development == true) }}
         run: |
           # Create source directory
-          mkdir -p /build/archiso-radxa-x4/airootfs/home/feralfile/src
+          mkdir -p /build/archiso-ffx1/airootfs/home/feralfile/src
           
           # Create a file with repository information
-          echo "Branch: ${{ github.ref_name }}" > /build/archiso-radxa-x4/airootfs/home/feralfile/src/repo-info.txt
-          echo "Version: ${{ inputs.version || github.event.inputs.version }}" >> /build/archiso-radxa-x4/airootfs/home/feralfile/src/repo-info.txt
-          echo "Build Date: $(date)" >> /build/archiso-radxa-x4/airootfs/home/feralfile/src/repo-info.txt
+          echo "Branch: ${{ github.ref_name }}" > /build/archiso-ffx1/airootfs/home/feralfile/src/repo-info.txt
+          echo "Version: ${{ inputs.version || github.event.inputs.version }}" >> /build/archiso-ffx1/airootfs/home/feralfile/src/repo-info.txt
+          echo "Build Date: $(date)" >> /build/archiso-ffx1/airootfs/home/feralfile/src/repo-info.txt
           
           # Copy components directory with current checkout
-          cp -r ffos-user/components /build/archiso-radxa-x4/airootfs/home/feralfile/src/
+          cp -r ffos-user/components /build/archiso-ffx1/airootfs/home/feralfile/src/
 
       - name: Inject pacman.conf
         env:
@@ -257,21 +257,21 @@ jobs:
             DOMAIN="feralfile-device-distribution.bitmark-development.workers.dev"
           fi
 
-          cat >> /build/archiso-radxa-x4/pacman.conf << EOF
+          cat >> /build/archiso-ffx1/pacman.conf << EOF
           [feralfile]
           SigLevel = Optional TrustAll
           Server = https://${ENCODED_USER}:${ENCODED_PASS}@${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
           EOF
 
-          cp /build/archiso-radxa-x4/pacman.conf /build/archiso-radxa-x4/airootfs/etc/pacman.conf
+          cp /build/archiso-ffx1/pacman.conf /build/archiso-ffx1/airootfs/etc/pacman.conf
 
       - name: Copy UI files
         run: |
-          mkdir -p /build/archiso-radxa-x4/airootfs/opt/feral/ui/launcher
-          cp -r ffos-user/components/launcher-ui/* /build/archiso-radxa-x4/airootfs/opt/feral/ui/launcher/
-          mkdir -p /build/archiso-radxa-x4/airootfs/opt/feral/ui/player
-          cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-radxa-x4/airootfs/opt/feral/ui/player/
-          mkdir -p /build/archiso-radxa-x4/airootfs/home/feralfile/.logs
+          mkdir -p /build/archiso-ffx1/airootfs/opt/feral/ui/launcher
+          cp -r ffos-user/components/launcher-ui/* /build/archiso-ffx1/airootfs/opt/feral/ui/launcher/
+          mkdir -p /build/archiso-ffx1/airootfs/opt/feral/ui/player
+          cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ffx1/airootfs/opt/feral/ui/player/
+          mkdir -p /build/archiso-ffx1/airootfs/home/feralfile/.logs
 
       - name: Add Configs and Services
         run: |
@@ -282,8 +282,8 @@ jobs:
           fi
 
           # Add connectd config
-          mkdir -p /build/archiso-radxa-x4/airootfs/home/feralfile/.config
-          cat > /build/archiso-radxa-x4/airootfs/home/feralfile/.config/connectd.json << EOF
+          mkdir -p /build/archiso-ffx1/airootfs/home/feralfile/.config
+          cat > /build/archiso-ffx1/airootfs/home/feralfile/.config/connectd.json << EOF
           {
             "relayer": {
                 "endpoint": "${{ vars.RELAYER_ENDPOINT }}",
@@ -302,16 +302,16 @@ jobs:
             }
           }
           EOF
-          chmod 755 /build/archiso-radxa-x4/airootfs/home/feralfile/.config/connectd.json
+          chmod 755 /build/archiso-ffx1/airootfs/home/feralfile/.config/connectd.json
 
           # Add watchdog config
-          cat > /build/archiso-radxa-x4/airootfs/home/feralfile/.config/watchdog.json << EOF
+          cat > /build/archiso-ffx1/airootfs/home/feralfile/.config/watchdog.json << EOF
           {
             "cdp_endpoint": "http://127.0.0.1:9222"
           }
           EOF
 
-          cat > /build/archiso-radxa-x4/airootfs/home/feralfile/x1-config.json << EOF
+          cat > /build/archiso-ffx1/airootfs/home/feralfile/x1-config.json << EOF
           {
             "branch": "${{ github.ref_name }}",
             "version": "${{ inputs.version || github.event.inputs.version }}",
@@ -321,7 +321,7 @@ jobs:
             "heartbeat_endpoint": "${{ secrets.HEARTBEAT_ENDPOINT }}"
           }
           EOF
-          chmod 755 /build/archiso-radxa-x4/airootfs/home/feralfile/x1-config.json
+          chmod 755 /build/archiso-ffx1/airootfs/home/feralfile/x1-config.json
 
       - name: Setup pacman
         run: |
@@ -345,17 +345,17 @@ jobs:
           pacman -Syy --debug
 
           # CRITICAL: Create and set up the mirrorlist for the archiso build environment
-          mkdir -p /build/archiso-radxa-x4/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-radxa-x4/pacman.d/mirrorlist
+          mkdir -p /build/archiso-ffx1/pacman.d
+          cp /etc/pacman.d/mirrorlist /build/archiso-ffx1/pacman.d/mirrorlist
           
           # Also copy mirror list to the final ISO
-          mkdir -p /build/archiso-radxa-x4/airootfs/etc/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-radxa-x4/airootfs/etc/pacman.d/mirrorlist
+          mkdir -p /build/archiso-ffx1/airootfs/etc/pacman.d
+          cp /etc/pacman.d/mirrorlist /build/archiso-ffx1/airootfs/etc/pacman.d/mirrorlist
 
       - name: Build ISO Image
         run: |
           cd /build
-          mkarchiso -v -w /build/work -o /build/out /build/archiso-radxa-x4
+          mkarchiso -v -w /build/work -o /build/out /build/archiso-ffx1
           ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
           if [ -f "$ISO_FILE" ]; then
             IMAGE_TYPE="${{ (inputs.is_development == 'true' || github.event.inputs.is_development == 'true') && 'dev-' || '' }}"
