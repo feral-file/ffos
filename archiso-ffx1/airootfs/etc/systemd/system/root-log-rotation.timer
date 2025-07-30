@@ -1,0 +1,10 @@
+[Unit]
+Description=Run X1 Root Log Rotation Hourly
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Unit=root-log-rotation.service
+
+[Install]
+WantedBy=timers.target

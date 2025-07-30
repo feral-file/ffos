@@ -16,10 +16,14 @@ airootfs_image_tool_options=('-comp' 'xz' '-Xbcj' 'x86' '-b' '1M' '-Xdict-size' 
 file_permissions=(
   ["/etc/shadow"]="0:0:400"
   ["/etc/gshadow"]="0:0:400"
-  ["/root"]="0:0:750"
   ["/etc/initcpio/hooks/btrfs-rollback"]="0:0:750"
   ["/etc/initcpio/install/btrfs-rollback"]="0:0:750"
+  ["/root"]="0:0:750"
   ["/root/.automated_script.sh"]="0:0:755"
   ["/root/scripts/install-to-disk.sh"]="0:0:755"
   ["/root/scripts/install-to-emmc.sh"]="0:0:755"
+  ["/root/scripts/feral-service-update.sh"]="0:0:755"
+  ["/root/scripts/feral-system-update.sh"]="0:0:755"
+  ["/root/scripts/feral-update.sh"]="0:0:755"
+  ["/root/scripts/log-rotation.sh"]="0:0:755"
 )
