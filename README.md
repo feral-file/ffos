@@ -155,6 +155,6 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 │   ├── feral-watchdog-{version}-x86_64.pkg.tar.zst
 │   ├── feralfile.db.tar.gz
 │   └── feralfile.files.tar.gz
-├── radxa-x4-arch-{version}.iso
+├── FF-X1-{branch}-{version}.iso
 └── release_notes_{version}.md
 ```

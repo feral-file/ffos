@@ -277,7 +277,16 @@ jobs:
           ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
           if [ -f "$ISO_FILE" ]; then
             IMAGE_TYPE="${{ (inputs.is_development == 'true' || github.event.inputs.is_development == 'true') && 'dev-' || '' }}"
-            NEW_NAME="radxa-x4-arch-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
+            if [ "${{ github.ref_name }}" = "release" ]; then
+              IMAGE_TAG="release"
+            elif [ "${{ github.ref_name }}" = "demo" ]; then
+              IMAGE_TAG="demo"
+            elif [ "${{ github.ref_name }}" = "develop" ]; then
+              IMAGE_TAG="develop"
+            else
+              IMAGE_TAG="other"
+            fi
+            NEW_NAME="FF-X1-${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
             mv "$ISO_FILE" "/build/out/$NEW_NAME"
             echo "ISO created: /build/out/$NEW_NAME"
           else
@@ -303,8 +312,17 @@ jobs:
         run: |
           cd /build/out
           IMAGE_TYPE="${{ (inputs.is_development == 'true' || github.event.inputs.is_development == 'true') && 'dev-' || '' }}"
-          ISO_FILE="radxa-x4-arch-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
-          ZIP_FILE="radxa-x4-arch-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.zip"
+          if [ "${{ github.ref_name }}" = "release" ]; then
+            IMAGE_TAG="release"
+          elif [ "${{ github.ref_name }}" = "demo" ]; then
+            IMAGE_TAG="demo"
+          elif [ "${{ github.ref_name }}" = "develop" ]; then
+            IMAGE_TAG="develop"
+          else
+            IMAGE_TAG="other"
+          fi
+          ISO_FILE="FF-X1-${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
+          ZIP_FILE="FF-X1-${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.zip"
           zip -j "$ZIP_FILE" "$ISO_FILE"
           rclone copyto "$ZIP_FILE" \
             "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${{ github.ref_name }}/$ZIP_FILE" \
