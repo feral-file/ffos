@@ -1,10 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-sudo systemctl stop "feral-watchdog.service"
-sudo systemctl stop "feral-sys-monitord.service"
-sudo systemctl stop "feral-app-monitord.service"
-
 echo "Booting..."
 sleep 3
 
