@@ -175,7 +175,7 @@ echo
 echo "Copying root filesystem..."
 rm -rf /home/soaktest
 rm -f /usr/local/bin/websocat
-rsync -aAX --info=progress2 --exclude={"/dev/*","/proc/*","/root/*","/sys/*","/tmp/*","/run/*","/mnt/*","/live-efi/*","/media/*","/lost+found"} / /mnt
+rsync -aAX --info=progress2 --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/live-efi/*","/media/*","/lost+found"} / /mnt
 cat > /mnt/etc/systemd/system/getty@tty1.service.d/autologin.conf <<EOF
 [Service]
 ExecStart=
@@ -190,6 +190,8 @@ fi
 echo -n > /mnt/etc/machine-id
 rm -f /mnt/var/lib/systemd/random-seed
 rm -f /mnt/etc/ssh/ssh_host_*
+rm -f /mnt/root/.automated_script.sh
+rm -f /mnt/root/.bash_profile
 rm -f /mnt/root/.bash_history
 rm -f /mnt/home/*/.bash_history 2>/dev/null || true
 rm -rf /mnt/var/log/*
