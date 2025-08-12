@@ -190,7 +190,6 @@ rm -f /mnt/root/.automated_script.sh
 rm -f /mnt/root/.bash_profile
 rm -f /mnt/root/.bash_history
 rm -f /mnt/home/*/.bash_history 2>/dev/null || true
-rm -rf /mnt/var/log/*
 rm -rf /mnt/var/tmp/*
 
 # ─── Generate fstab ────────────────────────────────────────────────────
