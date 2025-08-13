@@ -27,7 +27,25 @@ on:
           required: true
 
 jobs:
+  permission-check:
+    if: ${{ github.ref_name == 'staging' || github.ref_name == 'release' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if actor is repo admin
+        run: |
+          PERMISSION=$(curl -s -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ github.token }}" \
+            https://api.github.com/repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission \
+            | jq -r '.permission')
+          
+          if [ "$PERMISSION" != "admin" ]; then
+            echo "Error: Only repo admins can run this workflow on ${{ github.ref_name }} branch."
+            exit 1
+          fi
+          echo "Permission check passed."
+
   update-repo:
+    needs: permission-check
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
     runs-on: ubuntu-latest
     container:
