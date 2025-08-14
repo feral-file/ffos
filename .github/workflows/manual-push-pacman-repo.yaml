@@ -1,23 +1,24 @@
-name: Update Pacman Repo DB
+name: Manual Update Pacman Repo DB
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment for the build'
+        description: "Environment to build"
         required: true
-        type: string
-        default: 'Development'
-    secrets:
-        CLOUDFLARE_ACCOUNT_ID:
-          required: true
-        CLOUDFLARE_ACCESS_KEY_ID:
-          required: true
-        CLOUDFLARE_SECRET_ACCESS_KEY:
-          required: true
+        default: "Development"
+        type: choice
+        options:
+          - Development
+          - Production
 
 jobs:
+  permission-check:
+    name: Permission Check
+    uses: ./.github/workflows/permission-check.yaml
+
   update-repo:
+    needs: permission-check
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
     runs-on: ubuntu-latest
     container:

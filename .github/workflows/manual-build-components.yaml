@@ -1,52 +1,54 @@
 name: Build Component
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       component:
         description: 'Component to build'
         required: true
-        type: string
+        type: choice
+        options:
+          - feral-connectd
+          - feral-setupd
+          - feral-sys-monitord
+          - feral-app-monitord
+          - feral-watchdog
+          - launcher-ui
       version:
         description: 'Package version'
         required: true
         type: string
-      description:
-        description: 'Package description'
-        required: false
-        type: string
-        default: 'Go application packaged for Arch Linux'
+      environment:
+        description: "Environment to build"
+        required: true
+        default: "Development"
+        type: choice
+        options:
+          - Development
+          - Production
       maintainer:
         description: 'Package maintainer'
         required: false
         type: string
         default: 'GitHub Actions'
-      environment:
-        description: 'Environment for Sentry release'
-        required: true
+      description:
+        description: 'Package description'
+        required: false
         type: string
-        default: 'Development'
+        default: 'Go application packaged for Arch Linux'
       ffos_user_ref:
         description: 'ffos-user repository reference'
         required: true
         type: string
         default: 'develop'
-    secrets:
-      CLOUDFLARE_ACCOUNT_ID:
-        required: true
-      CLOUDFLARE_ACCESS_KEY_ID:
-        required: true
-      CLOUDFLARE_SECRET_ACCESS_KEY:
-        required: true
-      SENTRY_AUTH_TOKEN:
-        required: false
-      SENTRY_ORG:
-        required: false
-      REPO_ACCESS_TOKEN:
-        required: true
 
 jobs:
+  permission-check:
+    name: Permission Check
+    uses: ./.github/workflows/permission-check.yaml
+
   build-component:
+    needs: permission-check
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
     runs-on: ubuntu-latest
     container:
