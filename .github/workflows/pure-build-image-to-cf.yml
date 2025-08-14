@@ -1,4 +1,4 @@
-name: Pure Build Arch Linux Image for Radxa X4
+name: ▶️ Pure Build FF1 Image for Radxa X4
 
 on:
   workflow_dispatch:

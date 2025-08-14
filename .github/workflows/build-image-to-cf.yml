@@ -1,4 +1,4 @@
-name: Build Arch Linux Image for Radxa X4
+name: ▶️ Build FF1 Image for Radxa X4
 
 on:
   workflow_dispatch:

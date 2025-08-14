@@ -1,4 +1,4 @@
-name: Update Pacman Repo DB
+name: 🔒 Update Pacman Repo DB
 
 on:
   workflow_call:

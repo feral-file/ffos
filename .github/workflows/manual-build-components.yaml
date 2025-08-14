@@ -1,4 +1,4 @@
-name: Build Component
+name: ▶️ Manual Build Component
 
 on:
   workflow_dispatch:

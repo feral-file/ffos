@@ -1,4 +1,4 @@
-name: Permission Check
+name: 🔒 Permission Check
 
 on:
   workflow_call:

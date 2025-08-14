@@ -1,4 +1,4 @@
-name: Build Component
+name: 🔒 Build Component
 
 on:
   workflow_call:
