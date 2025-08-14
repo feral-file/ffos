@@ -1,0 +1,22 @@
+name: Permission Check
+
+on:
+  workflow_call:
+
+jobs:
+  permission-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if actor is repo admin
+        if: ${{ github.ref_name == 'staging' || github.ref_name == 'release' }}
+        run: |
+          PERMISSION=$(curl -s -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ github.token }}" \
+            https://api.github.com/repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission \
+            | jq -r '.permission')
+          
+          if [ "$PERMISSION" != "admin" ]; then
+            echo "Error: Only repo admins can run this workflow on ${{ github.ref_name }} branch."
+            exit 1
+          fi
+          echo "Permission check passed."
