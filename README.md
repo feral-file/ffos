@@ -6,9 +6,9 @@ FFOS is the centralized build repository responsible for creating Arch Linux ISO
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   ffos-user     │    │      ffos       │    │   R2 Storage   │
-│   Repository    │    │   Repository    │    │                │
-│                 │    │                 │    │                │
+│   ffos-user     │    │      ffos       │    │   R2 Storage    │
+│   Repository    │    │   Repository    │    │                 │
+│                 │    │                 │    │                 │
 │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
 │ │ components/ │ │    │ │   GitHub    │ │    │ │ {branch}/   │ │
 │ │ users/      │ │    │ │  Actions    │ │    │ │ os/x86_64/  │ │
