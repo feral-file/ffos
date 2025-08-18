@@ -32,7 +32,7 @@ ffos/
 │   ├── pacman-repo.yaml        # Pacman repository management
 │   ├── build-image-to-cf.yml   # Complete build pipeline
 │   └── pure-build-image-to-cf.yml # Pure ISO build
-├── archiso-ffx1/           # Archiso configuration
+├── archiso-ff1/           # Archiso configuration
 │   ├── airootfs/               # Root filesystem template
 │   ├── efiboot/                # EFI boot configuration
 │   ├── packages.x86_64         # Package list
@@ -155,6 +155,6 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 │   ├── feral-watchdog-{version}-x86_64.pkg.tar.zst
 │   ├── feralfile.db.tar.gz
 │   └── feralfile.files.tar.gz
-├── FF-X1-{develop|release|demo|other}-{version}.iso
+├── FF1-{develop|release|demo|other}-{version}.iso
 └── release_notes_{version}.md
 ```

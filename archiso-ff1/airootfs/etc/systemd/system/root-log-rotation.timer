@@ -1,5 +1,5 @@
 [Unit]
-Description=Run X1 Root Log Rotation Hourly
+Description=Run FF1 Root Log Rotation Hourly
 
 [Timer]
 OnBootSec=5min

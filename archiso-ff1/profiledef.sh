@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034
 
-iso_name="FF-X1"
+iso_name="FF1"
 iso_label="ARCH_RADXA_X4"
 iso_publisher="Feral File <https://feralfile.com>"
 iso_application="Feral File Launcher"
