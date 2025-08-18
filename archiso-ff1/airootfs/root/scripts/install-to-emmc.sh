@@ -162,7 +162,7 @@ editor no
 EOF
 
 cat > /mnt/boot/loader/entries/arch.conf <<EOF
-title   Feral File X1
+title   FF1
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 initrd  /intel-ucode.img
@@ -170,7 +170,7 @@ options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet 
 EOF
 
 cat > /mnt/boot/loader/entries/factory_reset.conf <<EOF
-title   Feral File X1 - Factory Reset
+title   FF1 - Factory Reset
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 initrd  /intel-ucode.img
@@ -201,7 +201,7 @@ echo "Installing systemd-boot to disk..."
 bootctl install
 
 echo "Setting up hostname..."
-DEVICE_ID_PREFIX="FF-X1-"
+DEVICE_ID_PREFIX="FF1-"
 MD5_LENGTH=8
 
 # Get MAC address or fallback

@@ -27,7 +27,7 @@ fi
 IMAGE_URL="$1"
 UNIQUE_ID="$2"
 
-CONFIG_FILE="/home/feralfile/x1-config.json"
+CONFIG_FILE="/home/feralfile/ff1-config.json"
 ISO_MOUNT="/mnt/ota-iso"
 SFS_MOUNT="/mnt/ota-sfs"
 TMP_DIR="/var/tmp/ota"
@@ -180,7 +180,7 @@ editor no
 EOF
 
 cat > /boot/loader/entries/arch.conf <<EOF
-title   Feral File X1
+title   FF1
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 initrd  /intel-ucode.img
@@ -188,7 +188,7 @@ options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet 
 EOF
 
 cat > /boot/loader/entries/factory_reset.conf <<EOF
-title   Feral File X1 - Factory Reset
+title   FF1 - Factory Reset
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 initrd  /intel-ucode.img
@@ -196,7 +196,7 @@ options rollback=factory root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.di
 EOF
 
 cat > /boot/loader/entries/ota_prev.conf <<EOF
-title   Feral File X1 - Rollback to previous version
+title   FF1 - Rollback to previous version
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 initrd  /intel-ucode.img

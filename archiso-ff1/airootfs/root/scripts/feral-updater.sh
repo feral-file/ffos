@@ -38,7 +38,7 @@ if [[ -r /home/feralfile/.config/environment ]]; then
 fi
 
 if [[ "$ENV_MODE" == "live" ]]; then
-  CONFIG_FILE="/home/feralfile/x1-config.json"
+  CONFIG_FILE="/home/feralfile/ff1-config.json"
 
   log_info "📖 Reading config from $CONFIG_FILE"
   branch=$(jq -r '.branch' "$CONFIG_FILE")
