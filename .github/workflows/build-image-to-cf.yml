@@ -92,6 +92,7 @@ jobs:
       maintainer: 'Feral File'
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
+      qemu: ${{ inputs.iso_type == 'QEMU' && 'true' || 'false' }}
 
   build-feral-sys-monitord:
     needs: permission-check
