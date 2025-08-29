@@ -60,5 +60,5 @@ qemu-system-x86_64 \
   -drive file=./ff1.qcow2,format=qcow2 \
   -device virtio-gpu-pci \
   -display cocoa \
-  -netdev user,id=n1 \
+  -netdev user,id=n1,hostfwd=tcp::2222-:22 \
   -device virtio-net-pci,netdev=n1
