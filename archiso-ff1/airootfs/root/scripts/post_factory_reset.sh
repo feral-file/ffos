@@ -1,4 +1,3 @@
-@@ -0,0 +1,148 @@
 #!/bin/bash
 set -euo pipefail
 
@@ -147,4 +146,3 @@ fi
 
 # The 'trap cleanup EXIT' will handle the final cleanup automatically.
 exit 0
-No newline at end of file

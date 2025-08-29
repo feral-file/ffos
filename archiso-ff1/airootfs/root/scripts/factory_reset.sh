@@ -1,4 +1,3 @@
-@@ -0,0 +1,112 @@
 #!/bin/bash
 set -euo pipefail
 
@@ -111,4 +110,3 @@ sleep 5
 
 # The 'trap cleanup EXIT' will handle the final cleanup automatically.
 systemctl reboot
-No newline at end of file
