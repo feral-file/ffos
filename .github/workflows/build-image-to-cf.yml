@@ -213,13 +213,30 @@ jobs:
           EOF
           fi 
 
-      - name: Update EFI boot option
+      - name: Update emmc EFI boot option
         if: ${{ inputs.iso_type == 'Normal (emmc)' || inputs.iso_type == 'Development (emmc)' }}
         run: |
           cat >> /build/archiso-ff1/efiboot/loader/loader.conf << EOF
           default archiso-x86_64-linux-emmc-installation.conf
           timeout 0
           EOF
+
+      - name: Update QEMU EFI boot option
+        if: ${{ inputs.iso_type == 'QEMU' }}
+        run: |
+          cat >> /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-qemu.conf << EOF
+          title   Install FF1 OS to QEMU
+          linux   /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux
+          initrd  /%INSTALL_DIR%/boot/x86_64/initramfs-linux.img
+          initrd  /%INSTALL_DIR%/boot/intel-ucode.img
+          options archisobasedir=%INSTALL_DIR% archisodevice=UUID=%ARCHISO_UUID% cow_spacesize=512M script=/root/scripts/install-to-qemu.sh
+          EOF
+          cat >> /build/archiso-ff1/efiboot/loader/loader.conf << EOF
+          default archiso-x86_64-linux-qemu.conf
+          timeout 15
+          EOF
+          rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-emmc-installation.conf
+          rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-installation.conf
 
       - name: Update start-kiosk.sh
         run: |
