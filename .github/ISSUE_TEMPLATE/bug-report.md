@@ -1,5 +1,4 @@
 #### 🔖 Title (verb-first, e.g., "[Bug] Fix rotation reset after power cycle on FF1")
-<OWNER> fixes <OUTCOME>, e.g., "Cuong resolves connectivity drop during app reconnect."
 
 ---
 
