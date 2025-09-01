@@ -31,6 +31,11 @@ on:
         required: true
         type: string
         default: 'develop'
+      qemu:
+        description: 'Building for QEMU'
+        required: false
+        type: string
+        default: 'false'
     secrets:
       CLOUDFLARE_ACCOUNT_ID:
         required: true
@@ -106,6 +111,11 @@ jobs:
           VER=${VERSION}
           TARBALL="${COMP}_${VER}.tar.gz"
 
+          PROFILE=release
+          if [ "${{ inputs.qemu }}" = "true" ]; then
+            PROFILE=qemu
+          fi
+
           mkdir -p /tmp
 
           # 1) Create the tarball in /tmp to avoid it being seen mid–archive
@@ -135,11 +145,11 @@ jobs:
 
           build() {
             cd "\$srcdir"
-            cargo build --release
+            cargo build --profile=${PROFILE}
           }
 
           package() {
-            install -Dm755 "\$srcdir/target/release/${{ steps.build-type.outputs.binary_name }}" "\$pkgdir/usr/bin/${COMP}"
+            install -Dm755 "\$srcdir/target/${PROFILE}/${{ steps.build-type.outputs.binary_name }}" "\$pkgdir/usr/bin/${COMP}"
           }
           EOF
           else
