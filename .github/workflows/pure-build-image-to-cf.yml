@@ -23,16 +23,17 @@ on:
         options:
           - Development
           - Production
-      is_development:
-        description: "Build a development image (includes Go, Rust and source code)"
-        required: false
-        default: false
-        type: boolean
-      install_to_emmc:
-        description: "Build an installation image which will install to emmc directly"
+      iso_type:
+        description: "ISO type to build"
         required: true
-        default: false
-        type: boolean
+        default: "Normal (emmc)"
+        type: choice
+        options:
+          - Normal (emmc)
+          - Normal (full)
+          - Development (emmc)
+          - Development (full)
+          - QEMU
       pacman_snapshot:
         description: "Pacman repository snapshot to use"
         required: false
@@ -95,7 +96,7 @@ jobs:
           # Copy user data from ffos-user repository
           cp -r ffos-user/users/feralfile /build/archiso-ff1/airootfs/home/
           
-          if [ "${{ inputs.soak-test }}" == "false" ]; then
+          if [ "${{ inputs.soak-test }}" = "false" ]; then
             # Remove soaktest if not needed
             rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf
             rm -f /build/archiso-ff1/airootfs/usr/local/bin/websocat
@@ -113,22 +114,43 @@ jobs:
           EOF
           fi 
 
-      - name: Update EFI boot option
-        if: ${{ (inputs.install_to_emmc == true) || (github.event.inputs.install_to_emmc == true) }}
+      - name: Update emmc EFI boot option
+        if: ${{ inputs.iso_type == 'Normal (emmc)' || inputs.iso_type == 'Development (emmc)' }}
         run: |
           cat >> /build/archiso-ff1/efiboot/loader/loader.conf << EOF
           default archiso-x86_64-linux-emmc-installation.conf
           timeout 0
           EOF
 
-      - name: Update start-kiosk.sh
-        if: ${{ (inputs.is_development == true) || (github.event.inputs.is_development == true) }}
+      - name: Update QEMU EFI boot option
+        if: ${{ inputs.iso_type == 'QEMU' }}
         run: |
-          # Remove --kiosk flag from start-kiosk.sh
-          sed -i 's/--kiosk//' /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
+          cat >> /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-qemu.conf << EOF
+          title   Install FF1 OS to QEMU
+          linux   /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux
+          initrd  /%INSTALL_DIR%/boot/x86_64/initramfs-linux.img
+          initrd  /%INSTALL_DIR%/boot/intel-ucode.img
+          options archisobasedir=%INSTALL_DIR% archisodevice=UUID=%ARCHISO_UUID% cow_spacesize=512M script=/root/scripts/install-to-qemu.sh
+          EOF
+          cat >> /build/archiso-ff1/efiboot/loader/loader.conf << EOF
+          default archiso-x86_64-linux-qemu.conf
+          timeout 15
+          EOF
+          rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-emmc-installation.conf
+          rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-installation.conf
+
+      - name: Update start-kiosk.sh
+        run: |
+          if [ "${{ inputs.iso_type }}" = "QEMU" ]; then
+            sed -i 's/wlr-randr --output HDMI-A-1 --transform $ROTATION &&//' \
+              /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
+          elif [ "${{ inputs.iso_type }}" = "Development (full)" ] || [ "${{ inputs.iso_type }}" = "Development (emmc)" ]; then
+            sed -i 's/--kiosk//' \
+              /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
+          fi
 
       - name: Add development tools to packages list
-        if: ${{ (inputs.is_development == true) || (github.event.inputs.is_development == true) }}
+        if: ${{ inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)' }}
         run: |
           # Add Go and Rust to packages list
           cat >> /build/archiso-ff1/packages.x86_64 << EOF
@@ -143,7 +165,7 @@ jobs:
           sed -i 's/#NoConfirm/NoConfirm/' /etc/pacman.conf 2>/dev/null || echo "NoConfirm" >> /etc/pacman.conf
 
       - name: Setup source directory and copy components
-        if: ${{ (inputs.is_development == true) || (github.event.inputs.is_development == true) }}
+        if: ${{ inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)' }}
         run: |
           # Create source directory
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/src
@@ -281,13 +303,15 @@ jobs:
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
           ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
           if [ -f "$ISO_FILE" ]; then
-            IMAGE_TYPE="${{ (inputs.is_development == 'true' || github.event.inputs.is_development == 'true') && 'dev-' || '' }}"
+            IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') && 'dev-' || inputs.iso_type == 'QEMU' && 'qemu-' || '' }}"
             if [ "${{ github.ref_name }}" = "release" ]; then
               IMAGE_TAG="release"
             elif [ "${{ github.ref_name }}" = "demo" ]; then
               IMAGE_TAG="demo"
             elif [ "${{ github.ref_name }}" = "develop" ]; then
               IMAGE_TAG="develop"
+            elif [ "${{ github.ref_name }}" = "staging" ]; then
+              IMAGE_TAG="staging"  
             else
               IMAGE_TAG="other"
             fi
@@ -316,13 +340,15 @@ jobs:
       - name: Compress and Upload Image
         run: |
           cd /build/out
-          IMAGE_TYPE="${{ (inputs.is_development == 'true' || github.event.inputs.is_development == 'true') && 'dev-' || '' }}"
+          IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') && 'dev-' || inputs.iso_type == 'QEMU' && 'qemu-' || '' }}"
           if [ "${{ github.ref_name }}" = "release" ]; then
             IMAGE_TAG="release"
           elif [ "${{ github.ref_name }}" = "demo" ]; then
             IMAGE_TAG="demo"
           elif [ "${{ github.ref_name }}" = "develop" ]; then
             IMAGE_TAG="develop"
+          elif [ "${{ github.ref_name }}" = "staging" ]; then
+            IMAGE_TAG="staging"  
           else
             IMAGE_TAG="other"
           fi
