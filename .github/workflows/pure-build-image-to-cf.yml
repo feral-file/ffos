@@ -58,7 +58,7 @@ jobs:
 
   build-image:
     needs: permission-check
-    name: Generate Arch Linux Image for Radxa X4
+    name: Generate FF1 OS iso for Radxa X4
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
 
