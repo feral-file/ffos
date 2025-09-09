@@ -409,6 +409,8 @@ jobs:
               IMAGE_TAG="demo"
             elif [ "${{ github.ref_name }}" = "develop" ]; then
               IMAGE_TAG="develop"
+            elif [ "${{ github.ref_name }}" = "staging" ]; then
+              IMAGE_TAG="staging"
             else
               IMAGE_TAG="other"
             fi
@@ -444,6 +446,8 @@ jobs:
             IMAGE_TAG="demo"
           elif [ "${{ github.ref_name }}" = "develop" ]; then
             IMAGE_TAG="develop"
+          elif [ "${{ github.ref_name }}" = "staging" ]; then
+            IMAGE_TAG="staging"  
           else
             IMAGE_TAG="other"
           fi
