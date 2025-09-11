@@ -1,112 +1,73 @@
 #!/bin/bash
+
 set -euo pipefail
 
-# --- Configuration ---
-BOOT_STATE_FILE="/boot/.boot_state"
-LOADER_CONF_FILE="/boot/loader/loader.conf"
-TRANSACTION_DIR="/tmp/boot_state_transaction.$$"
-LOCK_FILE="/var/lock/boot_state_transition.lock"
+LOG_FILE="/var/log/factory-reset.log"
 
-# --- State ---
-TRANSACTION_ACTIVE=false
-
-# --- Functions ---
-
-# General cleanup function, triggered on any script exit.
-cleanup() {
-    # Ensure the transaction directory is removed.
-    if [[ -d "$TRANSACTION_DIR" ]]; then
-        rm -rf "$TRANSACTION_DIR"
-    fi
-    # Release the file lock.
-    exec 200>&-
+log_msg() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
-# Rollback function, triggered on errors (ERR), interrupt (INT), or termination (TERM).
-rollback_transaction() {
-    echo "Error occurred, performing rollback..." >&2
-    
-    if [[ "$TRANSACTION_ACTIVE" == true ]] && [[ -d "$TRANSACTION_DIR" ]]; then
-        # Restore original files from backups if they exist.
-        if [[ -f "$TRANSACTION_DIR/loader_conf.backup" ]]; then
-            mv "$TRANSACTION_DIR/loader_conf.backup" "$LOADER_CONF_FILE"
-        fi
-        if [[ -f "$TRANSACTION_DIR/boot_state.backup" ]]; then
-            mv "$TRANSACTION_DIR/boot_state.backup" "$BOOT_STATE_FILE"
-        fi
-    fi
-    
-    # Exit with an error code. The 'cleanup' trap will still run.
-    exit 1
-}
+# Get the current root device
+ROOT_DEV=$(findmnt / -no SOURCE)
+ROOT_DEV="${ROOT_DEV%%\[*}"
 
-# --- Main Logic ---
+log_msg "Factory reset snapshot..."
 
-# Set up traps for cleanup and error handling.
-trap cleanup EXIT
-trap rollback_transaction ERR INT TERM
-
-# Acquire an exclusive lock to prevent concurrent execution.
-exec 200>"$LOCK_FILE"
-if ! flock -w 10 200; then
-    echo "Failed to acquire lock. Another instance may be running." >&2
-    exit 1
-fi
-
-echo "Starting transaction to force state to 'factory_reset'..."
-
-# Check for sufficient disk space.
-available_space=$(df /tmp | awk 'NR==2 {print $4}')
-if [[ "$available_space" -lt 1024 ]]; then
-    echo "Error: Insufficient disk space for transaction." >&2
-    exit 1 # Triggers rollback
-fi
-
-# Create a temporary directory for the transaction.
-mkdir -p "$TRANSACTION_DIR"
-TRANSACTION_ACTIVE=true
-
-# Backup original files, even if they don't exist. This simplifies rollback.
-cp "$BOOT_STATE_FILE" "$TRANSACTION_DIR/boot_state.backup" 2>/dev/null || true
-cp "$LOADER_CONF_FILE" "$TRANSACTION_DIR/loader_conf.backup" 2>/dev/null || true
-
-# Prepare the new contents for the target files.
-new_loader_conf_content=$(cat <<EOF
-default factory_reset.conf
-timeout 0
-editor no
-EOF
-)
-
-# Write new files to the transaction directory.
-echo "factory_reset" > "$TRANSACTION_DIR/boot_state.new"
-echo "$new_loader_conf_content" > "$TRANSACTION_DIR/loader_conf.new"
-
-# --- Commit Transaction ---
-# The order is critical. Update the state file LAST.
-echo "Committing transaction..."
-mv "$TRANSACTION_DIR/loader_conf.new" "$LOADER_CONF_FILE"
-mv "$TRANSACTION_DIR/boot_state.new" "$BOOT_STATE_FILE"
-
-# Sync filesystem caches to disk.
 sync
 
-# --- Verify Final State ---
-# Verify both files to ensure the transaction was fully successful.
-final_state=$(cat "$BOOT_STATE_FILE")
-final_loader_conf=$(cat "$LOADER_CONF_FILE")
+# Mount btrfs top-level
+BTRFS_TOP="/mnt/btrfs-top-manager"
+mkdir -p "$BTRFS_TOP"
+mount -o subvolid=0 "$ROOT_DEV" "$BTRFS_TOP"
 
-if [[ "$final_state" != "factory_reset" ]] || [[ "$final_loader_conf" != "$new_loader_conf_content" ]]; then
-    echo "Error: State verification failed after commit. System might be in an inconsistent state." >&2
-    exit 1 # Triggers rollback
+# Step 1: Delete old @factory_reset_new subvolume if it exists
+if [[ -d "$BTRFS_TOP/@factory_reset_new" ]]; then
+    log_msg "Deleting old @factory_reset_new subvolume..."
+    # First, check if @factory_reset_new is not the default subvolume
+    DEFAULT_ID=$(btrfs subvolume get-default "$BTRFS_TOP" | awk '{print $2}')
+    AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@factory_reset_new" {print $2}')
+    
+    if [[ "$DEFAULT_ID" == "$AT_ID" ]]; then
+        log_msg "Warning: @factory_reset_new is still the default subvolume, changing default first..."
+        NEW_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@factory_reset" {print $2}')
+        btrfs subvolume set-default "$NEW_ID" "$BTRFS_TOP"
+    fi
+    
+    if ! btrfs subvolume delete "$BTRFS_TOP/@factory_reset_new"; then
+        log_msg "Error: Failed to delete @factory_reset_new subvolume"
+        umount "$BTRFS_TOP"
+        exit 1
+    fi
+    log_msg "Old @factory_reset_new subvolume deleted successfully"
 fi
 
-echo "Transaction completed successfully. State is now 'factory_reset'."
+# Step 2: Create new @factory_reset_new as a snapshot of @factory_reset
+log_msg "Creating new @ subvolume from current @factory_reset..."
+if ! btrfs subvolume snapshot "$BTRFS_TOP/@factory_reset" "$BTRFS_TOP/@factory_reset_new"; then
+    log_msg "Error: Failed to create @factory_reset_new snapshot"
+    umount "$BTRFS_TOP"
+    exit 1
+fi
+log_msg "New @factory_reset_new subvolume created successfully"
 
-# Mark transaction as complete to prevent rollback on successful exit.
-TRANSACTION_ACTIVE=false
+# Step 3: Set @factory_reset_new as default subvolume
+log_msg "Setting @factory_reset_new as default subvolume..."
+AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@factory_reset_new" {print $2}')
+if ! btrfs subvolume set-default "$AT_ID" "$BTRFS_TOP"; then
+    log_msg "Error: Failed to set @factory_reset_new as default"
+    umount "$BTRFS_TOP"
+    exit 1
+fi
+log_msg "@factory_reset_new set as default subvolume (ID: $AT_ID)"
 
-sleep 5
+# Unmount
+umount "$BTRFS_TOP"
+rmdir "$BTRFS_TOP"
 
-# The 'trap cleanup EXIT' will handle the final cleanup automatically.
+log_msg "Subvolume rotation complete! System should boot from @factory_reset_new on next reboot."
+
+sync
+
+sleep 8
 systemctl reboot

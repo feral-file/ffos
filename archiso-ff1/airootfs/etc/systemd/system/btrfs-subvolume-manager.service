@@ -1,0 +1,16 @@
+[Unit]
+Description=Btrfs Subvolume Manager (rotate @ota_new -> @ before shutdown)
+DefaultDependencies=no
+After=local-fs.target
+Requires=local-fs.target
+Before=umount.target shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/true
+ExecStop=/root/scripts/btrfs-subvolume-manager.sh
+TimeoutStopSec=5min
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
