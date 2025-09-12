@@ -74,6 +74,7 @@ if [[ "$CURRENT_SUBVOL" == "/@snapshots/@ota_new" ]]; then
     rmdir "$BTRFS_TOP"
     
     log_msg "Subvolume rotation complete! System should boot from @ on next reboot."
+    systemctl reboot
 elif [[ "$CURRENT_SUBVOL" == "/@snapshots/@factory_reset_new" ]]; then
     log_msg "System booted from @snapshots/@factory_reset_new, performing subvolume rotation..."
     
@@ -127,6 +128,7 @@ elif [[ "$CURRENT_SUBVOL" == "/@snapshots/@factory_reset_new" ]]; then
     rmdir "$BTRFS_TOP"
     
     log_msg "Subvolume rotation complete! System should boot from @ on next reboot."
+    systemctl reboot
 elif [[ "$CURRENT_SUBVOL" == "/@" ]]; then
     log_msg "System booted from @ subvolume. No action needed."
     
