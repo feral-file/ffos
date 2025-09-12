@@ -72,39 +72,39 @@ mkdir -p "$BTRFS_TOP"
 mount -o subvolid=0 "$ROOT_DEV" "$BTRFS_TOP"
 
 # --- Step 3: Create snapshots for update -----------------------------------
-log_info "Creating new snapshot @ota_new for update..."
+log_info "Creating new snapshot @snapshots/@ota_new for update..."
 
-# Remove old @ota_new if exists
-if [[ -d "$BTRFS_TOP/@ota_new" ]]; then
-  log_info "Removing existing @ota_new snapshot..."
-  btrfs subvolume delete "$BTRFS_TOP/@ota_new"
+# Remove old @snapshots/@ota_new if exists
+if [[ -d "$BTRFS_TOP/@snapshots/@ota_new" ]]; then
+  log_info "Removing existing @snapshots/@ota_new snapshot..."
+  btrfs subvolume delete "$BTRFS_TOP/@snapshots/@ota_new"
 fi
 
 # Create new writable snapshot from current @
-if btrfs subvolume snapshot "$BTRFS_TOP/@" "$BTRFS_TOP/@ota_new"; then
-  log_info "Snapshot '@ota_new' created successfully."
+if btrfs subvolume snapshot "$BTRFS_TOP/@" "$BTRFS_TOP/@snapshots/@ota_new"; then
+  log_info "Snapshot '@snapshots/@ota_new' created successfully."
 else
-  log_error "Failed to create snapshot '@ota_new'. Aborting."
+  log_error "Failed to create snapshot '@snapshots/@ota_new'. Aborting."
   exit 1
 fi
 
 log_info "Creating backup snapshot of current @ subvolume..."
-if [[ -d "$BTRFS_TOP/@ota_prev" ]]; then
-  log_info "Deleting old @ota_prev snapshot..."
-  btrfs subvolume delete "$BTRFS_TOP/@ota_prev"
+if [[ -d "$BTRFS_TOP/@snapshots/@ota_prev" ]]; then
+  log_info "Deleting old @snapshots/@ota_prev snapshot..."
+  btrfs subvolume delete "$BTRFS_TOP/@snapshots/@ota_prev"
 fi
 
-if btrfs subvolume snapshot -r "$BTRFS_TOP/@" "$BTRFS_TOP/@ota_prev"; then
-  log_info "Snapshot '@ota_prev' created successfully."
+if btrfs subvolume snapshot -r "$BTRFS_TOP/@" "$BTRFS_TOP/@snapshots/@ota_prev"; then
+  log_info "Snapshot '@snapshots/@ota_prev' created successfully."
 else
-  log_error "Failed to create snapshot '@ota_prev'. Aborting."
+  log_error "Failed to create snapshot '@snapshots/@ota_prev'. Aborting."
   exit 1
 fi
-log_info "Backup snapshot @ota_prev created"
+log_info "Backup snapshot @snapshots/@ota_prev created"
 
 # Mount the new snapshot for updating
 mkdir -p "$NEW_ROOT"
-mount -o compress=zstd,noatime,subvol=@ota_new "$ROOT_DEV" "$NEW_ROOT"
+mount -o compress=zstd,noatime,subvol=@snapshots/@ota_new "$ROOT_DEV" "$NEW_ROOT"
 
 # --- Step 4: Download and extract new image ------------------------------------
 log_progress "10" "Downloading new image..."
@@ -173,7 +173,7 @@ mount -t squashfs -o loop "$SFS_PATH" "$SFS_MOUNT"
 log_progress "85" "Installing update to new snapshot..."
 
 # --- Step 6: Rsync selective update to NEW snapshot ---------------------------
-log_info "Syncing filesystem into '@ota_new' snapshot..."
+log_info "Syncing filesystem into '@snapshots/@ota_new' snapshot..."
 rsync -aAX --delete --info=progress2 \
   --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed","/home/feralfile/.config/*","/home/feralfile/.logs/*","/home/feralfile/.state/*"} \
   "$SFS_MOUNT"/ "$NEW_ROOT"/
@@ -268,19 +268,19 @@ pacman-key --populate archlinux
 pacman -Syy
 CHROOT_EOF
 
-# --- Step 9: Set @ota_new as default subvolume --------------------------------
+# --- Step 9: Set @snapshots/@ota_new as default subvolume --------------------------------
 log_progress "98" "Setting new snapshot as default boot target..."
-log_info "Getting @ota_new subvolume ID..."
-NEW_SUBVOL_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@ota_new" {print $2}')
+log_info "Getting @snapshots/@ota_new subvolume ID..."
+NEW_SUBVOL_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@snapshots/@ota_new" {print $2}')
 
 if [[ -z "$NEW_SUBVOL_ID" ]]; then
-  log_error "Failed to get @ota_new subvolume ID"
+  log_error "Failed to get @snapshots/@ota_new subvolume ID"
   umount -R "$NEW_ROOT"
   umount "$BTRFS_TOP"
   exit 1
 fi
 
-log_info "Setting @ota_new (ID: $NEW_SUBVOL_ID) as default subvolume..."
+log_info "Setting @snapshots/@ota_new (ID: $NEW_SUBVOL_ID) as default subvolume..."
 btrfs subvolume set-default "$NEW_SUBVOL_ID" "$BTRFS_TOP"
 
 # --- Step 10: Clean up and reboot ---------------------------------------------
@@ -290,5 +290,5 @@ cleanup
 trap - EXIT
 
 log_progress "100" "Update complete! Restarting device..."
-log_info "OTA update complete. System will boot from @ota_new. Rebooting now..."
+log_info "OTA update complete. System will boot from @snapshots/@ota_new. Rebooting now..."
 systemctl reboot --no-wall --no-block
