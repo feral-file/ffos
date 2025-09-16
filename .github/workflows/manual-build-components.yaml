@@ -8,7 +8,7 @@ on:
         required: true
         type: choice
         options:
-          - feral-connectd
+          - feral-controld
           - feral-setupd
           - feral-sys-monitord
           - feral-app-monitord

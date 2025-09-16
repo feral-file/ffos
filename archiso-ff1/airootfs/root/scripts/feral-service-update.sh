@@ -27,18 +27,11 @@ UNIQUE_ID="$1"
 
 log_progress "0" "Updating Pacman packages..."
 
-output=$(sudo pacman -Sy --needed --noconfirm feral-connectd feral-setupd feral-sys-monitord feral-app-monitord feral-watchdog)
+output=$(pacman -Sy --needed --noconfirm feral-controld feral-setupd feral-sys-monitord feral-app-monitord feral-watchdog)
 
 if ! echo "$output" | grep -q "there is nothing to do"; then
-  log_progress "50" "Restarting feralfile services..."
-  log_info "Detected installation or upgrade. Reloading systemd and restarting services..."
-  sudo systemctl daemon-reload
-  sudo systemctl restart feral-sys-monitord.service
-  sudo systemctl restart feral-app-monitord.service
-  sudo systemctl restart feral-connectd.service
-  sudo systemctl restart feral-setupd.service
-  sudo systemctl restart feral-watchdog.service
-  log_progress "100" "OTA package update complete."
+  log_progress "100" "Packages updated. Rebooting system to apply updates..."
+  systemctl reboot
 else
   log_info "Packages already up to date. No action needed."
   log_progress "100" "Packages already up to date. No action needed."
