@@ -31,7 +31,7 @@ CONFIG_FILE="/home/feralfile/ff1-config.json"
 ISO_MOUNT="/mnt/ota-iso"
 SFS_MOUNT="/mnt/ota-sfs"
 TMP_DIR="/var/tmp/ota"
-ZIP_FILE="$TMP_DIR/image.zip"
+ISO_FILE="$TMP_DIR/image.iso"
 BOOT_MOUNT="/mnt/ota-boot"
 NEW_ROOT="/mnt/ota-new-root"
 BTRFS_TOP="/mnt/btrfs-top"
@@ -106,8 +106,8 @@ log_info "Backup snapshot @snapshots/@ota_prev created"
 mkdir -p "$NEW_ROOT"
 mount -o compress=zstd,noatime,subvol=@snapshots/@ota_new "$ROOT_DEV" "$NEW_ROOT"
 
-# --- Step 4: Download and extract new image ------------------------------------
-log_progress "10" "Downloading new image..."
+# --- Step 4: Download and extract new iso ------------------------------------
+log_progress "10" "Downloading new iso..."
 mkdir -p "$TMP_DIR"
  
 TOTAL_SIZE=$(curl -u "$auth_user:$auth_pass" -sI "$ENDPOINT$IMAGE_URL" \
@@ -127,8 +127,8 @@ log_info "Total file size to download: $TOTAL_SIZE bytes"
   LAST_TIME=$(date +%s)
 
   while sleep 3; do
-    if [[ -f "$ZIP_FILE" ]]; then
-      CUR_SIZE=$(stat -c %s "$ZIP_FILE")
+    if [[ -f "$ISO_FILE" ]]; then
+      CUR_SIZE=$(stat -c %s "$ISO_FILE")
       CUR_TIME=$(date +%s)
       ELAPSED=$((CUR_TIME - LAST_TIME))
       DIFF=$((CUR_SIZE - LAST_SIZE))
@@ -147,14 +147,11 @@ log_info "Total file size to download: $TOTAL_SIZE bytes"
 PROGRESS_PID=$!
 
 # Actual download
-curl -u "$auth_user:$auth_pass" --silent --show-error -fL "$ENDPOINT$IMAGE_URL" -o "$ZIP_FILE"
+curl -u "$auth_user:$auth_pass" --silent --show-error -fL "$ENDPOINT$IMAGE_URL" -o "$ISO_FILE"
 
 kill "$PROGRESS_PID" 2>/dev/null || true
 
 log_progress "80" "Extracting update package..."
-
-unzip -o "$ZIP_FILE" -d "$TMP_DIR"
-ISO_FILE=$(find "$TMP_DIR" -name '*.iso' | head -n1)
 
 mkdir -p "$ISO_MOUNT"
 mount -o loop "$ISO_FILE" "$ISO_MOUNT"
