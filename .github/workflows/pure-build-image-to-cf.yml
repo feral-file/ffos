@@ -218,9 +218,9 @@ jobs:
             ENDPOINT="https://feralfile-device-distribution.bitmark-development.workers.dev"
           fi
 
-          # Add connectd config
+          # Add controld config
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.config
-          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/connectd.json << EOF
+          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json << EOF
           {
             "relayer": {
                 "endpoint": "${{ vars.RELAYER_ENDPOINT }}",
@@ -239,7 +239,7 @@ jobs:
             }
           }
           EOF
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/connectd.json
+          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json
 
           # Add watchdog config
           cat > /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json << EOF
