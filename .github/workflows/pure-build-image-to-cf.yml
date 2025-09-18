@@ -256,6 +256,8 @@ jobs:
             --arg dist_pass "${{ secrets.DISTRIBUTION_AUTH_PASSWORD }}" \
             --arg endpoint "${ENDPOINT}" \
             --arg heartbeat "${{ secrets.HEARTBEAT_ENDPOINT }}" \
+            --arg vmagent_url "${{ secrets.VMAGENT_REMOTE_URL }}" \
+            --arg vmagent_token "${{ secrets.VMAGENT_REMOTE_BEARER_TOKEN }}" \
             --arg webapp_url "${WEBAPP_URL}" \
             '{
               branch: $branch,
@@ -263,7 +265,9 @@ jobs:
               distribution_acc: $dist_acc,
               distribution_pass: $dist_pass,
               endpoint: $endpoint,
-              heartbeat_endpoint: $heartbeat
+              heartbeat_endpoint: $heartbeat,
+              vmagent_remote_url: $vmagent_url,
+              vmagent_remote_bearer_token: $vmagent_token,
             } + (if $webapp_url != "" then {webapp_url: $webapp_url} else {} end)' \
             > /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
