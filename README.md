@@ -47,7 +47,7 @@ ffos/
 **Purpose**: Build individual components from ffos-user repository
 
 **Inputs**:
-- `component`: Component name (feral-connectd, feral-setupd, etc.)
+- `component`: Component name (feral-controld, feral-setupd, etc.)
 - `version`: Package version
 - `ffos_user_ref`: ffos-user repository reference
 - `environment`: Build environment (Development/Production)
@@ -148,7 +148,7 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 ```
 {branch}/
 ├── os/x86_64/
-│   ├── feral-connectd-{version}-x86_64.pkg.tar.zst
+│   ├── feral-controld-{version}-x86_64.pkg.tar.zst
 │   ├── feral-setupd-{version}-x86_64.pkg.tar.zst
 │   ├── feral-sys-monitord-{version}-x86_64.pkg.tar.zst
 │   ├── feral-app-monitord-{version}-x86_64.pkg.tar.zst

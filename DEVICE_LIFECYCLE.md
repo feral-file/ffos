@@ -51,10 +51,10 @@ flowchart TD
 flowchart TD
     %% Command Flow from Mobile
     Mobile[Mobile Controller] --> |Send Command| Relayer[Relayer Service]
-    Relayer --> |WebSocket Message| Connectd[Connectd Service]
+    Relayer --> |WebSocket Message| Controld[Controld Service]
     
     %% Command Processing
-    Connectd --> Mediator[Mediator]
+    Controld --> Mediator[Mediator]
     Mediator --> |Parse Message| Parse{Message Type}
     
     Parse --> |System Message| System[Handle System Message<br/>Save Topic ID]
@@ -80,7 +80,7 @@ flowchart TD
     WebCmd --> |Error| Error
     Error --> Response
     
-    class Connectd,Relayer service
+    class Controld,Relayer service
     class Mediator,Commands,Browser,WebApp component
     class Parse,CmdType decision
     class Mobile external

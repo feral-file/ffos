@@ -1,4 +1,4 @@
 enable sshd.service
 enable bluetooth.service
 enable NetworkManager.service
-enable post-factory-boot.service
+enable btrfs-subvolume-manager.service

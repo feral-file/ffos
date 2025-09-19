@@ -1,0 +1,13 @@
+[Unit]
+Description=Btrfs Subvolume Manager
+DefaultDependencies=no
+After=local-fs.target
+Requires=local-fs.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/scripts/btrfs-subvolume-manager.sh
+
+[Install]
+WantedBy=multi-user.target

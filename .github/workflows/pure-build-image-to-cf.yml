@@ -179,14 +179,8 @@ jobs:
           cp -r ffos-user/components /build/archiso-ff1/airootfs/home/feralfile/src/
 
       - name: Inject pacman.conf
-        env:
-          AUTH_USER: ${{ secrets.DISTRIBUTION_AUTH_USER }}
-          AUTH_PASS: ${{ secrets.DISTRIBUTION_AUTH_PASSWORD }}
         run: |
           set -e
-
-          ENCODED_USER=$(printf '%s' "$AUTH_USER" | jq -sRr @uri)
-          ENCODED_PASS=$(printf '%s' "$AUTH_PASS" | jq -sRr @uri)
 
           if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
             DOMAIN="ff1.feral-file.workers.dev"
@@ -197,7 +191,7 @@ jobs:
           cat >> /build/archiso-ff1/pacman.conf << EOF
           [feralfile]
           SigLevel = Optional TrustAll
-          Server = https://${ENCODED_USER}:${ENCODED_PASS}@${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
+          Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
           EOF
 
           cp /build/archiso-ff1/pacman.conf /build/archiso-ff1/airootfs/etc/pacman.conf
@@ -218,9 +212,9 @@ jobs:
             ENDPOINT="https://feralfile-device-distribution.bitmark-development.workers.dev"
           fi
 
-          # Add connectd config
+          # Add controld config
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.config
-          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/connectd.json << EOF
+          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json << EOF
           {
             "relayer": {
                 "endpoint": "${{ vars.RELAYER_ENDPOINT }}",
@@ -239,7 +233,7 @@ jobs:
             }
           }
           EOF
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/connectd.json
+          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json
 
           # Add watchdog config
           cat > /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json << EOF
@@ -252,18 +246,18 @@ jobs:
           jq -n \
             --arg branch "${{ github.ref_name }}" \
             --arg version "${{ inputs.version || github.event.inputs.version }}" \
-            --arg dist_acc "${{ secrets.DISTRIBUTION_AUTH_USER }}" \
-            --arg dist_pass "${{ secrets.DISTRIBUTION_AUTH_PASSWORD }}" \
             --arg endpoint "${ENDPOINT}" \
             --arg heartbeat "${{ secrets.HEARTBEAT_ENDPOINT }}" \
+            --arg vmagent_url "${{ secrets.VMAGENT_REMOTE_URL }}" \
+            --arg vmagent_token "${{ secrets.VMAGENT_REMOTE_BEARER_TOKEN }}" \
             --arg webapp_url "${WEBAPP_URL}" \
             '{
               branch: $branch,
               version: $version,
-              distribution_acc: $dist_acc,
-              distribution_pass: $dist_pass,
               endpoint: $endpoint,
-              heartbeat_endpoint: $heartbeat
+              heartbeat_endpoint: $heartbeat,
+              vmagent_remote_url: $vmagent_url,
+              vmagent_remote_bearer_token: $vmagent_token,
             } + (if $webapp_url != "" then {webapp_url: $webapp_url} else {} end)' \
             > /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
@@ -297,32 +291,6 @@ jobs:
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
 
-      - name: Build ISO Image
-        run: |
-          cd /build
-          mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
-          ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
-          if [ -f "$ISO_FILE" ]; then
-            IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') && 'dev-' || inputs.iso_type == 'QEMU' && 'qemu-' || '' }}"
-            if [ "${{ github.ref_name }}" = "release" ]; then
-              IMAGE_TAG="release"
-            elif [ "${{ github.ref_name }}" = "demo" ]; then
-              IMAGE_TAG="demo"
-            elif [ "${{ github.ref_name }}" = "develop" ]; then
-              IMAGE_TAG="develop"
-            elif [ "${{ github.ref_name }}" = "staging" ]; then
-              IMAGE_TAG="staging"  
-            else
-              IMAGE_TAG="other"
-            fi
-            NEW_NAME="FF1-${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
-            mv "$ISO_FILE" "/build/out/$NEW_NAME"
-            echo "ISO created: /build/out/$NEW_NAME"
-          else
-            echo "Error: ISO file not found"
-            exit 1
-          fi
-
       - name: Configure rclone
         run: |
           mkdir -p ~/.config/rclone
@@ -337,32 +305,41 @@ jobs:
           no_check_bucket = true
           EOF
 
-      - name: Compress and Upload Image
+      - name: Build & upload ISO Image
         run: |
-          cd /build/out
-          IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') && 'dev-' || inputs.iso_type == 'QEMU' && 'qemu-' || '' }}"
-          if [ "${{ github.ref_name }}" = "release" ]; then
-            IMAGE_TAG="release"
-          elif [ "${{ github.ref_name }}" = "demo" ]; then
-            IMAGE_TAG="demo"
-          elif [ "${{ github.ref_name }}" = "develop" ]; then
-            IMAGE_TAG="develop"
-          elif [ "${{ github.ref_name }}" = "staging" ]; then
-            IMAGE_TAG="staging"  
+          cd /build
+          mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
+          ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
+          if [ -f "$ISO_FILE" ]; then
+            IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') && 'dev-' || inputs.iso_type == 'QEMU' && 'qemu-' || '' }}"
+            if [ "${{ github.ref_name }}" = "release" ]; then
+              IMAGE_TAG="-release"
+            elif [ "${{ github.ref_name }}" = "demo" ]; then
+              IMAGE_TAG="-demo"
+            elif [ "${{ github.ref_name }}" = "develop" ]; then
+              IMAGE_TAG="-develop"
+            elif [ "${{ github.ref_name }}" = "staging" ]; then
+              IMAGE_TAG="-staging"
+            else
+              IMAGE_TAG=""
+            fi
+            NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
+            mv "$ISO_FILE" "/build/out/$NEW_NAME"
+            echo "ISO created: /build/out/$NEW_NAME"
+            
+            cd /build/out
+            rclone copyto "$NEW_NAME" \
+              "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${{ github.ref_name }}/$NEW_NAME" \
+              --s3-upload-cutoff=100M \
+              --s3-chunk-size=100M \
+              --transfers=7 \
+              --verbose \
+              --stats=1s
+            echo "Image successfully uploaded to R2: ${NEW_NAME}"
           else
-            IMAGE_TAG="other"
+            echo "Error: ISO file not found"
+            exit 1
           fi
-          ISO_FILE="FF1-${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
-          ZIP_FILE="FF1-${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.zip"
-          zip -j "$ZIP_FILE" "$ISO_FILE"
-          rclone copyto "$ZIP_FILE" \
-            "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${{ github.ref_name }}/$ZIP_FILE" \
-            --s3-upload-cutoff=100M \
-            --s3-chunk-size=100M \
-            --transfers=7 \
-            --verbose \
-            --stats=1s
-          echo "Image successfully uploaded to R2: ${ZIP_FILE}"
 
       - name: Cleanup
         if: always()

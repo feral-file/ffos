@@ -61,7 +61,7 @@ intel-gpu-tools
 lm_sensors
 
 # Feralfile 
-feral-connectd
+feral-controld
 feral-setupd
 feral-sys-monitord
 feral-app-monitord
