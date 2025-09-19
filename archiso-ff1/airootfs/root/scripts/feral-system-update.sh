@@ -56,8 +56,6 @@ log_info "=== OTA Update: Snapshot-based Update with Btrfs Default Switching ===
 log_progress "0" "Getting device information..."
 
 log_info "Loading config from $CONFIG_FILE"
-auth_user=$(jq -r '.distribution_acc' "$CONFIG_FILE")
-auth_pass=$(jq -r '.distribution_pass' "$CONFIG_FILE")
 ENDPOINT=$(jq -r '.endpoint' "$CONFIG_FILE")
  
 log_progress "5" "Preparing update environment..."
@@ -110,7 +108,7 @@ mount -o compress=zstd,noatime,subvol=@snapshots/@ota_new "$ROOT_DEV" "$NEW_ROOT
 log_progress "10" "Downloading new iso..."
 mkdir -p "$TMP_DIR"
  
-TOTAL_SIZE=$(curl -u "$auth_user:$auth_pass" -sI "$ENDPOINT$IMAGE_URL" \
+TOTAL_SIZE=$(curl -sI "$ENDPOINT$IMAGE_URL" \
   | tr -d '\r' \
   | awk 'BEGIN{IGNORECASE=1} /^content-length:/ {print $2}')
 
@@ -147,7 +145,7 @@ log_info "Total file size to download: $TOTAL_SIZE bytes"
 PROGRESS_PID=$!
 
 # Actual download
-curl -u "$auth_user:$auth_pass" --silent --show-error -fL "$ENDPOINT$IMAGE_URL" -o "$ISO_FILE"
+curl --silent --show-error -fL "$ENDPOINT$IMAGE_URL" -o "$ISO_FILE"
 
 kill "$PROGRESS_PID" 2>/dev/null || true
 
