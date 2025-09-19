@@ -179,14 +179,8 @@ jobs:
           cp -r ffos-user/components /build/archiso-ff1/airootfs/home/feralfile/src/
 
       - name: Inject pacman.conf
-        env:
-          AUTH_USER: ${{ secrets.DISTRIBUTION_AUTH_USER }}
-          AUTH_PASS: ${{ secrets.DISTRIBUTION_AUTH_PASSWORD }}
         run: |
           set -e
-
-          ENCODED_USER=$(printf '%s' "$AUTH_USER" | jq -sRr @uri)
-          ENCODED_PASS=$(printf '%s' "$AUTH_PASS" | jq -sRr @uri)
 
           if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
             DOMAIN="ff1.feral-file.workers.dev"
@@ -197,7 +191,7 @@ jobs:
           cat >> /build/archiso-ff1/pacman.conf << EOF
           [feralfile]
           SigLevel = Optional TrustAll
-          Server = https://${ENCODED_USER}:${ENCODED_PASS}@${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
+          Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
           EOF
 
           cp /build/archiso-ff1/pacman.conf /build/archiso-ff1/airootfs/etc/pacman.conf
@@ -252,8 +246,6 @@ jobs:
           jq -n \
             --arg branch "${{ github.ref_name }}" \
             --arg version "${{ inputs.version || github.event.inputs.version }}" \
-            --arg dist_acc "${{ secrets.DISTRIBUTION_AUTH_USER }}" \
-            --arg dist_pass "${{ secrets.DISTRIBUTION_AUTH_PASSWORD }}" \
             --arg endpoint "${ENDPOINT}" \
             --arg heartbeat "${{ secrets.HEARTBEAT_ENDPOINT }}" \
             --arg vmagent_url "${{ secrets.VMAGENT_REMOTE_URL }}" \
@@ -262,8 +254,6 @@ jobs:
             '{
               branch: $branch,
               version: $version,
-              distribution_acc: $dist_acc,
-              distribution_pass: $dist_pass,
               endpoint: $endpoint,
               heartbeat_endpoint: $heartbeat,
               vmagent_remote_url: $vmagent_url,

@@ -43,13 +43,11 @@ if [[ "$ENV_MODE" == "live" ]]; then
   log_info "📖 Reading config from $CONFIG_FILE"
   branch=$(jq -r '.branch' "$CONFIG_FILE")
   current_version=$(jq -r '.version' "$CONFIG_FILE")
-  auth_user=$(jq -r '.distribution_acc' "$CONFIG_FILE")
-  auth_pass=$(jq -r '.distribution_pass' "$CONFIG_FILE")
   ENDPOINT=$(jq -r '.endpoint' "$CONFIG_FILE")
 
   API_URL="$ENDPOINT/api/latest/$branch"
   log_info "🌐 Fetching latest version info from: $API_URL"
-  response=$(curl -su "$auth_user:$auth_pass" -f "$API_URL")
+  response=$(curl -s -f "$API_URL")
   latest_version=$(jq -r '.latest_version' <<< "$response")
   image_url=$(jq -r '.image_url' <<< "$response")
 
