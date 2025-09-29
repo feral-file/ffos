@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Image version'
+        description: "Image version"
         required: true
-        default: '0.0.1'
+        default: "0.0.1"
       soak-test:
-        description: 'Include soak test'
+        description: "Include soak test"
         required: true
         type: choice
         options:
@@ -47,10 +47,10 @@ on:
         required: false
         default: ""
       ffos_user_ref:
-        description: 'ffos-user repository reference'
+        description: "ffos-user repository reference"
         required: true
         type: string
-        default: 'develop'
+        default: "develop"
 
 jobs:
   permission-check:
@@ -71,11 +71,11 @@ jobs:
     with:
       component: feral-controld
       version: ${{ inputs.version || github.event.inputs.version }}
-      description: 'Feral File Controld Service'
-      maintainer: 'Feral File'
+      description: "Feral File Controld Service"
+      maintainer: "Feral File"
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
-      
+
   build-feral-setupd:
     needs: permission-check
     name: Build Feral Setupd
@@ -88,8 +88,8 @@ jobs:
     with:
       component: feral-setupd
       version: ${{ inputs.version || github.event.inputs.version }}
-      description: 'Feral File Setup Service'
-      maintainer: 'Feral File'
+      description: "Feral File Setup Service"
+      maintainer: "Feral File"
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
       qemu: ${{ inputs.iso_type == 'QEMU' && 'true' || 'false' }}
@@ -106,8 +106,8 @@ jobs:
     with:
       component: feral-sys-monitord
       version: ${{ inputs.version || github.event.inputs.version }}
-      description: 'Feral File System Monitord'
-      maintainer: 'Feral File'
+      description: "Feral File System Monitord"
+      maintainer: "Feral File"
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
 
@@ -123,8 +123,8 @@ jobs:
     with:
       component: feral-app-monitord
       version: ${{ inputs.version || github.event.inputs.version }}
-      description: 'Feral File App Monitord'
-      maintainer: 'Feral File'
+      description: "Feral File App Monitord"
+      maintainer: "Feral File"
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
 
@@ -140,14 +140,22 @@ jobs:
     with:
       component: feral-watchdog
       version: ${{ inputs.version || github.event.inputs.version }}
-      description: 'Feral File Watchdog'
-      maintainer: 'Feral File'
+      description: "Feral File Watchdog"
+      maintainer: "Feral File"
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
 
   build-feralfile-pacman-repo:
     name: Build Feralfile pacman repo
-    needs: [permission-check, build-feral-controld, build-feral-setupd, build-feral-sys-monitord, build-feral-app-monitord, build-feral-watchdog]
+    needs:
+      [
+        permission-check,
+        build-feral-controld,
+        build-feral-setupd,
+        build-feral-sys-monitord,
+        build-feral-app-monitord,
+        build-feral-watchdog,
+      ]
     uses: ./.github/workflows/pacman-repo.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -180,6 +188,10 @@ jobs:
 
       - name: Install Build Dependencies
         run: |
+          set -euo pipefail
+          SNAPSHOT="2025/09/25"
+          printf 'Server = https://archive.archlinux.org/repos/%s/$repo/os/$arch\n' "$SNAPSHOT" \
+          > /etc/pacman.d/mirrorlist
           pacman -Syu --noconfirm
           pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
             git curl rclone wget base-devel jq zip unzip fakeroot binutils
@@ -188,13 +200,13 @@ jobs:
         run: |
           mkdir -p /build
           cp -r archiso-ff1 /build/
-          
+
           # Create home directory structure
           mkdir -p /build/archiso-ff1/airootfs/home
-          
+
           # Copy user data from ffos-user repository
           cp -r ffos-user/users/feralfile /build/archiso-ff1/airootfs/home/
-          
+
           if [ "${{ inputs.soak-test }}" = "false" ]; then
             # Remove soaktest if not needed
             rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf
@@ -211,7 +223,7 @@ jobs:
           mesa-utils
           python-rich
           EOF
-          fi 
+          fi
 
       - name: Update emmc EFI boot option
         if: ${{ inputs.iso_type == 'Normal (emmc)' || inputs.iso_type == 'Development (emmc)' }}
@@ -259,7 +271,7 @@ jobs:
           rust
           base-devel
           EOF
-          
+
           # Configure pacman to not ask for input
           sed -i 's/#NoConfirm/NoConfirm/' /etc/pacman.conf 2>/dev/null || echo "NoConfirm" >> /etc/pacman.conf
 
@@ -268,12 +280,12 @@ jobs:
         run: |
           # Create source directory
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/src
-          
+
           # Create a file with repository information
           echo "Branch: ${{ github.ref_name }}" > /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           echo "Version: ${{ inputs.version || github.event.inputs.version }}" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           echo "Build Date: $(date)" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
-          
+
           # Copy components directory with current checkout
           cp -r ffos-user/components /build/archiso-ff1/airootfs/home/feralfile/src/
 
@@ -377,7 +389,7 @@ jobs:
           Server = https://archive.archlinux.org/repos/$SNAPSHOT_DATE/\$repo/os/\$arch
           EOF
           fi
-          
+
           pacman-key --init
           pacman-key --populate archlinux
           pacman -Syy --debug
@@ -385,7 +397,7 @@ jobs:
           # CRITICAL: Create and set up the mirrorlist for the archiso build environment
           mkdir -p /build/archiso-ff1/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
-          
+
           # Also copy mirror list to the final ISO
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
@@ -443,4 +455,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -rf /build 
+          rm -rf /build
