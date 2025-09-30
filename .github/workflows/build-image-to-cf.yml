@@ -178,9 +178,26 @@ jobs:
           path: ffos-user
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
-      - name: Install Build Dependencies
+      - name: Setup pacman
         run: |
-          pacman -Syu --noconfirm
+          if [ "${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}" = "latest" ]; then
+            # Use latest Arch Linux repositories - download US mirrors
+            echo "Using latest Arch Linux repositories"
+            curl -o /etc/pacman.d/mirrorlist "https://archlinux.org/mirrorlist/?country=US&protocol=https&ip_version=4&use_mirror_status=on"
+            sed -i 's/^#Server/Server/' /etc/pacman.d/mirrorlist
+          else
+            # Use Arch Linux Archive snapshot (default: May 31, 2025)
+            SNAPSHOT_DATE="${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}"
+            echo "Using Arch Linux Archive snapshot: $SNAPSHOT_DATE"
+            cat > /etc/pacman.d/mirrorlist << EOF
+          # Arch Linux Archive - $SNAPSHOT_DATE snapshot
+          Server = https://archive.archlinux.org/repos/$SNAPSHOT_DATE/\$repo/os/\$arch
+          EOF
+          fi
+          
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syy --debug
           pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
             git curl rclone wget base-devel jq zip unzip fakeroot binutils
 
@@ -212,6 +229,14 @@ jobs:
           python-rich
           EOF
           fi 
+
+          # CRITICAL: Create and set up the mirrorlist for the archiso build environment
+          mkdir -p /build/archiso-ff1/pacman.d
+          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
+          
+          # Also copy mirror list to the final ISO
+          mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
+          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
 
       - name: Update emmc EFI boot option
         if: ${{ inputs.iso_type == 'Normal (emmc)' || inputs.iso_type == 'Development (emmc)' }}
@@ -360,35 +385,6 @@ jobs:
             } + (if $webapp_url != "" then {webapp_url: $webapp_url} else {} end)' \
             > /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
-
-      - name: Setup pacman
-        run: |
-          if [ "${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}" = "latest" ]; then
-            # Use latest Arch Linux repositories - download US mirrors
-            echo "Using latest Arch Linux repositories"
-            curl -o /etc/pacman.d/mirrorlist "https://archlinux.org/mirrorlist/?country=US&protocol=https&ip_version=4&use_mirror_status=on"
-            sed -i 's/^#Server/Server/' /etc/pacman.d/mirrorlist
-          else
-            # Use Arch Linux Archive snapshot (default: May 31, 2025)
-            SNAPSHOT_DATE="${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}"
-            echo "Using Arch Linux Archive snapshot: $SNAPSHOT_DATE"
-            cat > /etc/pacman.d/mirrorlist << EOF
-          # Arch Linux Archive - $SNAPSHOT_DATE snapshot
-          Server = https://archive.archlinux.org/repos/$SNAPSHOT_DATE/\$repo/os/\$arch
-          EOF
-          fi
-          
-          pacman-key --init
-          pacman-key --populate archlinux
-          pacman -Syy --debug
-
-          # CRITICAL: Create and set up the mirrorlist for the archiso build environment
-          mkdir -p /build/archiso-ff1/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
-          
-          # Also copy mirror list to the final ISO
-          mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
 
       - name: Configure rclone
         run: |
