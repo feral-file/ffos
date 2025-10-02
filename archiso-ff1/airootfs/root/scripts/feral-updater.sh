@@ -59,7 +59,7 @@ if [[ "$ENV_MODE" == "live" ]]; then
     # Send start event to vagent
     if curl -sS --max-time 5 "$VMAGENT_IMPORT_API" -o /dev/null; then
       log_info "VMAGENT reachable at $VMAGENT_IMPORT_API"
-      METRIC="ff_ota_triggered_total{target_version=\"$latest_version\",method=\"$METHOD\"} 1"
+      METRIC="ff_ota_update{event=\"start\",target_version=\"$latest_version\"} 1"
       if curl -sS -X POST "$VMAGENT_IMPORT_API" --data-binary "$METRIC" -w "%{http_code}" | grep -q "204"; then
         log_info "Successfully sent OTA update notification to $VMAGENT_IMPORT_API"
       else
