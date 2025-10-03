@@ -22,6 +22,7 @@ jq
 unzip
 p7zip
 btrfs-progs
+dmidecode
 
 # Boot support
 intel-ucode
