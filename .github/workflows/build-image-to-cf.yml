@@ -360,7 +360,7 @@ jobs:
                 "release": "${{ inputs.version || github.event.inputs.version }}",
                 "repository": "${{ github.repository }}"
             },
-            "enableHub": "${{ inputs.enable_local_hub || github.event.inputs.enable_local_hub }}"
+            "enableHub": ${{ inputs.enable_local_hub || github.event.inputs.enable_local_hub }}
           }
           EOF
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json
