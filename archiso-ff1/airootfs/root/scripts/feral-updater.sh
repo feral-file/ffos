@@ -14,10 +14,8 @@ log_error() {
 trap 'code=$?; log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""; exit $code' ERR
 
 # Accept UNIQUE_ID from argument, or default to current UNIX timestamp
-METHOD="auto"
 if [[ $# -ge 1 && -n "$1" ]]; then
   UNIQUE_ID="$1"
-  METHOD="forced"
 else
   UNIQUE_ID="$(date +%s)"
 fi
