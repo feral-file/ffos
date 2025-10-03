@@ -51,6 +51,11 @@ on:
         required: true
         type: string
         default: 'develop'
+      enable_local_hub:
+        description: "Enable local hub for communication"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   permission-check:
@@ -354,7 +359,8 @@ jobs:
                 "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
                 "release": "${{ inputs.version || github.event.inputs.version }}",
                 "repository": "${{ github.repository }}"
-            }
+            },
+            "enableHub": "${{ inputs.enable_local_hub || github.event.inputs.enable_local_hub }}"
           }
           EOF
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json
