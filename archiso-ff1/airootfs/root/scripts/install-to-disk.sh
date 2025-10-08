@@ -312,6 +312,12 @@ tpm2_create -C primary.ctx -g sha256 -G ecc:ecdsa \
 tpm2_load -C primary.ctx -u ecdsa.pub -r ecdsa.priv -c ecdsa.ctx
 tpm2_evictcontrol -C o -c 0x81F3A7C2
 tpm2_evictcontrol -C o -c ecdsa.ctx 0x81F3A7C2
+
+usermod -aG tss feralfile
+mkdir -p /etc/udev/rules.d
+echo "KERNEL=="tpmrm0", GROUP="tss", MODE="0660"" > /etc/udev/rules.d/99-tpm-feralfile.rules
+udevadm control --reload-rules
+udevadm trigger
 EOF
 else
 arch-chroot /mnt /bin/bash <<'EOF'
@@ -367,6 +373,12 @@ tpm2_create -C primary.ctx -g sha256 -G ecc:ecdsa \
 tpm2_load -C primary.ctx -u ecdsa.pub -r ecdsa.priv -c ecdsa.ctx
 tpm2_evictcontrol -C o -c 0x81F3A7C2
 tpm2_evictcontrol -C o -c ecdsa.ctx 0x81F3A7C2
+
+usermod -aG tss feralfile
+mkdir -p /etc/udev/rules.d
+echo "KERNEL=="tpmrm0", GROUP="tss", MODE="0660"" > /etc/udev/rules.d/99-tpm-feralfile.rules
+udevadm control --reload-rules
+udevadm trigger
 EOF
 fi
 
