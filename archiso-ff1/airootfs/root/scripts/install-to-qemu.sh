@@ -228,6 +228,13 @@ else
   # Write to /etc/hostname
   echo "$FINAL_DEVICE_ID" > /etc/hostname
 fi
+echo "Setting up TPM key...
+tpm2_createprimary -C o -g sha256 -G ecc -c primary.ctx
+tpm2_create -C primary.ctx -g sha256 -G ecc:ecdsa \
+    -u ecdsa.pub -r ecdsa.priv \
+    -a "sign|fixedtpm|fixedparent|sensitivedataorigin|userwithauth"
+tpm2_load -C primary.ctx -u ecdsa.pub -r ecdsa.priv -c ecdsa.ctx
+tpm2_evictcontrol -C o -c ecdsa.ctx 0x81010002
 EOF
 
 # ─── Create Factory Reset Snapshot ─────────────────────────────────────
