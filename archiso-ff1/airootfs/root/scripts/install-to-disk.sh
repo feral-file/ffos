@@ -310,7 +310,8 @@ tpm2_create -C primary.ctx -g sha256 -G ecc:ecdsa \
     -u ecdsa.pub -r ecdsa.priv \
     -a "sign|fixedtpm|fixedparent|sensitivedataorigin|userwithauth"
 tpm2_load -C primary.ctx -u ecdsa.pub -r ecdsa.priv -c ecdsa.ctx
-tpm2_evictcontrol -C o -c ecdsa.ctx 0x81010002
+tpm2_evictcontrol -C o -c 0x81F3A7C2
+tpm2_evictcontrol -C o -c ecdsa.ctx 0x81F3A7C2
 EOF
 else
 arch-chroot /mnt /bin/bash <<'EOF'
@@ -364,7 +365,8 @@ tpm2_create -C primary.ctx -g sha256 -G ecc:ecdsa \
     -u ecdsa.pub -r ecdsa.priv \
     -a "sign|fixedtpm|fixedparent|sensitivedataorigin|userwithauth"
 tpm2_load -C primary.ctx -u ecdsa.pub -r ecdsa.priv -c ecdsa.ctx
-tpm2_evictcontrol -C o -c ecdsa.ctx 0x81010002
+tpm2_evictcontrol -C o -c 0x81F3A7C2
+tpm2_evictcontrol -C o -c ecdsa.ctx 0x81F3A7C2
 EOF
 fi
 
