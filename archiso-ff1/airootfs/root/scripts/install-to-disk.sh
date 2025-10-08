@@ -304,7 +304,7 @@ else
   # Write to /etc/hostname
   echo "$FINAL_DEVICE_ID" > /etc/hostname
 fi
-echo "Setting up TPM key...
+echo "Setting up TPM key..."
 tpm2_createprimary -C o -g sha256 -G ecc -c primary.ctx
 tpm2_create -C primary.ctx -g sha256 -G ecc:ecdsa \
     -u ecdsa.pub -r ecdsa.priv \
@@ -358,7 +358,7 @@ else
   # Write to /etc/hostname
   echo "$FINAL_DEVICE_ID" > /etc/hostname
 fi
-echo "Setting up TPM key...
+echo "Setting up TPM key..."
 tpm2_createprimary -C o -g sha256 -G ecc -c primary.ctx
 tpm2_create -C primary.ctx -g sha256 -G ecc:ecdsa \
     -u ecdsa.pub -r ecdsa.priv \
