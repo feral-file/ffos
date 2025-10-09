@@ -304,6 +304,18 @@ else
   # Write to /etc/hostname
   echo "$FINAL_DEVICE_ID" > /etc/hostname
 fi
+echo "Setting up TPM key..."
+tpm2_createprimary -C o -g sha256 -G ecc -c primary.ctx
+tpm2_create -C primary.ctx -g sha256 -G ecc:ecdsa \
+    -u ecdsa.pub -r ecdsa.priv \
+    -a "sign|fixedtpm|fixedparent|sensitivedataorigin|userwithauth"
+tpm2_load -C primary.ctx -u ecdsa.pub -r ecdsa.priv -c ecdsa.ctx
+tpm2_evictcontrol -C o -c 0x81010002
+tpm2_evictcontrol -C o -c ecdsa.ctx 0x81010002
+
+usermod -aG tss feralfile
+mkdir -p /etc/udev/rules.d
+echo "KERNEL=="tpmrm0", GROUP="tss", MODE="0660"" > /etc/udev/rules.d/99-tpm-feralfile.rules
 EOF
 else
 arch-chroot /mnt /bin/bash <<'EOF'
@@ -351,6 +363,18 @@ else
   # Write to /etc/hostname
   echo "$FINAL_DEVICE_ID" > /etc/hostname
 fi
+echo "Setting up TPM key..."
+tpm2_createprimary -C o -g sha256 -G ecc -c primary.ctx
+tpm2_create -C primary.ctx -g sha256 -G ecc:ecdsa \
+    -u ecdsa.pub -r ecdsa.priv \
+    -a "sign|fixedtpm|fixedparent|sensitivedataorigin|userwithauth"
+tpm2_load -C primary.ctx -u ecdsa.pub -r ecdsa.priv -c ecdsa.ctx
+tpm2_evictcontrol -C o -c 0x81010002
+tpm2_evictcontrol -C o -c ecdsa.ctx 0x81010002
+
+usermod -aG tss feralfile
+mkdir -p /etc/udev/rules.d
+echo "KERNEL=="tpmrm0", GROUP="tss", MODE="0660"" > /etc/udev/rules.d/99-tpm-feralfile.rules
 EOF
 fi
 

@@ -23,6 +23,7 @@ unzip
 p7zip
 btrfs-progs
 dmidecode
+tpm2-tools
 
 # Boot support
 intel-ucode
