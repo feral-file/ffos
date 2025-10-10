@@ -238,6 +238,8 @@ tpm2_load -C primary.ctx -u ecdsa.pub -r ecdsa.priv -c ecdsa.ctx
 tpm2_evictcontrol -C o -c 0x81010002
 tpm2_evictcontrol -C o -c ecdsa.ctx 0x81010002
 
+rm -f primary.ctx ecdsa.pub ecdsa.priv ecdsa.ctx
+
 usermod -aG tss feralfile
 mkdir -p /etc/udev/rules.d
 echo "KERNEL=="tpmrm0", GROUP="tss", MODE="0660"" > /etc/udev/rules.d/99-tpm-feralfile.rules
