@@ -23,6 +23,9 @@ sync
 # Check if we're booted from /@snapshots/@ota_new (not @)
 if [[ "$CURRENT_SUBVOL" == "/@snapshots/@ota_new" ]]; then
     log_msg "System booted from @snapshots/@ota_new, performing subvolume rotation..."
+
+    # Set up auto system test for the next boot
+    touch /etc/FF_OS_OTA_AUTO_TEST
     
     # Mount btrfs top-level
     BTRFS_TOP="/mnt/btrfs-top-manager"
