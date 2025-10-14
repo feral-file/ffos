@@ -39,6 +39,7 @@ fi
 
 if [[ "$ENV_MODE" == "live" ]]; then
   CONFIG_FILE="/home/feralfile/ff1-config.json"
+  VMAGENT_IMPORT_API="http://0.0.0.0:9431/api/v1/import/prometheus"
 
   log_info "📖 Reading config from $CONFIG_FILE"
   branch=$(jq -r '.branch' "$CONFIG_FILE")
@@ -53,6 +54,18 @@ if [[ "$ENV_MODE" == "live" ]]; then
 
   log_info "🆚 Current: $current_version  →  Remote: $latest_version"
   if [[ "$latest_version" != "$current_version" ]]; then
+    # Send start event to vagent
+    if curl -sS --max-time 5 "$VMAGENT_IMPORT_API" -o /dev/null; then
+      log_info "VMAGENT reachable at $VMAGENT_IMPORT_API"
+      METRIC="ff_ota_update{event=\"start\",target_version=\"$latest_version\"} 1"
+      if curl -sS -X POST "$VMAGENT_IMPORT_API" --data-binary "$METRIC" -w "%{http_code}" | grep -q "204"; then
+        log_info "Successfully sent OTA update notification to $VMAGENT_IMPORT_API"
+      else
+        log_error "Failed to send OTA update notification to $VMAGENT_IMPORT_API"
+      fi
+    else
+      log_error "VMAGENT not reachable at $VMAGENT_IMPORT_API, not pushing OTA update notification."
+    fi
     log_info "📦 New Image version detected. Running full OTA update..."
     exec /root/scripts/feral-system-update.sh "$image_url" "$UNIQUE_ID"
   else
