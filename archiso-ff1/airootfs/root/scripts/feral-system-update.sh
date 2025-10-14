@@ -264,7 +264,7 @@ pacman -Syy
 
 usermod -aG tss feralfile
 mkdir -p /etc/udev/rules.d
-echo "KERNEL=="tpmrm0", GROUP="tss", MODE="0660"" > /etc/udev/rules.d/99-tpm-feralfile.rules
+echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
 CHROOT_EOF
 
 # --- Step 9: Set @snapshots/@ota_new as default subvolume --------------------------------
