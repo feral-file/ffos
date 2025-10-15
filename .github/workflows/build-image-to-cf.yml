@@ -422,7 +422,7 @@ jobs:
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
           ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
           if [ -f "$ISO_FILE" ]; then
-            IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') || inputs.iso_type == 'Development (nvme)') && 'dev-' || inputs.iso_type == 'QEMU' && 'qemu-' || '' }}"
+            IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)' || inputs.iso_type == 'Development (nvme)') && 'dev-' || inputs.iso_type == 'QEMU' && 'qemu-' || '' }}"
             if [ "${{ github.ref_name }}" = "release" ]; then
               IMAGE_TAG="-release"
             elif [ "${{ github.ref_name }}" = "demo" ]; then
