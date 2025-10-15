@@ -42,7 +42,7 @@ trap cleanup EXIT
 echo "=== Feral File Arch Installer ==="
 echo
 
-TARGET_DISK='/dev/mmcblk0'
+TARGET_DISK='/dev/nvme0n1'
 
 # ─── Partition and format ──────────────────────────────────────────────
 echo

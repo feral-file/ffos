@@ -30,7 +30,9 @@ on:
         type: choice
         options:
           - Normal (emmc)
+          - Normal (nvme)
           - Normal (full)
+          - Development (nvme)
           - Development (emmc)
           - Development (full)
           - QEMU
@@ -250,6 +252,14 @@ jobs:
           default archiso-x86_64-linux-emmc-installation.conf
           timeout 0
           EOF
+      
+      - name: Update nvme EFI boot option
+        if: ${{ inputs.iso_type == 'Normal (nvme)' || inputs.iso_type == 'Development (nvme)' }}
+        run: |
+          cat >> /build/archiso-ff1/efiboot/loader/loader.conf << EOF
+          default archiso-x86_64-linux-nvme-installation.conf
+          timeout 0
+          EOF
 
       - name: Update QEMU EFI boot option
         if: ${{ inputs.iso_type == 'QEMU' }}
@@ -273,13 +283,13 @@ jobs:
           if [ "${{ inputs.iso_type }}" = "QEMU" ]; then
             sed -i 's/wlr-randr --output HDMI-A-1 --transform $ROTATION &&//' \
               /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
-          elif [ "${{ inputs.iso_type }}" = "Development (full)" ] || [ "${{ inputs.iso_type }}" = "Development (emmc)" ]; then
+          elif [ "${{ inputs.iso_type }}" = "Development (full)" ] || [ "${{ inputs.iso_type }}" = "Development (emmc)" ] || [ "${{ inputs.iso_type }}" = "Development (nvme)" ]; then
             sed -i 's/--kiosk//' \
               /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
           fi
 
       - name: Add development tools to packages list
-        if: ${{ inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)' }}
+        if: ${{ inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)' || inputs.iso_type == 'Development (nvme)' }}
         run: |
           # Add Go and Rust to packages list
           cat >> /build/archiso-ff1/packages.x86_64 << EOF
@@ -294,7 +304,7 @@ jobs:
           sed -i 's/#NoConfirm/NoConfirm/' /etc/pacman.conf 2>/dev/null || echo "NoConfirm" >> /etc/pacman.conf
 
       - name: Setup source directory and copy components
-        if: ${{ inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)' }}
+        if: ${{ inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)' || inputs.iso_type == 'Development (nvme)' }}
         run: |
           # Create source directory
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/src
@@ -412,7 +422,7 @@ jobs:
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
           ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
           if [ -f "$ISO_FILE" ]; then
-            IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') && 'dev-' || inputs.iso_type == 'QEMU' && 'qemu-' || '' }}"
+            IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') || inputs.iso_type == 'Development (nvme)') && 'dev-' || inputs.iso_type == 'QEMU' && 'qemu-' || '' }}"
             if [ "${{ github.ref_name }}" = "release" ]; then
               IMAGE_TAG="-release"
             elif [ "${{ github.ref_name }}" = "demo" ]; then

@@ -169,17 +169,7 @@ mount "$BOOT_PART" /mnt/boot
 # ─── Copy root filesystem ──────────────────────────────────────────────
 echo
 echo "Copying root filesystem..."
-rm -rf /home/soaktest
-rm -f /usr/local/bin/websocat
 rsync -aAX --info=progress2 --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/live-efi/*","/media/*","/lost+found"} / /mnt
-cat > /mnt/etc/systemd/system/getty@tty1.service.d/autologin.conf <<EOF
-[Service]
-ExecStart=
-ExecStart=-/usr/bin/agetty --noclear --autologin feralfile %I $TERM
-EOF
-cat > /mnt/home/feralfile/.config/environment <<EOF
-live
-EOF
 if [[ ! "$copy_wifi" =~ ^[yY]$ ]]; then
   rm -f /mnt/etc/NetworkManager/system-connections/*
 fi
@@ -230,25 +220,33 @@ umount /live-efi
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_PART")
 
 cat > /mnt/boot/loader/loader.conf <<EOF
-default arch.conf
-timeout 0
+default arch-forever.conf
+timeout 20
 editor no
 EOF
 
-cat > /mnt/boot/loader/entries/arch.conf <<EOF
-title   FF1
+cat > /mnt/boot/loader/entries/arch-forever.conf <<EOF
+title   FF1 Soak Test Runs Forever
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 initrd  /intel-ucode.img
-options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
+options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID script=/home/soaktest/scripts/soak-test-forever.sh ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
 EOF
 
-cat > /mnt/boot/loader/entries/factory_reset.conf <<EOF
-title   FF1 - Factory Reset
+cat > /mnt/boot/loader/entries/arch.conf <<EOF
+title   FF1 Soak Test
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 initrd  /intel-ucode.img
-options rollback=factory root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
+options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID script=/home/soaktest/scripts/soak-test.sh ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
+EOF
+
+cat > /mnt/boot/loader/entries/arch-extreme.conf <<EOF
+title   FF1 Extreme Soak Test
+linux   /vmlinuz-linux
+initrd  /initramfs-linux.img
+initrd  /intel-ucode.img
+options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID  script=/home/soaktest/scripts/soak-test-extreme.sh ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
 EOF
 
 chmod 644 /mnt/boot/loader/entries/*.conf
@@ -259,9 +257,6 @@ mount --bind /sys /mnt/sys
 
 if [[ "$SKIP_PACMAN_INIT" -eq 0 ]]; then
 arch-chroot /mnt /bin/bash <<'EOF'
-echo "Removing soaktest account..."
-id soaktest &>/dev/null && userdel soaktest || true
-
 echo "Overwriting mkinitcpio.conf HOOKS..."
 sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs-rollback btrfs filesystems fsck)/' /etc/mkinitcpio.conf
 
@@ -386,18 +381,6 @@ usermod -aG tss feralfile
 mkdir -p /etc/udev/rules.d
 echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
 EOF
-fi
-
-# ─── Create Factory Reset Snapshot ─────────────────────────────────────
-echo
-echo "Creating factory reset snapshot..."
-# Create a read-only snapshot of the current root (mounted at /mnt)
-# into the .snapshots directory (mounted at /mnt/.snapshots)
-if btrfs subvolume snapshot -r /mnt /mnt/.snapshots/@factory_reset; then
-  echo "✅ Factory reset snapshot '@factory_reset' created successfully in '/.snapshots'."
-  echo "   This is a read-only snapshot of your initial system state."
-else
-  echo "❌ Error: Failed to create factory reset snapshot."
 fi
 
 # ─── Post-install cleanup and prompt ───────────────────────────────────
