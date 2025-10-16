@@ -17,7 +17,7 @@ on:
           required: true
         AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN:
           required: true
-        AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN:
+        AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID:
           required: true
 
 permissions:
@@ -81,7 +81,7 @@ jobs:
         env:
           KMS_KEY_ID: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID }}
         run: |
-          cat "$p" | kmspgp sign "$KMS_KEY_ID" > "$p.sig"
+          kmspgp sign "$KMS_KEY_ID" < "$p" > "$p.sig"
           cp feralfile.db.tar.gz.sig feralfile.db.sig
 
       - name: Upload Repo Database

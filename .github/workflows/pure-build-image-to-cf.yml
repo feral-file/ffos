@@ -138,6 +138,12 @@ jobs:
           # Also copy mirror list to the final ISO
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
+          cp /build/archiso-ff1/airootfs/etc/pacman.d/feralfile-pkg-pubkey.asc /etc/pacman.d/feralfile-pkg-pubkey.asc
+
+          pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc
+          pacman-key --lsign-key AA6B250F2938F3CB
+
+          echo "Feral File pacman key added successfully."
 
       - name: Update emmc EFI boot option
         if: ${{ inputs.iso_type == 'Normal (emmc)' || inputs.iso_type == 'Development (emmc)' }}
@@ -215,7 +221,7 @@ jobs:
 
           cat >> /build/archiso-ff1/pacman.conf << EOF
           [feralfile]
-          SigLevel = Optional TrustAll
+          SigLevel = Required DatabaseOptional TrustedOnly
           Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
           EOF
 

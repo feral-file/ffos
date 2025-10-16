@@ -74,7 +74,7 @@ jobs:
       SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
       REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
       AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN }}
-      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN }}
+      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID }}
     with:
       component: feral-controld
       version: ${{ inputs.version || github.event.inputs.version }}
@@ -93,7 +93,7 @@ jobs:
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
       REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
       AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN }}
-      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN }}
+      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID }}
     with:
       component: feral-setupd
       version: ${{ inputs.version || github.event.inputs.version }}
@@ -113,7 +113,7 @@ jobs:
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
       REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
       AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN }}
-      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN }}
+      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID }}
     with:
       component: feral-sys-monitord
       version: ${{ inputs.version || github.event.inputs.version }}
@@ -132,7 +132,7 @@ jobs:
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
       REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
       AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN }}
-      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN }}
+      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID }}
     with:
       component: feral-app-monitord
       version: ${{ inputs.version || github.event.inputs.version }}
@@ -151,7 +151,7 @@ jobs:
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
       REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
       AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN }}
-      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN }}
+      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID }}
     with:
       component: feral-watchdog
       version: ${{ inputs.version || github.event.inputs.version }}
@@ -169,7 +169,7 @@ jobs:
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
       AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN }}
-      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN }}
+      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID }}
     with:
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
 
@@ -254,6 +254,12 @@ jobs:
           # Also copy mirror list to the final ISO
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
+          cp /build/archiso-ff1/airootfs/etc/pacman.d/feralfile-pkg-pubkey.asc /etc/pacman.d/feralfile-pkg-pubkey.asc
+
+          pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc
+          pacman-key --lsign-key AA6B250F2938F3CB
+
+          echo "Feral File pacman key added successfully."
 
       - name: Update emmc EFI boot option
         if: ${{ inputs.iso_type == 'Normal (emmc)' || inputs.iso_type == 'Development (emmc)' }}
@@ -331,7 +337,7 @@ jobs:
 
           cat >> /build/archiso-ff1/pacman.conf << EOF
           [feralfile]
-          SigLevel = Optional TrustAll
+          SigLevel = Required DatabaseOptional TrustedOnly
           Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
           EOF
 

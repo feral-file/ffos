@@ -215,22 +215,6 @@ jobs:
           for p in *.pkg.tar.zst; do
             kmspgp sign "$KMS_KEY_ID" < "$p" > "$p.sig"
           done
-          echo "=== Exporting OpenPGP public key from AWS KMS ==="
-          kmspgp export "$KMS_KEY_ID" \
-            --user-name "FF1 Pacman Package Signer" \
-            --user-email "support@feralfile.com" \
-            > feralfile-pkg-pubkey.asc
-
-          echo
-          echo "----- BEGIN PUBLIC KEY -----"
-          cat feralfile-pkg-pubkey.asc
-          echo "----- END PUBLIC KEY -----"
-          echo
-
-          echo "=== Calculating fingerprint ==="
-          FPR=$(gpg --import-options show-only --import --with-colons feralfile-pkg-pubkey.asc \
-            | awk -F: '/^fpr:/ {print $10; exit}')
-          echo "Public key fingerprint: $FPR"
 
       - name: Rclone to r2
         working-directory: ffos-user/components/${{ inputs.component }}

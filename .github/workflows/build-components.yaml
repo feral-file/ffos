@@ -51,7 +51,7 @@ on:
         required: true
       AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN:
         required: true
-      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ARN:
+      AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID:
         required: true
 
 permissions:
@@ -212,7 +212,7 @@ jobs:
         run: |
           set -euo pipefail
           for p in *.pkg.tar.zst; do
-            cat "$p" | kmspgp sign "$KMS_KEY_ID" > "$p.sig"
+            kmspgp sign "$KMS_KEY_ID" < "$p" > "$p.sig"
           done
 
       - name: Rclone to r2
