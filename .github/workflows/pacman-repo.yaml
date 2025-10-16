@@ -81,8 +81,7 @@ jobs:
         env:
           KMS_KEY_ID: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNING_KEY_ID }}
         run: |
-          kmspgp sign "$KMS_KEY_ID" < "$p" > "$p.sig"
-          cp feralfile.db.tar.gz.sig feralfile.db.sig
+          kmspgp sign "$KMS_KEY_ID" < "feralfile.db.tar.gz" > "feralfile.db.tar.gz.sig"
 
       - name: Upload Repo Database
         working-directory: repo/x86_64
