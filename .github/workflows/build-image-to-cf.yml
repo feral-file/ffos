@@ -54,7 +54,7 @@ on:
       enable_local_hub:
         description: "Enable local hub for communication"
         required: false
-        default: false
+        default: true
         type: boolean
 
 jobs:
