@@ -260,6 +260,8 @@ log_progress "95" "Setting up package manager..."
 arch-chroot "$NEW_ROOT" /bin/bash <<'CHROOT_EOF'
 pacman-key --init
 pacman-key --populate archlinux
+pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc
+pacman-key --lsign-key AA6B250F2938F3CB
 pacman -Syy
 
 usermod -aG tss feralfile

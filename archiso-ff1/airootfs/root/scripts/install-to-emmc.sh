@@ -200,6 +200,12 @@ chmod 600 /boot/loader/random-seed 2>/dev/null || true
 echo "Installing systemd-boot to disk..."
 bootctl install
 
+echo "Setting up pacman..."
+pacman-key --init
+pacman-key --populate archlinux
+pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc
+pacman-key --lsign-key AA6B250F2938F3CB
+
 echo "Setting up hostname..."
 DEVICE_ID_PREFIX="FF1-"
 MD5_LENGTH=8

@@ -138,6 +138,12 @@ jobs:
           # Also copy mirror list to the final ISO
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
+          cp /build/archiso-ff1/airootfs/etc/pacman.d/feralfile-pkg-pubkey.asc /etc/pacman.d/feralfile-pkg-pubkey.asc
+
+          pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc
+          pacman-key --lsign-key AA6B250F2938F3CB
+
+          echo "Feral File pacman key added successfully."
 
       - name: Update emmc EFI boot option
         if: ${{ inputs.iso_type == 'Normal (emmc)' || inputs.iso_type == 'Development (emmc)' }}
@@ -208,14 +214,14 @@ jobs:
           set -e
 
           if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
-            DOMAIN="ff1.feral-file.workers.dev"
+            DOMAIN="ffos.feralfile.com"
           else
             DOMAIN="feralfile-device-distribution.bitmark-development.workers.dev"
           fi
 
           cat >> /build/archiso-ff1/pacman.conf << EOF
           [feralfile]
-          SigLevel = Optional TrustAll
+          SigLevel = Required DatabaseOptional TrustedOnly
           Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
           EOF
 
@@ -232,7 +238,7 @@ jobs:
       - name: Add Configs and Services
         run: |
           if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
-            ENDPOINT="https://ff1.feral-file.workers.dev"
+            ENDPOINT="https://ffos.feralfile.com"
           else
             ENDPOINT="https://feralfile-device-distribution.bitmark-development.workers.dev"
           fi
