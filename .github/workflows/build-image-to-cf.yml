@@ -330,7 +330,7 @@ jobs:
           set -e
 
           if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
-            DOMAIN="ff1.feral-file.workers.dev"
+            DOMAIN="ffos.feralfile.com"
           else
             DOMAIN="feralfile-device-distribution.bitmark-development.workers.dev"
           fi
@@ -354,7 +354,7 @@ jobs:
       - name: Add Configs and Services
         run: |
           if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
-            ENDPOINT="https://ff1.feral-file.workers.dev"
+            ENDPOINT="https://ffos.feralfile.com"
           else
             ENDPOINT="https://feralfile-device-distribution.bitmark-development.workers.dev"
           fi
