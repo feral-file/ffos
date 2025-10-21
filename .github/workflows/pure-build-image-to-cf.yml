@@ -52,6 +52,10 @@ on:
         type: string
         default: 'develop'
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   permission-check:
     name: Permission Check
@@ -100,7 +104,7 @@ jobs:
           pacman-key --populate archlinux
           pacman -Syy --debug
           pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
-            git curl rclone wget base-devel jq zip unzip fakeroot binutils
+            git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli
 
       - name: Copy archiso profile and setup home directories
         run: |
@@ -307,7 +311,13 @@ jobs:
           no_check_bucket = true
           EOF
 
-      - name: Build & upload ISO Image
+      - name: Configure AWS cred entials (OIDC for KMS)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
+          aws-region: 'ap-northeast-1'
+
+      - name: Build, sign and upload ISO Image
         run: |
           cd /build
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
@@ -330,6 +340,26 @@ jobs:
             echo "ISO created: /build/out/$NEW_NAME"
             
             cd /build/out
+
+            openssl dgst -sha256 -binary "$NEW_NAME" > iso.sha256
+
+            SIGNATURE_B64=$(aws kms sign \
+              --key-id "${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}" \
+              --message fileb://iso.sha256 \
+              --message-type DIGEST \
+              --signing-algorithm RSASSA_PKCS1_V1_5_SHA_256 \
+              --output text \
+              --query Signature) || {
+                echo "Error: AWS KMS signing failed"
+                exit 1
+              }
+            if [ -z "$SIGNATURE_B64" ]; then
+              echo "Error: Empty signature output from AWS KMS"
+              exit 1
+            fi
+            echo "$SIGNATURE_B64" | base64 --decode > "$NEW_NAME.sig"
+            echo "Signature written to $NEW_NAME.sig"
+
             rclone copyto "$NEW_NAME" \
               "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${{ github.ref_name }}/$NEW_NAME" \
               --s3-upload-cutoff=100M \
@@ -338,6 +368,11 @@ jobs:
               --verbose \
               --stats=1s
             echo "Image successfully uploaded to R2: ${NEW_NAME}"
+
+            rclone copyto "$NEW_NAME.sig" \
+              "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${{ github.ref_name }}/$NEW_NAME.sig" \
+              --verbose
+            echo "Image signature successfully uploaded to R2: ${NEW_NAME}.sig"
           else
             echo "Error: ISO file not found"
             exit 1
