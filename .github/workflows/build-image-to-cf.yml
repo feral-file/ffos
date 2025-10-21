@@ -431,7 +431,7 @@ jobs:
       - name: Configure AWS cred entials (OIDC for KMS)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_KMS_FF1_PACMAN_SIGNER_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
           aws-region: 'ap-northeast-1'
 
       - name: Build, sign and upload ISO Image
