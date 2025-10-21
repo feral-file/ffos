@@ -160,8 +160,7 @@ curl --silent --show-error -fL "$ENDPOINT$IMAGE_URL.sig" -o "$ISO_FILE.sig" || {
 
 if [[ -f "$ISO_FILE.sig" ]]; then
   log_info "Signature file downloaded successfully."
-  openssl dgst -sha256 -binary "$ISO_FILE" > "$ISO_FILE.sha256"
-  if ! openssl dgst -sha256 -verify "$RELEASE_PK" -signature "$ISO_FILE.sig" "$ISO_FILE.sha256"; then
+  if ! openssl dgst -sha256 -verify "$RELEASE_PK" -signature "$ISO_FILE.sig" "$ISO_FILE"; then
     log_error "Error: Signature verification failed for $ISO_FILE."
     rm -f "$ISO_FILE.sha256"
     exit 1
