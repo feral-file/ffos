@@ -273,9 +273,50 @@ jobs:
           # Add watchdog config
           cat > /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json << EOF
           {
-            "cdp_endpoint": "http://127.0.0.1:9222"
+            "cdp": {
+                "endpoint": "http://127.0.0.1:9222"
+            },
+            "sentry": {
+                "dsn": "${{ secrets.SENTRY_DSN_WATCHDOG }}",
+                "debug": "false",
+                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
+                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+                "release": "${{ inputs.version || github.event.inputs.version }}",
+                "repository": "${{ github.repository }}"
+            },
           }
           EOF
+          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json
+
+          # Add app-monitord config
+          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/app-monitord.json << EOF
+          {
+            "sentry": {
+                "dsn": "${{ secrets.SENTRY_DSN_APP_MONITORD }}",
+                "debug": "false",
+                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
+                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+                "release": "${{ inputs.version || github.event.inputs.version }}",
+                "repository": "${{ github.repository }}"
+            },
+          }
+          EOF
+          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/app-monitord.json
+
+          # Add sys-monitord config
+          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json << EOF
+          {
+            "sentry": {
+                "dsn": "${{ secrets.SENTRY_DSN_SYS_MONITORD }}",
+                "debug": "false",
+                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
+                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+                "release": "${{ inputs.version || github.event.inputs.version }}",
+                "repository": "${{ github.repository }}"
+            },
+          }
+          EOF
+          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json
 
           WEBAPP_URL="${{ inputs.webapp_url || github.event.inputs.webapp_url }}"
           jq -n \
