@@ -216,7 +216,7 @@ jobs:
             kmspgp sign "$KMS_KEY_ID" < "$p" > "$p.sig"
           done
           kmspgp export "$KMS_KEY_ID" \
-            --user-name "Feral File Package Signer" \
+            --user-name "FF1 Package Signer" \
             --user-email "support@feralfile.com" > feralfile-pkg-pubkey.asc
 
           echo
