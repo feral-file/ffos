@@ -375,7 +375,7 @@ jobs:
                 "endpoint": "http://127.0.0.1:9222"
             },
             "sentry": {
-                "dsn": "${{ secrets.SENTRY_DSN_CONNECTD }}",
+                "dsn": "${{ secrets.SENTRY_DSN_CONTROLD }}",
                 "debug": "false",
                 "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
                 "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
