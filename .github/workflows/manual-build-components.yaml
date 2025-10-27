@@ -215,6 +215,15 @@ jobs:
           for p in *.pkg.tar.zst; do
             kmspgp sign "$KMS_KEY_ID" < "$p" > "$p.sig"
           done
+          kmspgp export "$KMS_KEY_ID" \
+            --user-name "FF1 Package Signer" \
+            --user-email "support@feralfile.com" > feralfile-pkg-pubkey.asc
+
+          echo
+          echo "----- BEGIN PUBLIC KEY -----"
+          cat feralfile-pkg-pubkey.asc
+          echo "----- END PUBLIC KEY -----"
+          echo
 
       - name: Rclone to r2
         working-directory: ffos-user/components/${{ inputs.component }}
