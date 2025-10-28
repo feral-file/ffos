@@ -109,7 +109,7 @@ mount -o compress=zstd,noatime,subvol=@snapshots/@ota_new "$ROOT_DEV" "$NEW_ROOT
 log_progress "10" "Downloading new iso..."
 mkdir -p "$TMP_DIR"
  
-TOTAL_SIZE=$(curl -sI "$ENDPOINT$IMAGE_URL" \
+TOTAL_SIZE=$(curl -sLI "$ENDPOINT$IMAGE_URL" \
   | tr -d '\r' \
   | awk 'BEGIN{IGNORECASE=1} /^content-length:/ {print $2}')
 
