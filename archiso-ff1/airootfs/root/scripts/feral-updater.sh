@@ -48,7 +48,7 @@ if [[ "$ENV_MODE" == "live" ]]; then
 
   API_URL="$ENDPOINT/api/latest/$branch"
   log_info "🌐 Fetching latest version info from: $API_URL"
-  response=$(curl -s -f "$API_URL")
+  response=$(curl -s -f -L "$API_URL")
   latest_version=$(jq -r '.latest_version' <<< "$response")
   image_url=$(jq -r '.image_url' <<< "$response")
 
