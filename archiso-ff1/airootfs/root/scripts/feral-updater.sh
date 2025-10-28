@@ -33,8 +33,8 @@ if ! ping -q -c 1 -W 2 8.8.8.8 >/dev/null; then
 fi
 
 ENV_MODE="test"
-if [[ -r /home/feralfile/.config/environment ]]; then
-  ENV_MODE="$(cat /home/feralfile/.config/environment 2>/dev/null | xargs)"
+if [[ -r /home/feralfile/.state/environment ]]; then
+  ENV_MODE="$(cat /home/feralfile/.state/environment 2>/dev/null | xargs)"
 fi
 
 if [[ "$ENV_MODE" == "live" ]]; then

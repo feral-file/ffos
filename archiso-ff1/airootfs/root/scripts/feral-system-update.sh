@@ -28,6 +28,7 @@ IMAGE_URL="$1"
 UNIQUE_ID="$2"
 
 CONFIG_FILE="/home/feralfile/ff1-config.json"
+RELEASE_PK="/root/.ff1-release-public-key.pem"
 ISO_MOUNT="/mnt/ota-iso"
 SFS_MOUNT="/mnt/ota-sfs"
 TMP_DIR="/var/tmp/ota"
@@ -149,7 +150,28 @@ curl --silent --show-error -fL "$ENDPOINT$IMAGE_URL" -o "$ISO_FILE"
 
 kill "$PROGRESS_PID" 2>/dev/null || true
 
-log_progress "80" "Extracting update package..."
+# Download signature file
+log_progress "80" "Verifying download integrity..."
+
+curl --silent --show-error -fL "$ENDPOINT$IMAGE_URL.sig" -o "$ISO_FILE.sig" || {
+  log_error "Error: Failed to download file $ISO_FILE.sig."
+  exit 1
+}
+
+if [[ -f "$ISO_FILE.sig" ]]; then
+  log_info "Signature file downloaded successfully."
+  if ! openssl dgst -sha256 -verify "$RELEASE_PK" -signature "$ISO_FILE.sig" "$ISO_FILE"; then
+    log_error "Error: Signature verification failed for $ISO_FILE."
+    rm -f "$ISO_FILE.sha256"
+    exit 1
+  fi
+  rm -f "$ISO_FILE.sha256"
+else
+  log_error "Error: Signature file $ISO_FILE.sig not found after download."
+  exit 1
+fi
+
+log_progress "83" "Extracting update package..."
 
 mkdir -p "$ISO_MOUNT"
 mount -o loop "$ISO_FILE" "$ISO_MOUNT"
@@ -170,7 +192,7 @@ log_progress "85" "Installing update to new snapshot..."
 # --- Step 6: Rsync selective update to NEW snapshot ---------------------------
 log_info "Syncing filesystem into '@snapshots/@ota_new' snapshot..."
 rsync -aAX --delete --info=progress2 \
-  --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed","/home/feralfile/.config/*","/home/feralfile/.logs/*","/home/feralfile/.state/*"} \
+  --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed","/home/feralfile/.config/chromium","/home/feralfile/.logs/*","/home/feralfile/.state/*"} \
   "$SFS_MOUNT"/ "$NEW_ROOT"/
 
 # Clean up unwanted files in new snapshot
