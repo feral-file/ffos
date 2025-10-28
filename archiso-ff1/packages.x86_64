@@ -9,6 +9,7 @@ curl
 parted
 dosfstools
 rsync
+openssl
 openssh
 dialog
 reflector
