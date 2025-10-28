@@ -111,7 +111,8 @@ mkdir -p "$TMP_DIR"
  
 TOTAL_SIZE=$(curl -sLI "$ENDPOINT$IMAGE_URL" \
   | tr -d '\r' \
-  | awk 'BEGIN{IGNORECASE=1} /^content-length:/ {print $2}')
+  | awk 'BEGIN{IGNORECASE=1} /^content-length:/ {print $2}' \
+  | tail -n1)
 
 if [[ -z "$TOTAL_SIZE" ]]; then
   log_error "Failed to retrieve content length for image."
