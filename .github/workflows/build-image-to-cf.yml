@@ -57,12 +57,12 @@ on:
         default: true
         type: boolean
       update_min_version:
-        description: "Update minimum available version (min_version)"
+        description: "Update minimum runtime version (min_runtime_version)"
         required: true
         type: boolean
         default: false
       update_required_version:
-        description: "Update required base version (required_version)"
+        description: "Update minimum upgradeable version (min_upgradeable_version)"
         required: true
         type: boolean
         default: false
@@ -563,16 +563,16 @@ jobs:
             if ! jq empty "$VERSION_INFO_FILE" 2>/dev/null; then
               echo "Warning: Existing JSON is invalid, creating new one"
               echo '{}' > "$VERSION_INFO_FILE"
-              EXISTING_REQUIRED=""
-              EXISTING_MIN=""
+              EXISTING_UPGRADEABLE=""
+              EXISTING_RUNTIME=""
             else
-              EXISTING_REQUIRED=$(jq -r '.required_version // ""' "$VERSION_INFO_FILE" 2>/dev/null || echo "")
-              EXISTING_MIN=$(jq -r '.min_version // ""' "$VERSION_INFO_FILE" 2>/dev/null || echo "")
+              EXISTING_UPGRADEABLE=$(jq -r '.min_upgradeable_version // ""' "$VERSION_INFO_FILE" 2>/dev/null || echo "")
+              EXISTING_RUNTIME=$(jq -r '.min_runtime_version // ""' "$VERSION_INFO_FILE" 2>/dev/null || echo "")
             fi
           else
             echo "No existing version-info.json found, creating new one"
-            EXISTING_REQUIRED=""
-            EXISTING_MIN=""
+            EXISTING_UPGRADEABLE=""
+            EXISTING_RUNTIME=""
             echo '{}' > "$VERSION_INFO_FILE"
           fi
           
@@ -580,28 +580,28 @@ jobs:
           jq --arg latest "$CURRENT_VERSION" '.latest_version = $latest' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
           mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
           
-          # Update required_version if checkbox is checked
+          # Update min_upgradeable_version if checkbox is checked
           if [ "$UPDATE_REQUIRED_VERSION" = "true" ] || [ "$UPDATE_REQUIRED_VERSION" = true ]; then
-            jq --arg required "$CURRENT_VERSION" '.required_version = $required' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            jq --arg upgradeable "$CURRENT_VERSION" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Updated required_version to $CURRENT_VERSION"
-          elif [ -n "$EXISTING_REQUIRED" ] && [ "$EXISTING_REQUIRED" != "null" ] && [ "$EXISTING_REQUIRED" != "" ]; then
-            # Keep existing required_version if not updating
-            jq --arg required "$EXISTING_REQUIRED" '.required_version = $required' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            echo "Updated min_upgradeable_version to $CURRENT_VERSION"
+          elif [ -n "$EXISTING_UPGRADEABLE" ] && [ "$EXISTING_UPGRADEABLE" != "null" ] && [ "$EXISTING_UPGRADEABLE" != "" ]; then
+            # Keep existing min_upgradeable_version if not updating
+            jq --arg upgradeable "$EXISTING_UPGRADEABLE" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Kept existing required_version: $EXISTING_REQUIRED"
+            echo "Kept existing min_upgradeable_version: $EXISTING_UPGRADEABLE"
           fi
           
-          # Update min_version if checkbox is checked
+          # Update min_runtime_version if checkbox is checked
           if [ "$UPDATE_MIN_VERSION" = "true" ] || [ "$UPDATE_MIN_VERSION" = true ]; then
-            jq --arg min "$CURRENT_VERSION" '.min_version = $min' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            jq --arg runtime "$CURRENT_VERSION" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Updated min_version to $CURRENT_VERSION"
-          elif [ -n "$EXISTING_MIN" ] && [ "$EXISTING_MIN" != "null" ] && [ "$EXISTING_MIN" != "" ]; then
-            # Keep existing min_version if not updating
-            jq --arg min "$EXISTING_MIN" '.min_version = $min' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            echo "Updated min_runtime_version to $CURRENT_VERSION"
+          elif [ -n "$EXISTING_RUNTIME" ] && [ "$EXISTING_RUNTIME" != "null" ] && [ "$EXISTING_RUNTIME" != "" ]; then
+            # Keep existing min_runtime_version if not updating
+            jq --arg runtime "$EXISTING_RUNTIME" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Kept existing min_version: $EXISTING_MIN"
+            echo "Kept existing min_runtime_version: $EXISTING_RUNTIME"
           fi
           
           # Display final JSON
