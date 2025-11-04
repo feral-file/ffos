@@ -51,6 +51,16 @@ on:
         required: true
         type: string
         default: 'develop'
+      update_min_version:
+        description: "Update minimum runtime version (min_runtime_version)"
+        required: true
+        type: boolean
+        default: false
+      update_required_version:
+        description: "Update minimum upgradeable version (min_upgradeable_version)"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
@@ -418,6 +428,80 @@ jobs:
             echo "Error: ISO file not found"
             exit 1
           fi
+
+      - name: Update version info JSON
+        run: |
+          set -e
+          
+          VERSION_INFO_PATH="${{ github.ref_name }}/version-info.json"
+          VERSION_INFO_FILE="/tmp/version-info.json"
+          CURRENT_VERSION="${{ inputs.version || github.event.inputs.version }}"
+          UPDATE_MIN_VERSION="${{ inputs.update_min_version || github.event.inputs.update_min_version }}"
+          UPDATE_REQUIRED_VERSION="${{ inputs.update_required_version || github.event.inputs.update_required_version }}"
+          
+          # Try to download existing version info JSON
+          if rclone copyto "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${VERSION_INFO_PATH}" "$VERSION_INFO_FILE" 2>/dev/null; then
+            echo "Downloaded existing version-info.json"
+            # Validate JSON and read existing values
+            if ! jq empty "$VERSION_INFO_FILE" 2>/dev/null; then
+              echo "Warning: Existing JSON is invalid, creating new one"
+              echo '{}' > "$VERSION_INFO_FILE"
+              EXISTING_UPGRADEABLE=""
+              EXISTING_RUNTIME=""
+            else
+              EXISTING_UPGRADEABLE=$(jq -r '.min_upgradeable_version // ""' "$VERSION_INFO_FILE" 2>/dev/null || echo "")
+              EXISTING_RUNTIME=$(jq -r '.min_runtime_version // ""' "$VERSION_INFO_FILE" 2>/dev/null || echo "")
+            fi
+          else
+            echo "No existing version-info.json found, creating new one"
+            EXISTING_UPGRADEABLE=""
+            EXISTING_RUNTIME=""
+            echo '{}' > "$VERSION_INFO_FILE"
+          fi
+          
+          # Prepare updated JSON - always update latest_version
+          jq --arg latest "$CURRENT_VERSION" '.latest_version = $latest' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+          mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
+          
+          # Update min_upgradeable_version if checkbox is checked
+          if [ "$UPDATE_REQUIRED_VERSION" = "true" ] || [ "$UPDATE_REQUIRED_VERSION" = true ]; then
+            jq --arg upgradeable "$CURRENT_VERSION" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
+            echo "Updated min_upgradeable_version to $CURRENT_VERSION"
+          elif [ -n "$EXISTING_UPGRADEABLE" ] && [ "$EXISTING_UPGRADEABLE" != "null" ] && [ "$EXISTING_UPGRADEABLE" != "" ]; then
+            # Keep existing min_upgradeable_version if not updating
+            jq --arg upgradeable "$EXISTING_UPGRADEABLE" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
+            echo "Kept existing min_upgradeable_version: $EXISTING_UPGRADEABLE"
+          fi
+          
+          # Update min_runtime_version if checkbox is checked
+          if [ "$UPDATE_MIN_VERSION" = "true" ] || [ "$UPDATE_MIN_VERSION" = true ]; then
+            jq --arg runtime "$CURRENT_VERSION" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
+            echo "Updated min_runtime_version to $CURRENT_VERSION"
+          elif [ -n "$EXISTING_RUNTIME" ] && [ "$EXISTING_RUNTIME" != "null" ] && [ "$EXISTING_RUNTIME" != "" ]; then
+            # Keep existing min_runtime_version if not updating
+            jq --arg runtime "$EXISTING_RUNTIME" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
+            echo "Kept existing min_runtime_version: $EXISTING_RUNTIME"
+          fi
+          
+          # Display final JSON
+          echo "Final version-info.json:"
+          cat "$VERSION_INFO_FILE" | jq .
+          
+          # Validate final JSON before uploading
+          if ! jq empty "$VERSION_INFO_FILE" 2>/dev/null; then
+            echo "Error: Generated JSON is invalid"
+            exit 1
+          fi
+          
+          # Upload updated JSON to R2
+          rclone copyto "$VERSION_INFO_FILE" \
+            "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${VERSION_INFO_PATH}" \
+            --verbose
+          echo "Version info JSON successfully uploaded to R2: ${VERSION_INFO_PATH}"
 
       - name: Cleanup
         if: always()
