@@ -25,6 +25,9 @@ p7zip
 btrfs-progs
 dmidecode
 tpm2-tools
+mesa
+intel-media-driver
+vulkan-radeon
 
 # Boot support
 intel-ucode
@@ -48,10 +51,6 @@ ttf-dejavu
 ttf-liberation
 noto-fonts-cjk
 adwaita-icon-theme
-
-# Radxa X4 / Intel N100 support
-mesa
-intel-media-driver
 
 # Audio and Bluetooth
 bluez
