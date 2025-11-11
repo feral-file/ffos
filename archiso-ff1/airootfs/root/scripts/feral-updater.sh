@@ -50,9 +50,18 @@ if [[ "$ENV_MODE" == "live" ]]; then
   log_info "🌐 Fetching latest version info from: $API_URL"
   response=$(curl -s -f -L "$API_URL")
   latest_version=$(jq -r '.latest_version' <<< "$response")
+  min_upgradeable_version=$(jq -r '.min_upgradeable_version' <<< "$response")
   image_url=$(jq -r '.image_url' <<< "$response")
 
   log_info "🆚 Current: $current_version  →  Remote: $latest_version"
+  log_info "Minimum upgradeable version: $min_upgradeable_version"
+
+  # if current version is less than min upgradeable version, exit with log warning
+  if ! printf '%s\n%s\n' "$min_upgradeable_version" "$current_version" | sort -V -C; then
+    log_info "Current version $current_version is less than minimum upgradeable version $min_upgradeable_version. Aborting update."
+    exit 0
+  fi
+  
   if [[ "$latest_version" != "$current_version" ]]; then
     # Send start event to vagent
     if curl -sS --max-time 5 "$VMAGENT_IMPORT_API" -o /dev/null; then
