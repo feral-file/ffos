@@ -37,9 +37,10 @@ on:
       pacman_snapshot:
         description: "Pacman repository snapshot to use"
         required: false
-        default: "2025/05/31"
+        default: "2025/11/25"
         type: choice
         options:
+          - "2025/11/25"
           - "2025/05/31"
           - "latest"
       webapp_url:
