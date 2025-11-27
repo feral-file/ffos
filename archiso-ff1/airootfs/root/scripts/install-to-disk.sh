@@ -196,7 +196,7 @@ rm -rf /mnt/var/tmp/*
 # ─── Generate fstab ────────────────────────────────────────────────────
 echo "Generating /etc/fstab..."
 ROOT_PART_UUID=$(blkid -s UUID -o value "$ROOT_PART")
-BOOT_PART_UUID=$(blkid -s UUID -o value "$BOOT_PART")
+BOOT_PART_PARTUUID=$(blkid -s PARTUUID -o value "$BOOT_PART")
 
 cat > /mnt/etc/fstab <<EOF
 # <file system>          <dir>                   <type>    <options>                                   <dump> <pass>
@@ -204,7 +204,7 @@ UUID=$ROOT_PART_UUID     /                       btrfs     compress=zstd,noatime
 UUID=$ROOT_PART_UUID     /.snapshots             btrfs     compress=zstd,noatime,subvol=@snapshots        0      0
 UUID=$ROOT_PART_UUID     /var/log                btrfs     compress=zstd,noatime,subvol=@log              0      0
 UUID=$ROOT_PART_UUID     /var/cache/pacman/pkg   btrfs     compress=zstd,noatime,subvol=@pkg              0      0
-UUID=$BOOT_PART_UUID     /boot                   vfat      defaults                                      0      2
+PARTUUID=$BOOT_PART_PARTUUID  /boot              vfat      defaults                                      0      2
 EOF
 
 # ─── Setup bootloader ──────────────────────────────────────────────────
@@ -228,7 +228,12 @@ rsync -a /live-efi/loader /mnt/boot
 rsync -a /live-efi/EFI /mnt/boot
 umount /live-efi
 
+echo "Backing up /boot for factory reset..."
+rsync -a /mnt/boot/ /mnt/boot-backup/
+
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_PART")
+mkdir -p /mnt/etc/feralfile
+echo "$(blkid -s PARTUUID -o value "$BOOT_PART")" > /mnt/etc/feralfile/esp_partuuid
 
 cat > /mnt/boot/loader/loader.conf <<EOF
 default arch.conf

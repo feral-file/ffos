@@ -99,6 +99,52 @@ run_hook() {
   fi
   echo "[btrfs-rollback] Default subvol set to @ (ID $new_id)" >> $LOG
 
+  # --- Restore /boot from backup ---
+  echo "[btrfs-rollback] Attempting to restore /boot from backup..." >> $LOG
+  
+  # Mount the new root (default subvol is now @) to access /etc and /boot-backup
+  mkdir -p /run/new_root
+  if mount "$root_dev" /run/new_root; then
+    if [[ -f "/run/new_root/etc/feralfile/esp_partuuid" ]]; then
+      esp_uuid=$(cat /run/new_root/etc/feralfile/esp_partuuid)
+      esp_dev="/dev/disk/by-partuuid/$esp_uuid"
+      
+      if [[ -b "$esp_dev" ]]; then
+        echo "[btrfs-rollback] ESP device found: $esp_dev" >> $LOG
+        mkdir -p /run/esp
+        if mount "$esp_dev" /run/esp; then
+          if [[ -d "/run/new_root/boot-backup" ]]; then
+            echo "[btrfs-rollback] Restoring /boot content..." >> $LOG
+            # Clean ESP and restore
+            rm -rf /run/esp/*
+            cp -a /run/new_root/boot-backup/. /run/esp/
+            echo "[btrfs-rollback] /boot restoration complete." >> $LOG
+            
+            # Force reboot to load the restored kernel
+            echo "[btrfs-rollback] Rebooting system to load restored kernel..." >> $LOG
+            sync
+            umount /run/esp
+            umount /run/new_root
+            umount /run/rollback
+            reboot -f
+          else
+            echo "[btrfs-rollback] ERROR: /boot-backup not found in new root" >> $LOG
+          fi
+          umount /run/esp
+        else
+          echo "[btrfs-rollback] ERROR: Failed to mount ESP" >> $LOG
+        fi
+      else
+        echo "[btrfs-rollback] ERROR: ESP device $esp_dev not found" >> $LOG
+      fi
+    else
+       echo "[btrfs-rollback] Warning: /etc/feralfile/esp_partuuid not found, skipping /boot restore" >> $LOG
+    fi
+    umount /run/new_root
+  else
+     echo "[btrfs-rollback] ERROR: Failed to mount new root for /boot restore" >> $LOG
+  fi
+
   sync
   
   echo "[btrfs-rollback] Booting into new @"  >> $LOG
