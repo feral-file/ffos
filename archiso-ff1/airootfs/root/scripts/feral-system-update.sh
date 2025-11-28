@@ -70,9 +70,6 @@ ROOT_DEV="${ROOT_DEV%%\[*}"
 mkdir -p "$BTRFS_TOP"
 mount -o subvolid=0 "$ROOT_DEV" "$BTRFS_TOP"
 
-log_info "Backing up current /boot to /boot-backup..."
-rsync -a --delete /boot/ /boot-backup/
-
 # --- Step 3: Create snapshots for update -----------------------------------
 log_info "Creating new snapshot @snapshots/@ota_new for update..."
 
@@ -245,9 +242,9 @@ EOF
 
 cat > /boot/loader/entries/factory_reset.conf <<EOF
 title   FF1 - Factory Reset
-linux   /vmlinuz-linux-factory
-initrd  /initramfs-linux-factory.img
-initrd  /intel-ucode-factory.img
+linux   /vmlinuz-linux
+initrd  /initramfs-linux.img
+initrd  /intel-ucode.img
 options rollback=factory root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
 EOF
 
@@ -276,9 +273,6 @@ log_info "Installing systemd-boot to disk..."
 bootctl install
 
 sync
-# Update /boot-backup in the new snapshot
-log_info "Updating /boot-backup in new snapshot..."
-rsync -a --delete /boot/ "$NEW_ROOT/boot-backup/"
 umount "$NEW_ROOT/boot"
 
 systemctl restart NetworkManager
