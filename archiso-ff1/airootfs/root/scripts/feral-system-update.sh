@@ -87,20 +87,6 @@ else
   exit 1
 fi
 
-log_info "Creating backup snapshot of current @ subvolume..."
-if [[ -d "$BTRFS_TOP/@snapshots/@ota_prev" ]]; then
-  log_info "Deleting old @snapshots/@ota_prev snapshot..."
-  btrfs subvolume delete "$BTRFS_TOP/@snapshots/@ota_prev"
-fi
-
-if btrfs subvolume snapshot -r "$BTRFS_TOP/@" "$BTRFS_TOP/@snapshots/@ota_prev"; then
-  log_info "Snapshot '@snapshots/@ota_prev' created successfully."
-else
-  log_error "Failed to create snapshot '@snapshots/@ota_prev'. Aborting."
-  exit 1
-fi
-log_info "Backup snapshot @snapshots/@ota_prev created"
-
 # Mount the new snapshot for updating
 mkdir -p "$NEW_ROOT"
 mount -o compress=zstd,noatime,subvol=@snapshots/@ota_new "$ROOT_DEV" "$NEW_ROOT"
@@ -197,8 +183,8 @@ rsync -aAX --delete --info=progress2 \
   "$SFS_MOUNT"/ "$NEW_ROOT"/
 
 # Clean up unwanted files in new snapshot
-rm -f "$NEW_ROOT"/mnt/root/.automated_script.sh
-rm -f "$NEW_ROOT"/mnt/root/.bash_profile
+rm -f "$NEW_ROOT"/root/.automated_script.sh
+rm -f "$NEW_ROOT"/root/.bash_profile
 rm -rf "$NEW_ROOT"/home/soaktest
 rm -f "$NEW_ROOT"/usr/local/bin/websocat
 
@@ -248,19 +234,11 @@ initrd  /intel-ucode.img
 options rollback=factory root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
 EOF
 
-cat > /boot/loader/entries/ota_prev.conf <<EOF
-title   FF1 - Rollback to previous version
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
-initrd  /intel-ucode.img
-options rollback=ota root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
-EOF
-
 # Update mkinitcpio in new snapshot
 mount --bind /boot "$NEW_ROOT/boot"
 arch-chroot "$NEW_ROOT" /bin/bash <<'CHROOT_EOF'
 echo "Overwriting mkinitcpio.conf HOOKS..."
-sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs-rollback btrfs filesystems fsck)/' /etc/mkinitcpio.conf
+sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs btrfs-rollback filesystems fsck)/' /etc/mkinitcpio.conf
 
 echo "Generating initramfs..."
 mkinitcpio -P

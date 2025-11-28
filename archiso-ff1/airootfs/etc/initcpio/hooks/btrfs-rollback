@@ -6,7 +6,6 @@ run_hook() {
   for param in $(cat /proc/cmdline); do
     case "$param" in
       rollback=factory) mode="factory" ;;
-      rollback=ota)     mode="ota"     ;;
     esac
   done
 
@@ -41,12 +40,7 @@ run_hook() {
     return 1
   fi
 
-  local source_snap=""
-  if [[ "$mode" == "factory" ]]; then
-    source_snap="@snapshots/@factory_reset"
-  else
-    source_snap="@snapshots/@ota_prev"
-  fi
+  local source_snap="@snapshots/@factory_reset"
   local target_at="@"
 
   if [[ ! -d "/run/rollback/$source_snap" ]]; then
@@ -55,6 +49,73 @@ run_hook() {
     return 1
   fi
 
+  # --- Boot Partition Restoration ---
+  local boot_backup="/run/rollback/$source_snap/usr/share/factory-backup/boot"
+  if [[ -d "$boot_backup" ]]; then
+    echo "[btrfs-rollback] Restoring boot partition from factory backup..." >> $LOG
+    
+    # Find EFI partition (partition 1 on same disk as root)
+    local actual_root
+    actual_root=$(readlink -f "$root_dev")
+    local efi_part=""
+    
+    if [[ "$actual_root" =~ ^(.+)p([0-9]+)$ ]]; then
+      # NVMe style: /dev/nvme0n1p2 -> /dev/nvme0n1p1
+      efi_part="${BASH_REMATCH[1]}p1"
+    elif [[ "$actual_root" =~ ^(.+[^0-9])([0-9]+)$ ]]; then
+      # SATA style: /dev/sda2 -> /dev/sda1
+      efi_part="${BASH_REMATCH[1]}1"
+    fi
+    
+    if [[ -n "$efi_part" ]] && [[ -b "$efi_part" ]]; then
+      mkdir -p /run/efi
+      if mount -t vfat "$efi_part" /run/efi; then
+        echo "[btrfs-rollback] Mounted EFI partition: $efi_part" >> $LOG
+        
+        # Copy boot files (kernel, initramfs, microcode)
+        if [[ -f "$boot_backup/vmlinuz-linux" ]]; then
+          cp -f "$boot_backup/vmlinuz-linux" /run/efi/
+          echo "[btrfs-rollback] Restored vmlinuz-linux" >> $LOG
+        fi
+        
+        if [[ -f "$boot_backup/initramfs-linux.img" ]]; then
+          cp -f "$boot_backup/initramfs-linux.img" /run/efi/
+          echo "[btrfs-rollback] Restored initramfs-linux.img" >> $LOG
+        fi
+        
+        if [[ -f "$boot_backup/intel-ucode.img" ]]; then
+          cp -f "$boot_backup/intel-ucode.img" /run/efi/
+          echo "[btrfs-rollback] Restored intel-ucode.img" >> $LOG
+        fi
+        
+        # Copy loader configs
+        if [[ -d "$boot_backup/loader" ]]; then
+          mkdir -p /run/efi/loader/entries
+          cp -rf "$boot_backup/loader/"* /run/efi/loader/ 2>/dev/null
+          echo "[btrfs-rollback] Restored loader configs" >> $LOG
+        fi
+        
+        # Copy EFI directory
+        if [[ -d "$boot_backup/EFI" ]]; then
+          mkdir -p /run/efi/EFI
+          cp -rf "$boot_backup/EFI/"* /run/efi/EFI/ 2>/dev/null
+          echo "[btrfs-rollback] Restored EFI directory" >> $LOG
+        fi
+        
+        sync
+        umount /run/efi
+        echo "[btrfs-rollback] Boot partition restored successfully" >> $LOG
+      else
+        echo "[btrfs-rollback] WARNING: Failed to mount EFI partition $efi_part" >> $LOG
+      fi
+    else
+      echo "[btrfs-rollback] WARNING: EFI partition not found (derived: $efi_part)" >> $LOG
+    fi
+  else
+    echo "[btrfs-rollback] WARNING: No boot backup found at $boot_backup" >> $LOG
+  fi
+
+  # --- Subvolume Operations ---
   local tmp_id
   tmp_id=$(btrfs subvolume list /run/rollback | awk -v s="$source_snap" '$NF==s { print $2 }')
   if [[ -z "$tmp_id" ]]; then

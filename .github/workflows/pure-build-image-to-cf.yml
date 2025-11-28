@@ -117,6 +117,14 @@ jobs:
           pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
             git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli
 
+      - name: Apply version-specific patches
+        run: |
+          if [ "${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}" = "2025/05/31" ]; then
+            echo "Applying patches for 2025/05/31 snapshot..."
+            sed -i "s/bootmodes=('uefi.systemd-boot')/bootmodes=('uefi-x64.systemd-boot.esp' 'uefi-x64.systemd-boot.eltorito')/" archiso-ff1/profiledef.sh
+            sed -i 's/wlroots0.18/wlroots/' archiso-ff1/packages.x86_64
+          fi
+
       - name: Copy archiso profile and setup home directories
         run: |
           mkdir -p /build
