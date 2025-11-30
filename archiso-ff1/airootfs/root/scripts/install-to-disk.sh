@@ -397,6 +397,10 @@ echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-fer
 EOF
 fi
 
+echo "Backing up boot files to root filesystem..."
+mkdir -p /mnt/var/lib/factory_reset_boot
+rsync -a /mnt/boot/ /mnt/var/lib/factory_reset_boot/
+
 # ─── Create Factory Reset Snapshot ─────────────────────────────────────
 echo
 echo "Creating factory reset snapshot..."
