@@ -264,7 +264,7 @@ echo "Removing soaktest account..."
 id soaktest &>/dev/null && userdel soaktest || true
 
 echo "Overwriting mkinitcpio.conf HOOKS..."
-sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs btrfs-rollback filesystems fsck)/' /etc/mkinitcpio.conf
+sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs-rollback btrfs filesystems fsck)/' /etc/mkinitcpio.conf
 
 echo "Generating initramfs..."
 mkinitcpio -P
@@ -331,7 +331,7 @@ echo "Removing soaktest account..."
 id soaktest &>/dev/null && userdel soaktest || true
 
 echo "Overwriting mkinitcpio.conf HOOKS..."
-sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs btrfs-rollback filesystems fsck)/' /etc/mkinitcpio.conf
+sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs-rollback btrfs filesystems fsck)/' /etc/mkinitcpio.conf
 
 echo "Generating initramfs..."
 mkinitcpio -P
@@ -400,11 +400,6 @@ fi
 # ─── Create Factory Reset Snapshot ─────────────────────────────────────
 echo
 echo "Creating factory reset snapshot..."
-
-echo "Backing up /boot partition to /usr/share/factory-backup/boot..."
-mkdir -p /mnt/usr/share/factory-backup/boot
-rsync -aAX /mnt/boot/ /mnt/usr/share/factory-backup/boot/
-
 # Create a read-only snapshot of the current root (mounted at /mnt)
 # into the .snapshots directory (mounted at /mnt/.snapshots)
 if btrfs subvolume snapshot -r /mnt /mnt/.snapshots/@factory_reset; then

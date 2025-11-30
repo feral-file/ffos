@@ -1,20 +1,11 @@
 #!/bin/bash
 
 build() {
-    # Add the hook script
     add_runscript
-    
-    # Add vfat module for mounting EFI partition during boot restoration
-    add_module vfat
-    add_module fat
-    add_module nls_cp437
-    add_module nls_iso8859-1
 }
 
 help() {
     cat <<HELPEOF
-This hook allows factory reset rollback via btrfs subvolumes.
-It also restores the boot partition from factory backup when rollback=factory
-is specified in kernel cmdline.
+This hook allows rollback via btrfs subvolumes.
 HELPEOF
 }
