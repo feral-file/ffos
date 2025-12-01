@@ -61,6 +61,20 @@ if ! btrfs subvolume set-default "$AT_ID" "$BTRFS_TOP"; then
 fi
 log_msg "@snapshots/@factory_reset_new set as default subvolume (ID: $AT_ID)"
 
+# Step 4: Restore /boot partition from backup
+log_msg "Restoring /boot partition to factory state..."
+
+TARGET_BOOT="/boot"
+SOURCE_BOOT="$BTRFS_TOP/@snapshots/@factory_reset_new/var/lib/factory_reset_boot"
+
+if [[ -d "$SOURCE_BOOT" ]]; then
+    log_msg "Found backup boot files. Syncing to $TARGET_BOOT..."
+    rsync -a --delete "$SOURCE_BOOT/" "$TARGET_BOOT/"
+    log_msg "/boot restored successfully."
+else
+    log_msg "Warning: No factory boot backup found in snapshot. Kernel version mismatch may occur!"
+fi
+
 # Unmount
 umount "$BTRFS_TOP"
 rmdir "$BTRFS_TOP"
