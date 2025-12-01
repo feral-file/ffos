@@ -8,7 +8,6 @@ run_hook() {
   for param in $(cat /proc/cmdline); do
     case "$param" in
       rollback=factory) mode="factory" ;;
-      rollback=ota)     mode="ota"     ;;
     esac
   done
 
@@ -43,12 +42,7 @@ run_hook() {
     return 1
   fi
 
-  local source_snap=""
-  if [[ "$mode" == "factory" ]]; then
-    source_snap="@snapshots/@factory_reset"
-  else
-    source_snap="@snapshots/@ota_prev"
-  fi
+  local source_snap="@snapshots/@factory_reset"
 
   if [[ ! -d "/run/rollback/$source_snap" ]]; then
     echo "[btrfs-rollback] ERROR: source snapshot not found: /run/rollback/$source_snap" >> $LOG

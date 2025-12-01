@@ -33,7 +33,6 @@ on:
           - Normal (full)
           - Development (emmc)
           - Development (full)
-          - QEMU
       pacman_snapshot:
         description: "Pacman repository snapshot to use"
         required: false
@@ -116,7 +115,6 @@ jobs:
       maintainer: 'Feral File'
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
-      qemu: ${{ inputs.iso_type == 'QEMU' && 'true' || 'false' }}
 
   build-feral-sys-monitord:
     needs: permission-check
@@ -292,29 +290,9 @@ jobs:
           timeout 0
           EOF
 
-      - name: Update QEMU EFI boot option
-        if: ${{ inputs.iso_type == 'QEMU' }}
-        run: |
-          cat >> /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-qemu.conf << EOF
-          title   Install FF1 OS to QEMU
-          linux   /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux
-          initrd  /%INSTALL_DIR%/boot/x86_64/initramfs-linux.img
-          initrd  /%INSTALL_DIR%/boot/intel-ucode.img
-          options archisobasedir=%INSTALL_DIR% archisodevice=UUID=%ARCHISO_UUID% cow_spacesize=512M script=/root/scripts/install-to-qemu.sh
-          EOF
-          cat >> /build/archiso-ff1/efiboot/loader/loader.conf << EOF
-          default archiso-x86_64-linux-qemu.conf
-          timeout 15
-          EOF
-          rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-emmc-installation.conf
-          rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-installation.conf
-
       - name: Update start-kiosk.sh
         run: |
-          if [ "${{ inputs.iso_type }}" = "QEMU" ]; then
-            sed -i 's/wlr-randr --output HDMI-A-1 --transform $ROTATION &&//' \
-              /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
-          elif [ "${{ inputs.iso_type }}" = "Development (full)" ] || [ "${{ inputs.iso_type }}" = "Development (emmc)" ]; then
+          if [ "${{ inputs.iso_type }}" = "Development (full)" ] || [ "${{ inputs.iso_type }}" = "Development (emmc)" ]; then
             sed -i 's/--kiosk//' \
               /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
           fi
@@ -500,7 +478,7 @@ jobs:
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
           ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
           if [ -f "$ISO_FILE" ]; then
-            IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') && 'dev-' || inputs.iso_type == 'QEMU' && 'qemu-' || '' }}"
+            IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') && 'dev-' || '' }}"
             if [ "${{ github.ref_name }}" = "release" ]; then
               IMAGE_TAG="-release"
             elif [ "${{ github.ref_name }}" = "demo" ]; then

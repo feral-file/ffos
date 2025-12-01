@@ -189,7 +189,7 @@ echo "Removing soaktest account..."
 id soaktest &>/dev/null && userdel soaktest || true
 
 echo "Overwriting mkinitcpio.conf HOOKS..."
-sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs-rollback btrfs filesystems fsck)/' /etc/mkinitcpio.conf
+sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs btrfs-rollback filesystems fsck)/' /etc/mkinitcpio.conf
 
 echo "Generating initramfs..."
 mkinitcpio -P
@@ -254,6 +254,10 @@ usermod -aG tss feralfile
 mkdir -p /etc/udev/rules.d
 echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
 EOF
+
+echo "Backing up boot files to root filesystem..."
+mkdir -p /mnt/var/lib/factory_reset_boot
+rsync -a /mnt/boot/ /mnt/var/lib/factory_reset_boot/
 
 # ─── Create Factory Reset Snapshot ─────────────────────────────────────
 echo
