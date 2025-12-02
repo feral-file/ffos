@@ -27,7 +27,7 @@ UNIQUE_ID="$1"
 
 log_progress "0" "Updating Pacman packages..."
 
-output=$(pacman -Sy --needed --noconfirm feral-controld feral-setupd feral-sys-monitord feral-app-monitord feral-watchdog)
+output=$(pacman -Sy --needed --noconfirm feral-controld feral-setupd feral-sys-monitord feral-watchdog)
 
 if ! echo "$output" | grep -q "there is nothing to do"; then
   log_progress "100" "Packages updated. Rebooting system to apply updates..."

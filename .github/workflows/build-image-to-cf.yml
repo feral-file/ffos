@@ -135,25 +135,6 @@ jobs:
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
 
-  build-feral-app-monitord:
-    needs: permission-check
-    name: Build Feral App Monitord
-    uses: ./.github/workflows/build-components.yaml
-    secrets:
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
-      CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
-      REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
-      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
-      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
-    with:
-      component: feral-app-monitord
-      version: ${{ inputs.version || github.event.inputs.version }}
-      description: 'Feral File App Monitord'
-      maintainer: 'Feral File'
-      environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
-      ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
-
   build-feral-watchdog:
     needs: permission-check
     name: Build Feral Watchdog
@@ -175,7 +156,7 @@ jobs:
 
   build-feralfile-pacman-repo:
     name: Build Feralfile pacman repo
-    needs: [permission-check, build-feral-controld, build-feral-setupd, build-feral-sys-monitord, build-feral-app-monitord, build-feral-watchdog]
+    needs: [permission-check, build-feral-controld, build-feral-setupd, build-feral-sys-monitord, build-feral-watchdog]
     uses: ./.github/workflows/pacman-repo.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -401,21 +382,6 @@ jobs:
           }
           EOF
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json
-
-          # Add app-monitord config
-          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/app-monitord.json << EOF
-          {
-            "sentry": {
-                "dsn": "${{ secrets.SENTRY_DSN_APP_MONITORD }}",
-                "debug": "false",
-                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
-                "release": "${{ inputs.version || github.event.inputs.version }}",
-                "repository": "${{ github.repository }}"
-            }
-          }
-          EOF
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/app-monitord.json
 
           # Add sys-monitord config
           cat > /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json << EOF
