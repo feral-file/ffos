@@ -151,7 +151,6 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 │   ├── feral-controld-{version}-x86_64.pkg.tar.zst
 │   ├── feral-setupd-{version}-x86_64.pkg.tar.zst
 │   ├── feral-sys-monitord-{version}-x86_64.pkg.tar.zst
-│   ├── feral-app-monitord-{version}-x86_64.pkg.tar.zst
 │   ├── feral-watchdog-{version}-x86_64.pkg.tar.zst
 │   ├── feralfile.db.tar.gz
 │   └── feralfile.files.tar.gz
