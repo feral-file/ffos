@@ -23,16 +23,6 @@ on:
         options:
           - Development
           - Production
-      iso_type:
-        description: "ISO type to build"
-        required: true
-        default: "Normal (emmc)"
-        type: choice
-        options:
-          - Normal (emmc)
-          - Normal (full)
-          - Development (emmc)
-          - Development (full)
       pacman_snapshot:
         description: "Pacman repository snapshot to use"
         required: false
@@ -51,6 +41,11 @@ on:
         required: true
         type: string
         default: 'develop'
+      dev_iso:
+        description: "Build development ISO"
+        required: true
+        default: false
+        type: boolean
       enable_local_hub:
         description: "Enable local hub for communication"
         required: false
@@ -263,23 +258,15 @@ jobs:
 
           echo "Feral File pacman key added successfully."
 
-      - name: Update emmc EFI boot option
-        if: ${{ inputs.iso_type == 'Normal (emmc)' || inputs.iso_type == 'Development (emmc)' }}
-        run: |
-          cat >> /build/archiso-ff1/efiboot/loader/loader.conf << EOF
-          default archiso-x86_64-linux-emmc-installation.conf
-          timeout 0
-          EOF
-
       - name: Update start-kiosk.sh
         run: |
-          if [ "${{ inputs.iso_type }}" = "Development (full)" ] || [ "${{ inputs.iso_type }}" = "Development (emmc)" ]; then
+          if [ ${{ inputs.dev_iso }} ]; then
             sed -i 's/--kiosk//' \
               /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
           fi
 
       - name: Add development tools to packages list
-        if: ${{ inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)' }}
+        if: ${{ inputs.dev_iso }}
         run: |
           # Add Go and Rust to packages list
           cat >> /build/archiso-ff1/packages.x86_64 << EOF
@@ -294,7 +281,7 @@ jobs:
           sed -i 's/#NoConfirm/NoConfirm/' /etc/pacman.conf 2>/dev/null || echo "NoConfirm" >> /etc/pacman.conf
 
       - name: Setup source directory and copy components
-        if: ${{ inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)' }}
+        if: ${{ inputs.dev_iso }}
         run: |
           # Create source directory
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/src
@@ -444,7 +431,7 @@ jobs:
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
           ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
           if [ -f "$ISO_FILE" ]; then
-            IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') && 'dev-' || '' }}"
+            IMAGE_TYPE="${{ inputs.dev_iso && 'dev-' || '' }}"
             if [ "${{ github.ref_name }}" = "release" ]; then
               IMAGE_TAG="-release"
             elif [ "${{ github.ref_name }}" = "demo" ]; then

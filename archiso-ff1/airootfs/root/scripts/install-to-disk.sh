@@ -42,50 +42,6 @@ trap cleanup EXIT
 echo "=== Feral File Arch Installer ==="
 echo
 
-# ─── Check and connect to Wi-Fi ─────────────────────────────────────────
-echo "Checking network connectivity..."
-if ! ping -q -c 1 -W 1 archlinux.org &>/dev/null; then
-  echo "⚠️  No internet connection detected."
-  read -rp "Do you want to connect to a Wi-Fi network? [y/N]: " wifi_choice
-
-  if [[ "$wifi_choice" =~ ^[yY]$ ]]; then
-    echo "Available Wi-Fi networks:"
-    nmcli device wifi rescan &>/dev/null
-    nmcli device wifi list
-
-    read -rp "Enter SSID: " wifi_ssid
-    read -rsp "Enter password for '$wifi_ssid': " wifi_pass
-    echo
-
-    if nmcli device wifi connect "$wifi_ssid" password "$wifi_pass"; then
-      echo "✅ Connected to Wi-Fi successfully."
-    else
-      echo "❌ Failed to connect to Wi-Fi."
-      NO_NETWORK=1
-    fi
-  else
-    echo "Skipping Wi-Fi setup..."
-    NO_NETWORK=1
-  fi
-else
-  echo "✅ Internet connection detected."
-fi
-
-# ─── Warn if offline installation ──────────────────────────────────────
-if [[ "${NO_NETWORK:-0}" == 1 ]]; then
-  echo
-  echo "⚠️  You are installing without an internet connection."
-  echo "    - Pacman will not be initialized."
-  echo "    - Only the base image will be used."
-  read -rp "Proceed with offline installation? [y/N]: " offline_confirm
-  [[ "$offline_confirm" != [yY] ]] && echo "Aborted." && exit 1
-  copy_wifi='n'
-  SKIP_PACMAN_INIT=1
-else
-  SKIP_PACMAN_INIT=0
-  read -rp "Do you want to copy Wi-Fi credentials into the new system? [y/N]: " copy_wifi
-fi
-
 # ─── List available target disks ───────────────────────────────────────
 echo "Available disks:"
 echo
@@ -181,9 +137,7 @@ mkdir -p /mnt/home/feralfile/.state
 cat > /mnt/home/feralfile/.state/environment <<EOF
 live
 EOF
-if [[ ! "$copy_wifi" =~ ^[yY]$ ]]; then
-  rm -f /mnt/etc/NetworkManager/system-connections/*
-fi
+rm -f /mnt/etc/NetworkManager/system-connections/*
 echo -n > /mnt/etc/machine-id
 rm -f /mnt/var/lib/systemd/random-seed
 rm -f /mnt/etc/ssh/ssh_host_*
@@ -258,74 +212,6 @@ mount --bind /dev /mnt/dev
 mount --bind /proc /mnt/proc
 mount --bind /sys /mnt/sys
 
-if [[ "$SKIP_PACMAN_INIT" -eq 0 ]]; then
-arch-chroot /mnt /bin/bash <<'EOF'
-echo "Removing soaktest account..."
-id soaktest &>/dev/null && userdel soaktest || true
-
-echo "Overwriting mkinitcpio.conf HOOKS..."
-sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs btrfs-rollback filesystems fsck)/' /etc/mkinitcpio.conf
-
-echo "Generating initramfs..."
-mkinitcpio -P
-
-echo "Installing systemd-boot to disk..."
-bootctl install
-
-echo "Setting up pacman..."
-pacman-key --init
-pacman-key --populate archlinux
-pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc
-pacman-key --lsign-key AA6B250F2938F3CB
-pacman -Syy
-
-echo "Setting up hostname..."
-DEVICE_ID_PREFIX="FF1-"
-MD5_LENGTH=8
-
-# Get MAC address or fallback
-MAC_ADDRESS=$(ip link | grep -o -E 'link/ether ([0-9a-fA-F:]{17})' | head -n1 | awk '{print $2}')
-if [ -z "$MAC_ADDRESS" ]; then
-    echo "Warning: No MAC address found. Using default hostname."
-else
-  # Convert MAC to raw bytes and hash
-  MAC_HEX=$(echo "$MAC_ADDRESS" | tr -d ':')
-  MD5_DIGEST=$(echo -n "$MAC_HEX" | xxd -r -p | md5sum | awk '{print $1}')
-
-  # Encode first 8 bytes of hash into base36
-  ALPHABET="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-  RESULT_STRING=""
-  for (( i=0; i<MD5_LENGTH*2; i+=2 )); do
-      BYTE_HEX="${MD5_DIGEST:i:2}"
-      DEC=$((0x$BYTE_HEX))
-      CHAR=${ALPHABET:$((DEC % 36)):1}
-      RESULT_STRING+=$CHAR
-  done
-
-  FINAL_DEVICE_ID="${DEVICE_ID_PREFIX}${RESULT_STRING}"
-
-  # Write to /etc/hostname
-  echo "$FINAL_DEVICE_ID" > /etc/hostname
-fi
-echo "Setting up TPM key..."
-tpm2_createprimary -C o -g sha256 -G ecc -c primary.ctx
-tpm2_create -C primary.ctx -g sha256 -G ecc:ecdsa \
-    -u ecdsa.pub -r ecdsa.priv \
-    -a "sign|fixedtpm|fixedparent|sensitivedataorigin|userwithauth"
-tpm2_load -C primary.ctx -u ecdsa.pub -r ecdsa.priv -c ecdsa.ctx
-if tpm2_getcap handles-persistent | grep -q 0x81010002; then
-    echo "Evicting existing handle 0x81010002..."
-    tpm2_evictcontrol -C o -c 0x81010002
-fi
-tpm2_evictcontrol -C o -c ecdsa.ctx 0x81010002
-
-rm -f primary.ctx ecdsa.pub ecdsa.priv ecdsa.ctx
-
-usermod -aG tss feralfile
-mkdir -p /etc/udev/rules.d
-echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
-EOF
-else
 arch-chroot /mnt /bin/bash <<'EOF'
 echo "Removing soaktest account..."
 id soaktest &>/dev/null && userdel soaktest || true
@@ -395,7 +281,6 @@ usermod -aG tss feralfile
 mkdir -p /etc/udev/rules.d
 echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
 EOF
-fi
 
 echo "Backing up boot files to root filesystem..."
 mkdir -p /mnt/var/lib/factory_reset_boot
