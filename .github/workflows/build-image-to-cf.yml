@@ -259,11 +259,10 @@ jobs:
           echo "Feral File pacman key added successfully."
 
       - name: Update start-kiosk.sh
+        if: ${{ inputs.dev_iso }}
         run: |
-          if [ ${{ inputs.dev_iso }} ]; then
-            sed -i 's/--kiosk//' \
-              /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
-          fi
+          sed -i 's/--kiosk//' \
+            /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
 
       - name: Add development tools to packages list
         if: ${{ inputs.dev_iso }}
