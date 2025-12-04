@@ -31,11 +31,6 @@ on:
         required: true
         type: string
         default: 'develop'
-      qemu:
-        description: 'Building for QEMU'
-        required: false
-        type: string
-        default: 'false'
     secrets:
       CLOUDFLARE_ACCOUNT_ID:
         required: true
@@ -120,9 +115,6 @@ jobs:
           TARBALL="${COMP}_${VER}.tar.gz"
 
           PROFILE=release
-          if [ "${{ inputs.qemu }}" = "true" ]; then
-            PROFILE=qemu
-          fi
 
           mkdir -p /tmp
 

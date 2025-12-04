@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
+
 run_hook() {
   mkdir -p /run
   LOG="/run/btrfs-rollback.log"
   local mode="" 
+
   for param in $(cat /proc/cmdline); do
     case "$param" in
       rollback=factory) mode="factory" ;;
-      rollback=ota)     mode="ota"     ;;
     esac
   done
 
-  # If no rollback request, just return
   if [[ -z "$mode" ]]; then
     return 0
   fi
@@ -24,6 +24,7 @@ run_hook() {
       root_partuuid=*) root_partuuid="${param#root_partuuid=}" ;;
     esac
   done
+
   if [[ -z "$root_partuuid" ]]; then
     echo "[btrfs-rollback] ERROR: root_partuuid not provided" >> $LOG
     return 1
@@ -41,13 +42,7 @@ run_hook() {
     return 1
   fi
 
-  local source_snap=""
-  if [[ "$mode" == "factory" ]]; then
-    source_snap="@snapshots/@factory_reset"
-  else
-    source_snap="@snapshots/@ota_prev"
-  fi
-  local target_at="@"
+  local source_snap="@snapshots/@factory_reset"
 
   if [[ ! -d "/run/rollback/$source_snap" ]]; then
     echo "[btrfs-rollback] ERROR: source snapshot not found: /run/rollback/$source_snap" >> $LOG
@@ -57,6 +52,7 @@ run_hook() {
 
   local tmp_id
   tmp_id=$(btrfs subvolume list /run/rollback | awk -v s="$source_snap" '$NF==s { print $2 }')
+  
   if [[ -z "$tmp_id" ]]; then
     echo "[btrfs-rollback] ERROR: Cannot find ID for $source_snap" >> $LOG
     umount /run/rollback
@@ -97,10 +93,49 @@ run_hook() {
     umount /run/rollback
     return 1
   fi
-  echo "[btrfs-rollback] Default subvol set to @ (ID $new_id)" >> $LOG
+  echo "[btrfs-rollback] RootFS rollback successful. Default subvol set to @ (ID $new_id)" >> $LOG
+
+  echo "[btrfs-rollback] Starting Boot Partition Recovery..." >> $LOG
+
+  local boot_uuid
+  boot_uuid=$(awk '$2 == "/boot" {print $1}' "/run/rollback/@/etc/fstab" | sed 's/UUID=//;s/"//g')
+
+  if [[ -n "$boot_uuid" ]]; then
+      local boot_dev="/dev/disk/by-uuid/$boot_uuid"
+      mkdir -p /run/rollback_boot
+      if mount "$boot_dev" /run/rollback_boot; then
+          local backup_path="/run/rollback/@/var/lib/factory_reset_boot"
+
+          if [[ -d "$backup_path" ]]; then
+              echo "[btrfs-rollback] Restoring kernel files from $backup_path..." >> $LOG
+              
+              rsync -a --delete --quiet "$backup_path/" "/run/rollback_boot/"
+                  
+              if [[ $? -eq 0 ]]; then
+                  echo "[btrfs-rollback] Boot files synced successfully via rsync." >> $LOG
+              else
+                  echo "[btrfs-rollback] ERROR: rsync failed with exit code $?" >> $LOG
+                  umount /run/rollback_boot
+                  umount /run/rollback
+                  return 1
+              fi
+          else
+              echo "[btrfs-rollback] WARNING: Backup directory $backup_path not found! Kernel mismatch likely." >> $LOG
+          fi
+          umount /run/rollback_boot
+      else
+          echo "[btrfs-rollback] ERROR: Failed to mount boot device $boot_dev" >> $LOG
+      fi
+  else
+      echo "[btrfs-rollback] ERROR: Could not determine /boot UUID from fstab" >> $LOG
+  fi
 
   sync
-  
-  echo "[btrfs-rollback] Booting into new @"  >> $LOG
   umount /run/rollback
+  
+  echo "[btrfs-rollback] Rollback complete." >> $LOG
+  echo "[btrfs-rollback] REBOOTING SYSTEM to load restored kernel..." >> $LOG
+  
+  reboot -f
+  exit 0
 }

@@ -37,7 +37,16 @@ trap cleanup EXIT
 echo "=== Feral File Arch Installer ==="
 echo
 
-TARGET_DISK='/dev/mmcblk0'
+if [ -e /dev/nvme0n1 ]; then
+  TARGET_DISK='/dev/nvme0n1'
+  echo "Detected NVMe drive, installing to $TARGET_DISK"
+elif [ -e /dev/mmcblk0 ]; then
+  TARGET_DISK='/dev/mmcblk0'
+  echo "Detected eMMC drive, installing to $TARGET_DISK"
+else
+  echo "Error: No suitable installation disk found (checked /dev/nvme0n1 and /dev/mmcblk0)."
+  exit 1
+fi
 
 # ─── Partition and format ──────────────────────────────────────────────
 echo
@@ -189,7 +198,7 @@ echo "Removing soaktest account..."
 id soaktest &>/dev/null && userdel soaktest || true
 
 echo "Overwriting mkinitcpio.conf HOOKS..."
-sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs-rollback btrfs filesystems fsck)/' /etc/mkinitcpio.conf
+sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs btrfs-rollback filesystems fsck)/' /etc/mkinitcpio.conf
 
 echo "Generating initramfs..."
 mkinitcpio -P
@@ -254,6 +263,10 @@ usermod -aG tss feralfile
 mkdir -p /etc/udev/rules.d
 echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
 EOF
+
+echo "Backing up boot files to root filesystem..."
+mkdir -p /mnt/var/lib/factory_reset_boot
+rsync -a /mnt/boot/ /mnt/var/lib/factory_reset_boot/
 
 # ─── Create Factory Reset Snapshot ─────────────────────────────────────
 echo

@@ -23,17 +23,6 @@ on:
         options:
           - Development
           - Production
-      iso_type:
-        description: "ISO type to build"
-        required: true
-        default: "Normal (emmc)"
-        type: choice
-        options:
-          - Normal (emmc)
-          - Normal (full)
-          - Development (emmc)
-          - Development (full)
-          - QEMU
       pacman_snapshot:
         description: "Pacman repository snapshot to use"
         required: false
@@ -52,6 +41,11 @@ on:
         required: true
         type: string
         default: 'develop'
+      dev_iso:
+        description: "Build development ISO"
+        required: true
+        default: false
+        type: boolean
       enable_local_hub:
         description: "Enable local hub for communication"
         required: false
@@ -116,7 +110,6 @@ jobs:
       maintainer: 'Feral File'
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
-      qemu: ${{ inputs.iso_type == 'QEMU' && 'true' || 'false' }}
 
   build-feral-sys-monitord:
     needs: permission-check
@@ -133,25 +126,6 @@ jobs:
       component: feral-sys-monitord
       version: ${{ inputs.version || github.event.inputs.version }}
       description: 'Feral File System Monitord'
-      maintainer: 'Feral File'
-      environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
-      ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
-
-  build-feral-app-monitord:
-    needs: permission-check
-    name: Build Feral App Monitord
-    uses: ./.github/workflows/build-components.yaml
-    secrets:
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
-      CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
-      REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
-      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
-      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
-    with:
-      component: feral-app-monitord
-      version: ${{ inputs.version || github.event.inputs.version }}
-      description: 'Feral File App Monitord'
       maintainer: 'Feral File'
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
@@ -177,7 +151,7 @@ jobs:
 
   build-feralfile-pacman-repo:
     name: Build Feralfile pacman repo
-    needs: [permission-check, build-feral-controld, build-feral-setupd, build-feral-sys-monitord, build-feral-app-monitord, build-feral-watchdog]
+    needs: [permission-check, build-feral-controld, build-feral-setupd, build-feral-sys-monitord, build-feral-watchdog]
     uses: ./.github/workflows/pacman-repo.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -233,6 +207,14 @@ jobs:
           pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
             git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli
 
+      - name: Apply version-specific patches
+        run: |
+          if [ "${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}" = "2025/05/31" ]; then
+            echo "Applying patches for 2025/05/31 snapshot..."
+            sed -i "s/bootmodes=('uefi.systemd-boot')/bootmodes=('uefi-x64.systemd-boot.esp' 'uefi-x64.systemd-boot.eltorito')/" archiso-ff1/profiledef.sh
+            sed -i 's/wlroots0.18/wlroots/' archiso-ff1/packages.x86_64
+          fi
+
       - name: Copy archiso profile and setup home directories
         run: |
           mkdir -p /build
@@ -276,43 +258,14 @@ jobs:
 
           echo "Feral File pacman key added successfully."
 
-      - name: Update emmc EFI boot option
-        if: ${{ inputs.iso_type == 'Normal (emmc)' || inputs.iso_type == 'Development (emmc)' }}
-        run: |
-          cat >> /build/archiso-ff1/efiboot/loader/loader.conf << EOF
-          default archiso-x86_64-linux-emmc-installation.conf
-          timeout 0
-          EOF
-
-      - name: Update QEMU EFI boot option
-        if: ${{ inputs.iso_type == 'QEMU' }}
-        run: |
-          cat >> /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-qemu.conf << EOF
-          title   Install FF1 OS to QEMU
-          linux   /%INSTALL_DIR%/boot/x86_64/vmlinuz-linux
-          initrd  /%INSTALL_DIR%/boot/x86_64/initramfs-linux.img
-          initrd  /%INSTALL_DIR%/boot/intel-ucode.img
-          options archisobasedir=%INSTALL_DIR% archisodevice=UUID=%ARCHISO_UUID% cow_spacesize=512M script=/root/scripts/install-to-qemu.sh
-          EOF
-          cat >> /build/archiso-ff1/efiboot/loader/loader.conf << EOF
-          default archiso-x86_64-linux-qemu.conf
-          timeout 15
-          EOF
-          rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-emmc-installation.conf
-          rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-installation.conf
-
       - name: Update start-kiosk.sh
+        if: ${{ inputs.dev_iso }}
         run: |
-          if [ "${{ inputs.iso_type }}" = "QEMU" ]; then
-            sed -i 's/wlr-randr --output HDMI-A-1 --transform $ROTATION &&//' \
-              /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
-          elif [ "${{ inputs.iso_type }}" = "Development (full)" ] || [ "${{ inputs.iso_type }}" = "Development (emmc)" ]; then
-            sed -i 's/--kiosk//' \
-              /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
-          fi
+          sed -i 's/--kiosk//' \
+            /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
 
       - name: Add development tools to packages list
-        if: ${{ inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)' }}
+        if: ${{ inputs.dev_iso }}
         run: |
           # Add Go and Rust to packages list
           cat >> /build/archiso-ff1/packages.x86_64 << EOF
@@ -327,7 +280,7 @@ jobs:
           sed -i 's/#NoConfirm/NoConfirm/' /etc/pacman.conf 2>/dev/null || echo "NoConfirm" >> /etc/pacman.conf
 
       - name: Setup source directory and copy components
-        if: ${{ inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)' }}
+        if: ${{ inputs.dev_iso }}
         run: |
           # Create source directory
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/src
@@ -416,21 +369,6 @@ jobs:
           EOF
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json
 
-          # Add app-monitord config
-          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/app-monitord.json << EOF
-          {
-            "sentry": {
-                "dsn": "${{ secrets.SENTRY_DSN_APP_MONITORD }}",
-                "debug": "false",
-                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
-                "release": "${{ inputs.version || github.event.inputs.version }}",
-                "repository": "${{ github.repository }}"
-            }
-          }
-          EOF
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/app-monitord.json
-
           # Add sys-monitord config
           cat > /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json << EOF
           {
@@ -492,7 +430,7 @@ jobs:
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
           ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
           if [ -f "$ISO_FILE" ]; then
-            IMAGE_TYPE="${{ (inputs.iso_type == 'Development (full)' || inputs.iso_type == 'Development (emmc)') && 'dev-' || inputs.iso_type == 'QEMU' && 'qemu-' || '' }}"
+            IMAGE_TYPE="${{ inputs.dev_iso && 'dev-' || '' }}"
             if [ "${{ github.ref_name }}" = "release" ]; then
               IMAGE_TAG="-release"
             elif [ "${{ github.ref_name }}" = "demo" ]; then
