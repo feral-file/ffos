@@ -55,7 +55,7 @@ on:
         description: "Update minimum runtime version (min_runtime_version)"
         required: true
         type: boolean
-        default: false
+        default: true
       update_required_version:
         description: "Update minimum upgradeable version (min_upgradeable_version)"
         required: true
