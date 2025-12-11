@@ -346,6 +346,10 @@ jobs:
                 "release": "${{ inputs.version || github.event.inputs.version }}",
                 "repository": "${{ github.repository }}"
             },
+            "openpanel": {
+              "clientId": "${{ secrets.OPENPANEL_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.OPENPANEL_SECRET }}"
+            },
             "enableHub": ${{ inputs.enable_local_hub || github.event.inputs.enable_local_hub }}
           }
           EOF
