@@ -347,8 +347,8 @@ jobs:
                 "repository": "${{ github.repository }}"
             },
             "openpanel": {
-              "clientId": "${{ secrets.OPENPANEL_CLIENT_ID }}",
-              "clientSecret": "${{ secrets.OPENPANEL_SECRET }}"
+              "clientId": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_ID || secrets.OPENPANEL_CLIENT_ID_TEST }}",
+              "clientSecret": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_SECRET || secrets.OPENPANEL_CLIENT_SECRET_TEST }}"
             },
             "enableHub": ${{ inputs.enable_local_hub || github.event.inputs.enable_local_hub }}
           }
