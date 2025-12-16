@@ -221,7 +221,7 @@ DEVICE_ID_PREFIX="FF1-"
 MD5_LENGTH=8
 
 # Get MAC address or fallback
-MAC_ADDRESS=$(ip link | grep -o -E 'link/ether ([0-9a-fA-F:]{17})' | head -n1 | awk '{print $2}')
+MAC_ADDRESS=$(ip link | grep -o -E 'link/ether ([0-9a-fA-F:]{17})' | awk '{print $2}' | sort | head -n1)
 if [ -z "$MAC_ADDRESS" ]; then
     echo "Warning: No MAC address found. Using default hostname."
 else
