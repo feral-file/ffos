@@ -179,7 +179,7 @@ log_progress "85" "Installing update to new snapshot..."
 # --- Step 6: Rsync selective update to NEW snapshot ---------------------------
 log_info "Syncing filesystem into '@snapshots/@ota_new' snapshot..."
 rsync -aAX --delete --info=progress2 \
-  --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed","/home/feralfile/.config/chromium","/home/feralfile/.logs/*","/home/feralfile/.state/*"} \
+  --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed","/home/feralfile/.config/chromium","/home/feralfile/.logs","/home/feralfile/.state"} \
   "$SFS_MOUNT"/ "$NEW_ROOT"/
 
 # Clean up unwanted files in new snapshot
@@ -293,4 +293,5 @@ trap - EXIT
 
 log_progress "100" "Update complete! Restarting device..."
 log_info "OTA update complete. System will boot from @snapshots/@ota_new. Rebooting now..."
-systemctl reboot --no-wall --no-block
+sync
+systemctl reboot

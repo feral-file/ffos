@@ -21,7 +21,9 @@ else
 fi
 
 if [[ "${FLOCK_ACTIVE:-}" != "1" ]]; then
-  if ! /usr/bin/flock -n /run/feral-updater.lock bash -c 'exec env FLOCK_ACTIVE=1 "$0" "$@"' "$0" "$@"; then
+  if /usr/bin/flock -n /run/feral-updater.lock bash -c 'exec env FLOCK_ACTIVE=1 "$0" "$@"' "$0" "$@"; then
+    exit 0  # Child process completed successfully, parent exits
+  else
     log_error "Exception: either Lock already held by another instance or some error happened."
     exit 0
   fi
