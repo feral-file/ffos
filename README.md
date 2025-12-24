@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-FFOS is the centralized build repository responsible for creating FF1 OS images for Radxa X4 devices. It orchestrates the entire build process by coordinating with the ffos-user repository for components and user data.
+FFOS is the centralized build repository responsible for creating FFOS images. It orchestrates the entire build process by coordinating with the ffos-user repository for components and user data.
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
