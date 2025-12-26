@@ -1,4 +1,4 @@
-name: ▶️ Pure Build FF1 Image for Radxa X4
+name: ▶️ Pure Build FFOS Image
 
 on:
   workflow_dispatch:
@@ -68,7 +68,7 @@ jobs:
 
   build-image:
     needs: permission-check
-    name: Generate FF1 OS iso for Radxa X4
+    name: Generate FFOS iso
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
 

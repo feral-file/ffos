@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034
 
 iso_name="FF1"
-iso_label="ARCH_RADXA_X4"
+iso_label="ARCH_FFOS"
 iso_publisher="Feral File <https://feralfile.com>"
 iso_application="Feral File Launcher"
 iso_version="$(date +%Y.%m.%d)"
