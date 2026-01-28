@@ -28,6 +28,7 @@ tpm2-tools
 mesa
 intel-media-driver
 vulkan-radeon
+ethtool
 
 # Boot support
 intel-ucode

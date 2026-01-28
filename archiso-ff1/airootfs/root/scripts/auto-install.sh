@@ -220,8 +220,32 @@ echo "Setting up hostname..."
 DEVICE_ID_PREFIX="FF1-"
 MD5_LENGTH=8
 
-# Get MAC address or fallback
-MAC_ADDRESS=$(ip link | grep -o -E 'link/ether ([0-9a-fA-F:]{17})' | awk '{print $2}' | sort | head -n1)
+# Get permanent MAC address with priority: ethernet > wifi > mobile
+get_permanent_mac() {
+    local device="$1"
+    local mac
+    # Get permanent MAC from ethtool only
+    mac=$(ethtool -P "$device" 2>/dev/null | awk '/Permanent address:/ {print $NF}')
+    if [ -n "$mac" ] && [ "$mac" != "00:00:00:00:00:00" ]; then
+        echo "$mac"
+    fi
+}
+
+MAC_ADDRESS=""
+# Check for ethernet devices first (sorted alphabetically for consistent ordering)
+for dev in $(nmcli -t -f DEVICE,TYPE device 2>/dev/null | grep ':ethernet$' | cut -d: -f1 | sort); do
+    MAC_ADDRESS=$(get_permanent_mac "$dev")
+    [ -n "$MAC_ADDRESS" ] && [ "$MAC_ADDRESS" != "00:00:00:00:00:00" ] && break
+    MAC_ADDRESS=""
+done
+# If no ethernet, try WiFi (sorted alphabetically for consistent ordering)
+if [ -z "$MAC_ADDRESS" ]; then
+    for dev in $(nmcli -t -f DEVICE,TYPE device 2>/dev/null | grep ':wifi$' | cut -d: -f1 | sort); do
+        MAC_ADDRESS=$(get_permanent_mac "$dev")
+        [ -n "$MAC_ADDRESS" ] && [ "$MAC_ADDRESS" != "00:00:00:00:00:00" ] && break
+        MAC_ADDRESS=""
+    done
+fi
 if [ -z "$MAC_ADDRESS" ]; then
     echo "Warning: No MAC address found. Using default hostname."
 else
