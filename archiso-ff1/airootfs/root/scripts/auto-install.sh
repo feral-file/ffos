@@ -224,9 +224,11 @@ MD5_LENGTH=8
 get_permanent_mac() {
     local device="$1"
     local mac
+    local mac_regex='^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$'
     # Get permanent MAC from ethtool only
     mac=$(ethtool -P "$device" 2>/dev/null | awk '/Permanent address:/ {print $NF}')
-    if [ -n "$mac" ] && [ "$mac" != "00:00:00:00:00:00" ]; then
+    # Validate MAC format and ensure it's not all zeros
+    if [[ "$mac" =~ $mac_regex ]] && [ "$mac" != "00:00:00:00:00:00" ]; then
         echo "$mac"
     fi
 }
