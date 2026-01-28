@@ -5,5 +5,5 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=/root/scripts/feral-updater.sh %i
-StandardOutput=append:/var/log/auto-updaterd.log
-StandardError=append:/var/log/auto-updaterd.log
+StandardOutput=append:/var/log/updaterd.log
+StandardError=append:/var/log/updaterd.log
