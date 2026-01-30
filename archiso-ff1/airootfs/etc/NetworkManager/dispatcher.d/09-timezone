@@ -51,6 +51,7 @@ query_service() {
 }
 
 get_timezone_first() {
+    local url filter tz
     while IFS='|' read -r url filter; do
         [[ -z "$url" || "$url" == \#* ]] && continue
         
