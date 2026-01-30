@@ -5,12 +5,11 @@
 # Make executable with: chmod +x /etc/NetworkManager/dispatcher.d/99-timezone-sync
 
 TIMEOUT=5
-TOTAL_TIMEOUT=10
 
 # Service definitions: URL|JQ_FILTER
 # This list is ordered by priority
 SERVICES='
-https://ipapi.co/json/|timezone
+https://ipapi.co/json/|.timezone
 https://ipinfo.io/json|.timezone
 https://geoip.chrisdown.name/|.location.time_zone
 https://worldtimeapi.org/api/ip/|.timezone
@@ -19,33 +18,34 @@ https://reallyfreegeoip.org/json/|.time_zone
 https://api.ipbase.com/v1/json/|.time_zone
 '
 
-# Check if jq is available
-HAS_JQ=$(command -v jq >/dev/null 2>&1 && echo 1 || echo 0)
-
 # Extract timezone from JSON
 extract_tz() {
     local json="$1"
     local filter="$2"
     
-    if [ "$HAS_JQ" = "1" ]; then
-        echo "$json" | jq -r "$filter" 2>/dev/null | grep -v "^null$"
-    else
-        # Fallback: simple regex extraction
-        local key=$(echo "$filter" | sed 's/^\.//; s/\..*//') 
-        echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | \
-            head -1 | sed 's/.*"\([^"]*\)"$/\1/'
+    echo "$json" | jq -r "$filter" 2>/dev/null | grep -v "^null$"
+}
+
+validate_timezone() {
+    local tz="$1"
+    if timedatectl list-timezones 2>/dev/null | grep -qx "$tz"; then
+        return 0
     fi
+    return 1
 }
 
 # Query single service
 query_service() {
     local url="$1"
     local filter="$2"
+    local response
+    local tz
+    
     response=$(curl -sf --max-time "$TIMEOUT" "$url" 2>/dev/null)
     if [ $? -eq 0 ] && [ -n "$response" ]; then
         tz=$(extract_tz "$response" "$filter")
         # Validate timezone format
-        if [ -n "$tz" ] && echo "$tz" | grep -qE '^[A-Za-z_]+/[A-Za-z_]+$|^UTC$'; then
+        if [ -n "$tz" ] && validate_timezone "$tz"; then
             echo "$tz"
             return 0
         fi
@@ -55,14 +55,17 @@ query_service() {
 
 # Get timezone (first successful response)
 get_timezone_first() {
-    echo "$SERVICES" | while IFS='|' read -r url filter; do
+    while IFS='|' read -r url filter; do
         [ -z "$url" ] && continue
+        
+        logger -t "nm-timezone" "Trying service: $url"
         tz=$(query_service "$url" "$filter")
+        
         if [ -n "$tz" ]; then
             echo "$tz"
             return 0
         fi
-    done
+    done <<< "$SERVICES"
     return 1
 }
 
