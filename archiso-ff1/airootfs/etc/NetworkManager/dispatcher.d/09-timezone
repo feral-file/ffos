@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # NetworkManager dispatcher script for automatic timezone synchronization
-# Place this in /etc/NetworkManager/dispatcher.d/
-# Make executable with: chmod +x /etc/NetworkManager/dispatcher.d/99-timezone-sync
+# Path: /etc/NetworkManager/dispatcher.d/99-timezone-sync
+# Permissions: chmod +x /etc/NetworkManager/dispatcher.d/99-timezone-sync
+# Dependencies: curl, jq
 
 TIMEOUT=5
+MAX_RETRIES=3
 
 # Service definitions: URL|JQ_FILTER
-# This list is ordered by priority
 SERVICES='
 https://ipapi.co/json/|.timezone
 https://ipinfo.io/json|.timezone
@@ -18,11 +19,9 @@ https://reallyfreegeoip.org/json/|.time_zone
 https://api.ipbase.com/v1/json/|.time_zone
 '
 
-# Extract timezone from JSON
 extract_tz() {
     local json="$1"
     local filter="$2"
-    
     echo "$json" | jq -r "$filter" 2>/dev/null | grep -v "^null$"
 }
 
@@ -34,7 +33,6 @@ validate_timezone() {
     return 1
 }
 
-# Query single service
 query_service() {
     local url="$1"
     local filter="$2"
@@ -44,7 +42,6 @@ query_service() {
     response=$(curl -sf --max-time "$TIMEOUT" "$url" 2>/dev/null)
     if [ $? -eq 0 ] && [ -n "$response" ]; then
         tz=$(extract_tz "$response" "$filter")
-        # Validate timezone format
         if [ -n "$tz" ] && validate_timezone "$tz"; then
             echo "$tz"
             return 0
@@ -53,12 +50,11 @@ query_service() {
     return 1
 }
 
-# Get timezone (first successful response)
 get_timezone_first() {
     while IFS='|' read -r url filter; do
-        [ -z "$url" ] && continue
+        [[ -z "$url" || "$url" == \#* ]] && continue
         
-        logger -t "nm-timezone" "Trying service: $url"
+        logger -t "nm-timezone" "Querying: $url"
         tz=$(query_service "$url" "$filter")
         
         if [ -n "$tz" ]; then
@@ -69,17 +65,40 @@ get_timezone_first() {
     return 1
 }
 
-# Main dispatcher logic
+wait_for_dns() {
+    local retries=0
+    while [ $retries -lt $MAX_RETRIES ]; do
+        if curl -I "https://www.google.com" --max-time 2 >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 2
+        ((retries++))
+    done
+    return 1
+}
+
+# Main Logic
 case "$2" in
     up)
+        if ! wait_for_dns; then
+            logger -t "nm-timezone" "Network not ready after retries. Giving up."
+            exit 0
+        fi
+
         timezone=$(get_timezone_first)
         
-        # Set timezone if valid
         if [ -n "$timezone" ]; then
-            logger -t "nm-timezone" "Setting timezone to: $timezone"
-            timedatectl set-timezone "$timezone" 2>&1 | logger -t "nm-timezone"
+            current_tz=$(timedatectl show --property=Timezone --value 2>/dev/null)
+            if [ "$timezone" != "$current_tz" ]; then
+                logger -t "nm-timezone" "Changing timezone from '$current_tz' to '$timezone'"
+                if timedatectl set-timezone "$timezone" 2>&1 | logger -t "nm-timezone"; then
+                    logger -t "nm-timezone" "Timezone successfully updated."
+                fi
+            else
+                logger -t "nm-timezone" "Timezone is already correct ($timezone). No change needed."
+            fi
         else
-            logger -t "nm-timezone" "Failed to determine timezone"
+            logger -t "nm-timezone" "Failed to fetch valid timezone from all services."
             exit 1
         fi
         ;;
