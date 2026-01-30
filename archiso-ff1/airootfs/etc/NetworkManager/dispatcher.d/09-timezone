@@ -1,6 +1,130 @@
-#!/bin/sh
+#!/bin/bash
+
+# NetworkManager dispatcher script for automatic timezone synchronization
+# Place this in /etc/NetworkManager/dispatcher.d/
+# Make executable with: chmod +x /etc/NetworkManager/dispatcher.d/99-timezone-sync
+
+TIMEOUT=5
+TOTAL_TIMEOUT=10
+
+# Service definitions: URL|JQ_FILTER
+SERVICES='
+https://ipapi.co/json/|.timezone
+https://geoip.chrisdown.name/|.location.time_zone
+https://worldtimeapi.org/api/ip/|.timezone
+https://ipwho.is/|.timezone.id
+https://ipinfo.io/json|.timezone
+https://reallyfreegeoip.org/json/|.time_zone
+https://api.ipbase.com/v1/json/|.time_zone
+'
+
+# Check if jq is available
+HAS_JQ=$(command -v jq >/dev/null 2>&1 && echo 1 || echo 0)
+
+# Extract timezone from JSON
+extract_tz() {
+    local json="$1"
+    local filter="$2"
+    
+    if [ "$HAS_JQ" = "1" ]; then
+        echo "$json" | jq -r "$filter" 2>/dev/null | grep -v "^null$"
+    else
+        # Fallback: simple regex extraction
+        local key=$(echo "$filter" | sed 's/^\.//; s/\..*//') 
+        echo "$json" | grep -o "\"$key\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | \
+            head -1 | sed 's/.*"\([^"]*\)"$/\1/'
+    fi
+}
+
+# Query single service
+query_service() {
+    local url="$1"
+    local filter="$2"
+    
+    response=$(curl -sf --max-time "$TIMEOUT" "$url" 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$response" ]; then
+        tz=$(extract_tz "$response" "$filter")
+        # Validate timezone format
+        if [ -n "$tz" ] && echo "$tz" | grep -qE '^[A-Za-z_]+/[A-Za-z_]+$|^UTC$'; then
+            echo "$tz"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Get timezone with consensus (parallel requests)
+get_timezone_consensus() {
+    local tmp_dir="/tmp/tz-$$"
+    mkdir -p "$tmp_dir"
+    
+    # Launch all queries in parallel
+    local idx=0
+    echo "$SERVICES" | while IFS='|' read -r url filter; do
+        [ -z "$url" ] && continue
+        (
+            tz=$(query_service "$url" "$filter")
+            [ -n "$tz" ] && echo "$tz" > "$tmp_dir/result_$idx"
+        ) &
+        idx=$((idx + 1))
+    done
+    
+    # Wait for results or timeout
+    local waited=0
+    while [ $waited -lt $TOTAL_TIMEOUT ] && [ $(jobs -r | wc -l) -gt 0 ]; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+    
+    # Kill remaining jobs
+    jobs -p | xargs -r kill 2>/dev/null
+    wait 2>/dev/null
+    
+    # Tally results
+    if [ -d "$tmp_dir" ] && [ "$(ls -A "$tmp_dir" 2>/dev/null)" ]; then
+        # Get most common timezone
+        result=$(cat "$tmp_dir"/result_* 2>/dev/null | sort | uniq -c | sort -rn | head -1 | awk '{print $2}')
+        rm -rf "$tmp_dir"
+        
+        if [ -n "$result" ]; then
+            echo "$result"
+            return 0
+        fi
+    fi
+    
+    rm -rf "$tmp_dir"
+    return 1
+}
+
+# Get timezone (first successful response)
+get_timezone_first() {
+    echo "$SERVICES" | while IFS='|' read -r url filter; do
+        [ -z "$url" ] && continue
+        tz=$(query_service "$url" "$filter")
+        if [ -n "$tz" ]; then
+            echo "$tz"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Main dispatcher logic
 case "$2" in
     up)
-        timedatectl set-timezone "$(curl --fail https://ipapi.co/timezone)"
-    ;;
+        # Use consensus method (more reliable)
+        timezone=$(get_timezone_consensus)
+        
+        # Fallback to first method
+        [ -z "$timezone" ] && timezone=$(get_timezone_first)
+        
+        # Set timezone if valid
+        if [ -n "$timezone" ]; then
+            logger -t "nm-timezone" "Setting timezone to: $timezone"
+            timedatectl set-timezone "$timezone" 2>&1 | logger -t "nm-timezone"
+        else
+            logger -t "nm-timezone" "Failed to determine timezone"
+            exit 1
+        fi
+        ;;
 esac
