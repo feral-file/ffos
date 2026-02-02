@@ -81,6 +81,12 @@ get_timezone_first() {
 # Main Logic
 case "$2" in
     up)
+        # Check if manual override flag exists
+        if [ -f /etc/timezone-manual-override ]; then
+            logger -t "nm-timezone" "Manual override flag detected (/etc/timezone-manual-override). Skipping auto-sync."
+            exit 0
+        fi
+        
         timezone=$(get_timezone_first)
         
         if [ -n "$timezone" ]; then
