@@ -51,41 +51,36 @@ query_service() {
 }
 
 get_timezone_first() {
-    local url filter tz
-    while IFS='|' read -r url filter; do
-        [[ -z "$url" || "$url" == \#* ]] && continue
-        
-        logger -t "nm-timezone" "Querying: $url"
-        tz=$(query_service "$url" "$filter")
-        
-        if [ -n "$tz" ]; then
-            echo "$tz"
-            return 0
-        fi
-    done <<< "$SERVICES"
-    return 1
-}
+    local attempt=0
 
-wait_for_dns() {
-    local retries=0
-    while [ $retries -lt $MAX_RETRIES ]; do
-        if curl -I "https://www.google.com" --max-time 2 >/dev/null 2>&1; then
-            return 0
+    while [ $attempt -lt $MAX_RETRIES ]; do
+        local url filter tz
+        while IFS='|' read -r url filter; do
+            [[ -z "$url" || "$url" == \#* ]] && continue
+            
+            logger -t "nm-timezone" "Querying: $url (attempt $((attempt + 1))/$MAX_RETRIES)"
+            tz=$(query_service "$url" "$filter")
+            
+            if [ -n "$tz" ]; then
+                echo "$tz"
+                return 0
+            fi
+        done <<< "$SERVICES"
+        
+        ((attempt++))
+        if [ $attempt -lt $MAX_RETRIES ]; then
+            logger -t "nm-timezone" "All services failed, retrying in 2 seconds..."
+            sleep 2
         fi
-        sleep 2
-        ((retries++))
     done
+    
+    logger -t "nm-timezone" "Failed to fetch valid timezone after $MAX_RETRIES attempts"
     return 1
 }
 
 # Main Logic
 case "$2" in
     up)
-        if ! wait_for_dns; then
-            logger -t "nm-timezone" "Network not ready after retries. Giving up."
-            exit 0
-        fi
-
         timezone=$(get_timezone_first)
         
         if [ -n "$timezone" ]; then
