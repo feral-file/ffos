@@ -58,6 +58,7 @@ bluez
 bluez-utils
 pulseaudio
 pulseaudio-bluetooth
+pamixer
 
 # Debug / Monitoring
 intel-gpu-tools

@@ -18,6 +18,7 @@ file_permissions=(
   ["/etc/gshadow"]="0:0:400"
   ["/etc/initcpio/hooks/btrfs-rollback"]="0:0:750"
   ["/etc/initcpio/install/btrfs-rollback"]="0:0:750"
+  ["/etc/NetworkManager/dispatcher.d/09-timezone"]="0:0:755"
   ["/root"]="0:0:750"
   ["/root/.automated_script.sh"]="0:0:755"
   ["/root/scripts/install-to-disk.sh"]="0:0:755"
