@@ -46,11 +46,6 @@ cleanup() {
     kill "$PROGRESS_PID" 2>/dev/null || true
   fi
 
-  # Clean up boot staging directory if it exists (must be before unmounting NEW_ROOT)
-  if [[ -n "$BOOT_STAGING" && -d "$BOOT_STAGING" ]]; then
-    rm -rf "$BOOT_STAGING" 2>/dev/null || true
-  fi
-  
   sync
   sleep 2
   umount -Rl "$NEW_ROOT" 2>/dev/null || true
@@ -62,7 +57,7 @@ cleanup() {
 }
 trap cleanup EXIT
  
-log_info "=== OTA Update: Snapshot-based Update with Btrfs Default Switching ==="
+log_info "=== OTA Update: Snapshot-based Update with Boot Counting ==="
  
 # --- Step 1: Load local config ------------------------------------------------
 log_progress "0" "Getting device information..."
@@ -237,26 +232,34 @@ fi
 
 umount "$NEW_ROOT/boot"
 
-# --- Step 9: Atomically deploy boot files and set new default -----------------
+# --- Step 9: Stage candidate boot files and create boot entry -----------------
+# NOTE: We do NOT overwrite /boot or change the btrfs default here.
+# The current @ and its kernel remain as automatic fallback via arch.conf.
+# Boot counting in systemd-boot gives the candidate 3 attempts before fallback.
 log_progress "98" "Finalizing update..."
-log_info "Getting @snapshots/@ota_new subvolume ID..."
-NEW_SUBVOL_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@snapshots/@ota_new" {print $2}')
 
-if [[ -z "$NEW_SUBVOL_ID" ]]; then
-  log_error "Failed to get @snapshots/@ota_new subvolume ID"
-  umount -R "$NEW_ROOT"
-  umount "$BTRFS_TOP"
-  exit 1
-fi
-
-# Deploy staged boot files to real /boot partition (atomic as possible)
-log_info "Deploying boot files to ESP..."
-rsync -a --delete "$BOOT_STAGING"/ /boot/
+# Deploy new kernel to /boot/candidate/ (side-by-side with current known-good kernel)
+log_info "Staging candidate boot files to /boot/candidate/..."
+mkdir -p /boot/candidate
+rsync -a "$BOOT_STAGING"/vmlinuz-linux /boot/candidate/
+rsync -a "$BOOT_STAGING"/initramfs-linux.img /boot/candidate/
+rsync -a "$BOOT_STAGING"/intel-ucode.img /boot/candidate/
 sync
 
-# Set new snapshot as default (must be after boot files are deployed)
-log_info "Setting @snapshots/@ota_new (ID: $NEW_SUBVOL_ID) as default subvolume..."
-btrfs subvolume set-default "$NEW_SUBVOL_ID" "$BTRFS_TOP"
+# Write candidate boot entry with boot counting (3 attempts before fallback to @)
+log_info "Creating candidate boot entry with boot counting..."
+PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
+
+cat > /boot/loader/entries/arch-candidate+3.conf <<EOF
+title   FF1 - Update Candidate
+linux   /candidate/vmlinuz-linux
+initrd  /candidate/initramfs-linux.img
+initrd  /candidate/intel-ucode.img
+options rootflags=subvol=@snapshots/@ota_new root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
+EOF
+
+chmod 644 /boot/loader/entries/arch-candidate+3.conf
+log_info "Candidate boot entry created. Btrfs default unchanged (@ remains fallback)."
 sync
 
 # --- Step 10: Clean up and reboot ---------------------------------------------
@@ -266,6 +269,6 @@ cleanup
 trap - EXIT
 
 log_progress "100" "Update complete! Restarting device..."
-log_info "OTA update complete. System will boot from @snapshots/@ota_new. Rebooting now..."
+log_info "OTA update complete. Candidate boot entry created for @snapshots/@ota_new. Rebooting now..."
 sync
 systemctl reboot

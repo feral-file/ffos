@@ -47,8 +47,6 @@ fi
 
 CONFIG_FILE="/home/feralfile/ff1-config.json"
 RELEASE_PK="/root/.ff1-release-public-key.pem"
-STATE_DIR="/var/lib/recovery_update"
-CANDIDATE_JSON="$STATE_DIR/candidate.json"
 
 # Load config
 if [[ ! -f "$CONFIG_FILE" ]]; then
@@ -226,20 +224,6 @@ fi
 
 umount "$RECOVERY_ROOT/boot"
 
-# Create boot entry with counter
-log_info "Creating boot entry for recovery candidate..."
-PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
-
-cat > /boot/loader/entries/recovery_candidate+1.conf <<EOF
-title   FF1 - Recovery Candidate
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
-initrd  /intel-ucode.img
-options rootflags=subvol=@snapshots/@recovery_candidate root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
-EOF
-
-chmod 644 /boot/loader/entries/recovery_candidate+1.conf
-
 # Atomically replace @recovery_candidate with @recovery_candidate_new
 log_info "Replacing @recovery_candidate with @recovery_candidate_new..."
 
@@ -263,18 +247,6 @@ if [[ -d "$BTRFS_TOP/@snapshots/@recovery_candidate_old" ]]; then
   btrfs subvolume delete "$BTRFS_TOP/@snapshots/@recovery_candidate_old" || \
     log_error "Warning: Failed to delete old recovery candidate. It can be cleaned up manually."
 fi
-
-# Mark candidate as ready
-log_info "Marking recovery candidate as ready..."
-mkdir -p "$STATE_DIR"
-cat > "$CANDIDATE_JSON" <<EOF
-{
-  "version": "$RECOVERY_VERSION",
-  "ready": true,
-  "created_at": "$(date -Iseconds)",
-  "source_url": "$RECOVERY_URL"
-}
-EOF
 
 # Cleanup
 log_info "Cleaning up..."
