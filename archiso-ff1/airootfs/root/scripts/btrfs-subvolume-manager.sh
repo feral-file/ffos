@@ -130,6 +130,36 @@ elif [[ "$CURRENT_SUBVOL" == "/@snapshots/@factory_reset_new" ]]; then
     umount "$BTRFS_TOP"
     rmdir "$BTRFS_TOP"
     
+    # Step 4: Check if this was a recovery candidate promotion
+    PENDING_PROMOTION_FILE="/var/lib/recovery_update/pending_promotion"
+    CANDIDATE_JSON="/var/lib/recovery_update/candidate.json"
+    
+    if [[ -f "$PENDING_PROMOTION_FILE" ]]; then
+        log_msg "Recovery candidate boot successful! Promoting to factory_reset..."
+        
+        # Delete old @factory_reset
+        if [[ -d "$BTRFS_TOP/@snapshots/@factory_reset" ]]; then
+            log_msg "Deleting old @factory_reset snapshot..."
+            btrfs subvolume delete "$BTRFS_TOP/@snapshots/@factory_reset" || \
+                log_msg "Warning: Failed to delete old @factory_reset"
+        fi
+        
+        # Promote @recovery_candidate to @factory_reset (make it read-only)
+        if [[ -d "$BTRFS_TOP/@snapshots/@recovery_candidate" ]]; then
+            log_msg "Promoting @recovery_candidate to @factory_reset..."
+            btrfs property set -ts "$BTRFS_TOP/@snapshots/@recovery_candidate" ro true
+            mv "$BTRFS_TOP/@snapshots/@recovery_candidate" "$BTRFS_TOP/@snapshots/@factory_reset"
+            log_msg "@recovery_candidate promoted to @factory_reset successfully."
+        fi
+        
+        # Cleanup promotion markers and boot entries
+        rm -f "$PENDING_PROMOTION_FILE"
+        rm -f "$CANDIDATE_JSON"
+        rm -f /boot/loader/entries/recovery_candidate+*.conf
+        
+        log_msg "Recovery candidate promotion complete!"
+    fi
+    
     log_msg "Subvolume rotation complete! System should boot from @ on next reboot."
     systemctl reboot
 elif [[ "$CURRENT_SUBVOL" == "/@" ]]; then
@@ -148,6 +178,34 @@ elif [[ "$CURRENT_SUBVOL" == "/@" ]]; then
     if [[ -d "$BTRFS_TOP/@snapshots/@factory_reset_new" ]]; then
         log_msg "Found orphaned @snapshots/@factory_reset_new, cleaning up..."
         btrfs subvolume delete "$BTRFS_TOP/@snapshots/@factory_reset_new" || log_msg "Warning: Failed to delete orphaned @snapshots/@factory_reset_new"
+    fi
+    
+    # Cleanup failed/orphaned recovery candidate
+    # Only cleanup if there's no valid candidate.json (meaning boot counting expired or manual cleanup needed)
+    CANDIDATE_JSON="/var/lib/recovery_update/candidate.json"
+    if [[ -d "$BTRFS_TOP/@snapshots/@recovery_candidate" ]]; then
+        if [[ ! -f "$CANDIDATE_JSON" ]] || ! jq -e '.ready == true' "$CANDIDATE_JSON" >/dev/null 2>&1; then
+            log_msg "Found orphaned @snapshots/@recovery_candidate (no valid candidate.json), cleaning up..."
+            btrfs subvolume delete "$BTRFS_TOP/@snapshots/@recovery_candidate" || \
+                log_msg "Warning: Failed to delete orphaned @snapshots/@recovery_candidate"
+        fi
+    fi
+    
+    # Cleanup stale boot entries for recovery candidate
+    rm -f /boot/loader/entries/recovery_candidate+0.conf
+    
+    # Cleanup pending promotion marker if we booted normally (boot counting fallback)
+    PENDING_PROMOTION_FILE="/var/lib/recovery_update/pending_promotion"
+    if [[ -f "$PENDING_PROMOTION_FILE" ]]; then
+        log_msg "Found stale pending_promotion marker (boot counting fallback occurred), cleaning up..."
+        rm -f "$PENDING_PROMOTION_FILE"
+        rm -f "$CANDIDATE_JSON"
+        # Remove recovery candidate since boot counting failed
+        if [[ -d "$BTRFS_TOP/@snapshots/@recovery_candidate" ]]; then
+            log_msg "Removing failed recovery candidate..."
+            btrfs subvolume delete "$BTRFS_TOP/@snapshots/@recovery_candidate" || \
+                log_msg "Warning: Failed to delete failed @snapshots/@recovery_candidate"
+        fi
     fi
     
     umount "$BTRFS_TOP"

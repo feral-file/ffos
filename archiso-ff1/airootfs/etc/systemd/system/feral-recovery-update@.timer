@@ -1,0 +1,11 @@
+[Unit]
+Description=Feral File Recovery Update Timer
+
+[Timer]
+Persistent=true
+OnCalendar=%i
+RandomizedDelaySec=3600
+Unit=feral-recovery-update.service
+
+[Install]
+WantedBy=timers.target

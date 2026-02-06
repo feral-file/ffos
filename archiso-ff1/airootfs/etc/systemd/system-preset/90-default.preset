@@ -1,3 +1,4 @@
+enable systemd-boot-check-no-failures.service
 enable sshd.service
 enable bluetooth.service
 enable NetworkManager.service

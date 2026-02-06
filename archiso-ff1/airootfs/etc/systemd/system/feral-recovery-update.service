@@ -1,0 +1,9 @@
+[Unit]
+Description=Feral File Recovery Update Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/root/scripts/feral-recovery-update.sh
+StandardOutput=append:/var/log/auto-recovery-updaterd.log
+StandardError=append:/var/log/auto-recovery-updaterd.log
