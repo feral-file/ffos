@@ -155,7 +155,7 @@ case "$CURRENT_SUBVOL" in
     rmdir "$BTRFS_TOP"
 
     # Clean up candidate boot files from ESP
-    rm -f /boot/loader/entries/arch-candidate+*.conf
+    rm -f /boot/loader/entries/arch-candidate.conf
     rm -rf /boot/candidate
 
     log_msg "Cleanup complete."

@@ -65,6 +65,9 @@ timeout 0
 editor no
 EOF
 
+# Clean up old entries if they exist
+rm -rf /boot/loader/entries/*
+
 cat > /boot/loader/entries/arch.conf <<EOF
 title   FF1
 linux   /vmlinuz-linux

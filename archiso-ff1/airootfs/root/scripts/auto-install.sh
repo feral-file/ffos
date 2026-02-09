@@ -165,6 +165,9 @@ umount /live-efi
 
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_PART")
 
+# Clean up old entries if they exist
+rm -rf /mnt/boot/loader/entries/*
+
 cat > /mnt/boot/loader/loader.conf <<EOF
 default arch.conf
 timeout 0

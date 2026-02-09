@@ -250,7 +250,7 @@ sync
 log_info "Creating candidate boot entry with boot counting..."
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
 
-cat > /boot/loader/entries/arch-candidate+3.conf <<EOF
+cat > /boot/loader/entries/arch-candidate.conf <<EOF
 title   FF1 - Update Candidate
 linux   /candidate/vmlinuz-linux
 initrd  /candidate/initramfs-linux.img
@@ -258,7 +258,10 @@ initrd  /candidate/intel-ucode.img
 options rootflags=subvol=@snapshots/@ota_new root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
 EOF
 
-chmod 644 /boot/loader/entries/arch-candidate+3.conf
+chmod 644 /boot/loader/entries/arch-candidate.conf
+
+bootctl set-oneshot arch-candidate.conf
+
 log_info "Candidate boot entry created. Btrfs default unchanged (@ remains fallback)."
 sync
 

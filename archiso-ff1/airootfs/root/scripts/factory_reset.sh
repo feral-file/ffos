@@ -82,11 +82,11 @@ else
     CANDIDATE_KERNEL_PREFIX=""
 fi
 
-# Step 6: Write candidate boot entry with boot counting (3 attempts before fallback to @)
+# Step 6: Write candidate boot entry
 log_msg "Creating candidate boot entry with boot counting..."
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
 
-cat > /boot/loader/entries/arch-candidate+3.conf <<EOF
+cat > /boot/loader/entries/arch-candidate.conf <<EOF
 title   FF1 - Factory Reset Candidate
 linux   $CANDIDATE_KERNEL_PREFIX/vmlinuz-linux
 initrd  $CANDIDATE_KERNEL_PREFIX/initramfs-linux.img
@@ -94,8 +94,10 @@ initrd  $CANDIDATE_KERNEL_PREFIX/intel-ucode.img
 options rootflags=subvol=@snapshots/@factory_reset_new root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
 EOF
 
-chmod 644 /boot/loader/entries/arch-candidate+3.conf
+chmod 644 /boot/loader/entries/arch-candidate.conf
 log_msg "Candidate boot entry created. Btrfs default unchanged (@ remains fallback)."
+
+bootctl set-oneshot arch-candidate.conf
 
 # Unmount
 umount "$BTRFS_TOP"
