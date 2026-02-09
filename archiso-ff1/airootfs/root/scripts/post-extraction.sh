@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-if [[ $# -lt 2 ]]; then
+if [[ $# -lt 1 ]]; then
     echo "ERROR: Usage: $0 <root_dev>" >&2
     echo "  root_dev: root device path (e.g., /dev/nvme0n1p2)" >&2
     exit 1
