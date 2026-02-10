@@ -149,6 +149,30 @@ case "$CURRENT_SUBVOL" in
         fi
     done
 
+    if [[ -f /var/lib/recovery_update/attempted ]]; then
+        log_msg "Attempt to do factory reset with recovery candidate detected."
+        FAILED_VERSION=$(cat /var/lib/recovery_update/attempted)
+        # Fallback: if marker was empty (touch'd), try installed_version
+        if [[ -z "$FAILED_VERSION" && -f /var/lib/recovery_update/installed_version ]]; then
+            FAILED_VERSION=$(cat /var/lib/recovery_update/installed_version)
+        fi
+        if [[ -n "$FAILED_VERSION" ]]; then
+            echo "$FAILED_VERSION" > /var/lib/recovery_update/failed_version
+            log_msg "Marked version $FAILED_VERSION as failed"
+        else
+            log_msg "Warning: Could not determine failed candidate version"
+        fi
+
+        if [[ -d "$BTRFS_TOP/@snapshots/@recovery_candidate" ]]; then
+            if btrfs subvolume delete "$BTRFS_TOP/@snapshots/@recovery_candidate"; then
+                log_msg "Deleted failed @recovery_candidate subvolume."
+            else
+                log_msg "Warning: Failed to delete failed @recovery_candidate"
+            fi
+        fi
+        rm -f /var/lib/recovery_update/attempted
+    fi
+
     umount "$BTRFS_TOP"
     rmdir "$BTRFS_TOP"
 

@@ -1,5 +1,3 @@
-#!/usr/bin/env bash
-
 run_hook() {
   mkdir -p /run
   LOG="/run/btrfs-rollback.log"

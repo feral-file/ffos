@@ -99,6 +99,18 @@ log_msg "Candidate boot entry created. Btrfs default unchanged (@ remains fallba
 
 bootctl set-oneshot arch-candidate.conf
 
+# Step 7: If recovery candidate was used, mark it as attempted for tracking in btrfs-rollback hook
+if [[ "$SOURCE_SNAP" == "@snapshots/@recovery_candidate" ]]; then
+    mkdir -p /var/lib/recovery_update
+    if [[ -f "$BTRFS_TOP/@snapshots/@factory_reset_new/var/lib/factory_reset/installed_version" ]]; then
+        cp "$BTRFS_TOP/@snapshots/@factory_reset_new/var/lib/factory_reset/installed_version" \
+        /var/lib/recovery_update/attempted
+    else
+        touch /var/lib/recovery_update/attempted
+        log_msg "Warning: installed_version file not found in factory_reset_new snapshot. Using empty version for tracking."
+    fi
+fi
+
 # Unmount
 umount "$BTRFS_TOP"
 rmdir "$BTRFS_TOP"

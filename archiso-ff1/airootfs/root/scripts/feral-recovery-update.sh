@@ -56,7 +56,6 @@ log_info "=== Recovery Update Check Started ==="
 
 branch=$(jq -r '.branch' "$CONFIG_FILE")
 ENDPOINT=$(jq -r '.endpoint' "$CONFIG_FILE")
-CURRENT_RECOVERY=$(jq -r '.recovery_version // empty' "$CONFIG_FILE")
 
 # Fetch latest version info from server
 API_URL="$ENDPOINT/api/latest/$branch"
@@ -76,12 +75,37 @@ if [[ -z "$RECOVERY_VERSION" || -z "$RECOVERY_URL" ]]; then
   exit 0
 fi
 
-if [[ "$RECOVERY_VERSION" == "$CURRENT_RECOVERY" ]]; then
-  log_info "Recovery version already up-to-date: $RECOVERY_VERSION"
-  exit 0
+# Skip if this version is already the same as a factory reset version
+if [[ -f /var/lib/factory_reset/installed_version ]]; then
+  INSTALLED_FR_VERSION=$(cat /var/lib/factory_reset/installed_version)
+  if [[ "$RECOVERY_VERSION" == "$INSTALLED_FR_VERSION" ]]; then
+    log_info "Recovery version $RECOVERY_VERSION already installed as factory reset version."
+    exit 0
+  fi
 fi
 
-log_info "New recovery version available: $RECOVERY_VERSION (current: ${CURRENT_RECOVERY:-none})"
+# Skip if this version is already installed as a candidate
+if [[ -f /var/lib/recovery_update/installed_version ]]; then
+  INSTALLED_RC_VERSION=$(cat /var/lib/recovery_update/installed_version)
+  if [[ "$RECOVERY_VERSION" == "$INSTALLED_RC_VERSION" ]]; then
+    log_info "Recovery version $RECOVERY_VERSION already installed as candidate."
+    exit 0
+  fi
+fi
+
+# Skip if this version previously failed to boot
+if [[ -f /var/lib/recovery_update/failed_version ]]; then
+  FAILED_VERSION=$(cat /var/lib/recovery_update/failed_version)
+  if [[ "$RECOVERY_VERSION" == "$FAILED_VERSION" ]]; then
+    log_info "Recovery version $FAILED_VERSION previously failed boot. Skipping."
+    exit 0
+  fi
+  # Different version available — clear failed marker and proceed
+  log_info "New recovery version $RECOVERY_VERSION available (previous failed version was $FAILED_VERSION). Clearing failed marker."
+  rm -f /var/lib/recovery_update/failed_version
+fi
+
+log_info "New recovery version available: $RECOVERY_VERSION"
 log_info "Starting recovery candidate installation..."
 
 # --- Begin Installation ---
@@ -220,6 +244,9 @@ else
   exit 1
 fi
 
+mkdir -p "$RECOVERY_ROOT/var/lib/factory_reset"
+echo "$RECOVERY_VERSION" > "$RECOVERY_ROOT/var/lib/factory_reset/installed_version"
+
 umount "$RECOVERY_ROOT/boot"
 
 # Atomically replace @recovery_candidate with @recovery_candidate_new
@@ -245,6 +272,12 @@ if [[ -d "$BTRFS_TOP/@snapshots/@recovery_candidate_old" ]]; then
   btrfs subvolume delete "$BTRFS_TOP/@snapshots/@recovery_candidate_old" || \
     log_error "Warning: Failed to delete old recovery candidate. It can be cleaned up manually."
 fi
+
+# Step 4: Record installed version for tracking
+log_info "Recording installed version for tracking..."
+mkdir -p /var/lib/recovery_update
+echo "$RECOVERY_VERSION" > /var/lib/recovery_update/installed_version
+log_info "Version tracking complete."
 
 # Cleanup
 log_info "Cleaning up..."
