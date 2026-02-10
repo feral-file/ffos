@@ -5,16 +5,14 @@ set -euo pipefail
 # Standalone service that checks for and installs new recovery versions.
 # The recovery candidate will be used on next factory reset.
 
-LOG_FILE="/var/log/recovery-update.log"
-
 log_info() {
   local message="$1"
-  echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [INFO] recovery_update message=\"$message\"" | tee -a "$LOG_FILE"
+  echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [INFO] recovery_update message=\"$message\""
 }
 
 log_error() {
   local message="$1"
-  echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [ERROR] recovery_update message=\"$message\"" | tee -a "$LOG_FILE"
+  echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [ERROR] recovery_update message=\"$message\""
 }
 
 trap 'code=$?; log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""; exit $code' ERR
@@ -71,7 +69,7 @@ response=$(curl -s -f -L "$API_URL") || {
 
 # Extract recovery version info
 RECOVERY_VERSION=$(jq -r '.recovery_version // empty' <<< "$response")
-RECOVERY_URL=$(jq -r '.recovery_url // empty' <<< "$response")
+RECOVERY_URL=$(jq -r '.recovery_image_url // empty' <<< "$response")
 
 if [[ -z "$RECOVERY_VERSION" || -z "$RECOVERY_URL" ]]; then
   log_info "No recovery version specified by server. Skipping."
