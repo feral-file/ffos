@@ -60,9 +60,7 @@ case "$CURRENT_SUBVOL" in
         rsync -a --delete "$BOOT_STAGED"/ /boot/
         log_msg "Boot files deployed from $BOOT_STAGED to /boot."
     else
-        log_msg "Warning: No staged boot files found. Cleaning up candidate boot entry only."
-        rm -f /boot/loader/entries/arch-candidate+*.conf
-        rm -rf /boot/candidate
+        log_msg "Warning: No staged boot files found. Skipping boot file deployment."
     fi
 
     # Step 2: Mount btrfs top-level for subvolume rotation
