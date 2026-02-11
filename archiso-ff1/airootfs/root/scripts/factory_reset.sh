@@ -30,7 +30,7 @@ if [[ -d "$BTRFS_TOP/@snapshots/@factory_reset_new" ]]; then
 
     if [[ "$DEFAULT_ID" == "$AT_ID" ]]; then
         log_msg "Warning: @snapshots/@factory_reset_new is still the default subvolume, changing default first..."
-        NEW_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@" {print $2}')
+        NEW_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@snapshots/@" {print $2}')
         btrfs subvolume set-default "$NEW_ID" "$BTRFS_TOP"
     fi
 

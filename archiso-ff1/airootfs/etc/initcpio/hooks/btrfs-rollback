@@ -63,25 +63,32 @@ run_hook() {
   fi
   echo "[btrfs-rollback] Default subvol set to $source_snap (ID $tmp_id)" >> $LOG
 
-  if btrfs subvolume list /run/rollback | awk '$NF=="@" {print $2}' | grep -q .; then
-    echo "[btrfs-rollback] Deleting old @ subvolume" >> $LOG
-    if ! btrfs subvolume delete "/run/rollback/@"; then
-      echo "[btrfs-rollback] ERROR: Failed to delete old @" >> $LOG
+  local target_root
+  if [[ -f "/run/rollback/$source_snap/var/lib/factory_reset/support_v2_root_snapshot" ]]; then
+      target_root="@snapshots/@"
+  else
+      target_root="@"
+  fi
+
+  if btrfs subvolume list /run/rollback | awk -v s="$target_root" '$NF==s { print $2 }' | grep -q .; then
+    echo "[btrfs-rollback] Deleting old $target_root subvolume" >> $LOG
+    if ! btrfs subvolume delete "/run/rollback/$target_root"; then
+      echo "[btrfs-rollback] ERROR: Failed to delete old $target_root subvolume" >> $LOG
       umount /run/rollback
       return 1
     fi
   fi
 
-  echo "[btrfs-rollback] Snapshotting $source_snap → @" >> $LOG
-  if ! btrfs subvolume snapshot "/run/rollback/$source_snap" "/run/rollback/@"; then
-    echo "[btrfs-rollback] ERROR: Snapshot $source_snap → @ failed" >> $LOG
+  echo "[btrfs-rollback] Snapshotting $source_snap → $target_root" >> $LOG
+  if ! btrfs subvolume snapshot "/run/rollback/$source_snap" "/run/rollback/$target_root"; then
+    echo "[btrfs-rollback] ERROR: Snapshot $source_snap → $target_root failed" >> $LOG
     umount /run/rollback
     return 1
   fi
 
-  new_id=$(btrfs subvolume list /run/rollback | awk -v s="@" '$NF==s { print $2 }')
+  new_id=$(btrfs subvolume list /run/rollback | awk -v s="$target_root" '$NF==s { print $2 }')
   if [[ -z "$new_id" ]]; then
-    echo "[btrfs-rollback] ERROR: Cannot find ID for new @" >> $LOG
+    echo "[btrfs-rollback] ERROR: Cannot find ID for new $target_root" >> $LOG
     umount /run/rollback
     return 1
   fi
@@ -91,18 +98,18 @@ run_hook() {
     umount /run/rollback
     return 1
   fi
-  echo "[btrfs-rollback] RootFS rollback successful. Default subvol set to @ (ID $new_id)" >> $LOG
+  echo "[btrfs-rollback] RootFS rollback successful. Default subvol set to $target_root (ID $new_id)" >> $LOG
 
   echo "[btrfs-rollback] Starting Boot Partition Recovery..." >> $LOG
 
   local boot_uuid
-  boot_uuid=$(awk '$2 == "/boot" {print $1}' "/run/rollback/@/etc/fstab" | sed 's/UUID=//;s/"//g')
+  boot_uuid=$(awk '$2 == "/boot" {print $1}' "/run/rollback/$target_root/etc/fstab" | sed 's/UUID=//;s/"//g')
 
   if [[ -n "$boot_uuid" ]]; then
       local boot_dev="/dev/disk/by-uuid/$boot_uuid"
       mkdir -p /run/rollback_boot
       if mount "$boot_dev" /run/rollback_boot; then
-          local backup_path="/run/rollback/@/var/lib/factory_reset_boot"
+          local backup_path="/run/rollback/$target_root/var/lib/factory_reset_boot"
 
           if [[ -d "$backup_path" ]]; then
               echo "[btrfs-rollback] Restoring kernel files from $backup_path..." >> $LOG

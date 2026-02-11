@@ -67,7 +67,27 @@ case "$CURRENT_SUBVOL" in
     mkdir -p "$BTRFS_TOP"
     mount -o subvolid=0 "$ROOT_DEV" "$BTRFS_TOP"
 
-    # Step 3: Delete old @ subvolume if it exists
+    # Step 3: Delete old @snapshots/@ subvolume if it exists
+    if [[ -d "$BTRFS_TOP/@snapshots/@" ]]; then
+        log_msg "Deleting old @snapshots/@ subvolume..."
+        DEFAULT_ID=$(btrfs subvolume get-default "$BTRFS_TOP" | awk '{print $2}')
+        AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@snapshots/@" {print $2}')
+
+        if [[ "$DEFAULT_ID" == "$AT_ID" ]]; then
+            log_msg "@snapshots/@ is still the default subvolume, changing default to candidate first..."
+            CANDIDATE_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk -v s="${CURRENT_SUBVOL#/}" '$NF==s {print $2}')
+            btrfs subvolume set-default "$CANDIDATE_ID" "$BTRFS_TOP"
+        fi
+
+        if ! btrfs subvolume delete "$BTRFS_TOP/@snapshots/@"; then
+            log_msg "Error: Failed to delete old @snapshots/@ subvolume"
+            umount "$BTRFS_TOP"
+            exit 1
+        fi
+        log_msg "Old @snapshots/@ subvolume deleted successfully"
+    fi
+
+    # Migration from old structure to new structure
     if [[ -d "$BTRFS_TOP/@" ]]; then
         log_msg "Deleting old @ subvolume..."
         DEFAULT_ID=$(btrfs subvolume get-default "$BTRFS_TOP" | awk '{print $2}')
@@ -87,24 +107,19 @@ case "$CURRENT_SUBVOL" in
         log_msg "Old @ subvolume deleted successfully"
     fi
 
-    # Step 4: Create new @ as a snapshot of the candidate
-    log_msg "Creating new @ subvolume from $CURRENT_SUBVOL..."
-    if ! btrfs subvolume snapshot "$BTRFS_TOP/${CURRENT_SUBVOL#/}" "$BTRFS_TOP/@"; then
-        log_msg "Error: Failed to create @ snapshot from $CURRENT_SUBVOL"
-        umount "$BTRFS_TOP"
-        exit 1
-    fi
-    log_msg "New @ subvolume created successfully"
+    # Step 4: Rename current subvolume to @snapshots/@
+    log_msg "Renaming $CURRENT_SUBVOL to @snapshots/@..."
+    mv "$BTRFS_TOP$CURRENT_SUBVOL" "$BTRFS_TOP/@snapshots/@"
 
     # Step 5: Set @ as default subvolume
     log_msg "Setting @ as default subvolume..."
-    AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@" {print $2}')
+    AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@snapshots/@" {print $2}')
     if ! btrfs subvolume set-default "$AT_ID" "$BTRFS_TOP"; then
-        log_msg "Error: Failed to set @ as default"
+        log_msg "Error: Failed to set @snapshots/@ as default"
         umount "$BTRFS_TOP"
         exit 1
     fi
-    log_msg "@ set as default subvolume (ID: $AT_ID)"
+    log_msg "@snapshots/@ set as default subvolume (ID: $AT_ID)"
 
     # Step 6: If factory reset used recovery candidate, promote it to @factory_reset
     if [[ "$CURRENT_SUBVOL" == "/@snapshots/@factory_reset_new" ]] && \
@@ -127,11 +142,10 @@ case "$CURRENT_SUBVOL" in
     umount "$BTRFS_TOP"
     rmdir "$BTRFS_TOP"
 
-    log_msg "Subvolume rotation complete! System will boot from @ on next reboot."
-    systemctl reboot
+    log_msg "Promotion complete. No reboot required."
     ;;
 
-/@)
+/@snapshots/@)
     #
     # === NORMAL BOOT (or fallback after failed candidate) — CLEANUP ===
     #

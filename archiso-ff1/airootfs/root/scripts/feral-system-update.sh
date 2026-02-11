@@ -85,8 +85,8 @@ if [[ -d "$BTRFS_TOP/@snapshots/@ota_new" ]]; then
   btrfs subvolume delete "$BTRFS_TOP/@snapshots/@ota_new"
 fi
 
-# Create new writable snapshot from current @
-if btrfs subvolume snapshot "$BTRFS_TOP/@" "$BTRFS_TOP/@snapshots/@ota_new"; then
+# Create new writable snapshot from current @snapshots/@
+if btrfs subvolume snapshot "$BTRFS_TOP/@snapshots/@" "$BTRFS_TOP/@snapshots/@ota_new"; then
   log_info "Snapshot '@snapshots/@ota_new' created successfully."
 else
   log_error "Failed to create snapshot '@snapshots/@ota_new'. Aborting."
