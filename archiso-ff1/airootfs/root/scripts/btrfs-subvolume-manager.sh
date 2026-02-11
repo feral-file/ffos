@@ -111,8 +111,8 @@ case "$CURRENT_SUBVOL" in
     log_msg "Renaming $CURRENT_SUBVOL to @snapshots/@..."
     mv "$BTRFS_TOP$CURRENT_SUBVOL" "$BTRFS_TOP/@snapshots/@"
 
-    # Step 5: Set @ as default subvolume
-    log_msg "Setting @ as default subvolume..."
+    # Step 5: Set @snapshots/@ as default subvolume
+    log_msg "Setting @snapshots/@ as default subvolume..."
     AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@snapshots/@" {print $2}')
     if ! btrfs subvolume set-default "$AT_ID" "$BTRFS_TOP"; then
         log_msg "Error: Failed to set @snapshots/@ as default"
@@ -142,6 +142,9 @@ case "$CURRENT_SUBVOL" in
     umount "$BTRFS_TOP"
     rmdir "$BTRFS_TOP"
 
+    rm -f /boot/loader/entries/arch-candidate.conf
+    log_msg "Cleanup complete."
+
     log_msg "Promotion complete. No reboot required."
     ;;
 
@@ -149,7 +152,7 @@ case "$CURRENT_SUBVOL" in
     #
     # === NORMAL BOOT (or fallback after failed candidate) — CLEANUP ===
     #
-    log_msg "System booted from @ subvolume. Checking for orphans..."
+    log_msg "System booted from @snapshots/@ subvolume. Checking for orphans..."
 
     mkdir -p "$BTRFS_TOP"
     mount -o subvolid=0 "$ROOT_DEV" "$BTRFS_TOP"

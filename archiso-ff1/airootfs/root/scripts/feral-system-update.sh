@@ -262,7 +262,7 @@ chmod 644 /boot/loader/entries/arch-candidate.conf
 
 bootctl set-oneshot arch-candidate.conf
 
-log_info "Candidate boot entry created. Btrfs default unchanged (@ remains fallback)."
+log_info "Candidate boot entry created. Btrfs default unchanged."
 sync
 
 # --- Step 10: Clean up and reboot ---------------------------------------------

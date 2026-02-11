@@ -95,7 +95,7 @@ options rootflags=subvol=@snapshots/@factory_reset_new root=PARTUUID=$PARTUUID r
 EOF
 
 chmod 644 /boot/loader/entries/arch-candidate.conf
-log_msg "Candidate boot entry created. Btrfs default unchanged (@ remains fallback)."
+log_msg "Candidate boot entry created. Btrfs default unchanged."
 
 bootctl set-oneshot arch-candidate.conf
 
