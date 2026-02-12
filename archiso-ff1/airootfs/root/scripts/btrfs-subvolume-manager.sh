@@ -2,6 +2,18 @@
 
 set -euo pipefail
 
+# Unified Btrfs Subvolume Manager
+#
+# Handles post-boot promotion for ALL transition types (OTA, factory reset).
+# Uses a single mechanism: boot counting in systemd-boot provides automatic
+# fallback to @ if the candidate subvolume fails to boot (3 attempts).
+#
+# Two cases:
+#   1. Booted from a candidate (@ota_new or @factory_reset_new):
+#      → Deploy staged boot files, rotate candidate → @, reboot
+#   2. Booted from @ (normal boot or fallback after failed candidate):
+#      → Clean up any orphaned candidates and stale boot entries
+
 LOG_FILE="/var/log/btrfs-subvolume-manager.log"
 
 log_msg() {
@@ -20,143 +32,180 @@ log_msg "Current root subvolume: $CURRENT_SUBVOL"
 
 sync
 
-# Check if we're booted from /@snapshots/@ota_new (not @)
-if [[ "$CURRENT_SUBVOL" == "/@snapshots/@ota_new" ]]; then
-    log_msg "System booted from @snapshots/@ota_new, performing subvolume rotation..."
+BTRFS_TOP="/mnt/btrfs-top-manager"
 
-    # Set up auto system test for the next boot
-    touch /etc/FF_OS_OTA_AUTO_TEST
-    
-    # Mount btrfs top-level
-    BTRFS_TOP="/mnt/btrfs-top-manager"
+case "$CURRENT_SUBVOL" in
+
+/@snapshots/@ota_new|/@snapshots/@factory_reset_new)
+    #
+    # === CANDIDATE BOOT SUCCEEDED — PROMOTE ===
+    #
+    log_msg "System booted from candidate: $CURRENT_SUBVOL. Promoting to @..."
+
+    # OTA-specific: set up auto system test for the next boot
+    if [[ "$CURRENT_SUBVOL" == "/@snapshots/@ota_new" ]]; then
+        touch /etc/FF_OS_OTA_AUTO_TEST
+    fi
+
+    # Step 1: Deploy staged boot files to /boot (proven to work now)
+    log_msg "Deploying staged boot files to /boot..."
+    BOOT_STAGED=""
+    if [[ -d /var/lib/ota_boot_staging ]]; then
+        BOOT_STAGED="/var/lib/ota_boot_staging"
+    elif [[ -d /var/lib/factory_reset_boot ]]; then
+        BOOT_STAGED="/var/lib/factory_reset_boot"
+    fi
+
+    if [[ -n "$BOOT_STAGED" ]]; then
+        rsync -a --delete "$BOOT_STAGED"/ /boot/
+        log_msg "Boot files deployed from $BOOT_STAGED to /boot."
+    else
+        log_msg "Warning: No staged boot files found. Skipping boot file deployment."
+    fi
+
+    # Step 2: Mount btrfs top-level for subvolume rotation
     mkdir -p "$BTRFS_TOP"
     mount -o subvolid=0 "$ROOT_DEV" "$BTRFS_TOP"
-    
-    # Step 1: Delete old @ subvolume if it exists
+
+    # Step 3: Delete old @snapshots/@ subvolume if it exists
+    if [[ -d "$BTRFS_TOP/@snapshots/@" ]]; then
+        log_msg "Deleting old @snapshots/@ subvolume..."
+        DEFAULT_ID=$(btrfs subvolume get-default "$BTRFS_TOP" | awk '{print $2}')
+        AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@snapshots/@" {print $2}')
+
+        if [[ "$DEFAULT_ID" == "$AT_ID" ]]; then
+            log_msg "@snapshots/@ is still the default subvolume, changing default to candidate first..."
+            CANDIDATE_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk -v s="${CURRENT_SUBVOL#/}" '$NF==s {print $2}')
+            btrfs subvolume set-default "$CANDIDATE_ID" "$BTRFS_TOP"
+        fi
+
+        if ! btrfs subvolume delete "$BTRFS_TOP/@snapshots/@"; then
+            log_msg "Error: Failed to delete old @snapshots/@ subvolume"
+            umount "$BTRFS_TOP"
+            exit 1
+        fi
+        log_msg "Old @snapshots/@ subvolume deleted successfully"
+    fi
+
+    # Migration from old structure to new structure
     if [[ -d "$BTRFS_TOP/@" ]]; then
         log_msg "Deleting old @ subvolume..."
-        # First, check if @ is not the default subvolume
         DEFAULT_ID=$(btrfs subvolume get-default "$BTRFS_TOP" | awk '{print $2}')
         AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@" {print $2}')
-        
+
         if [[ "$DEFAULT_ID" == "$AT_ID" ]]; then
-            log_msg "Warning: @ is still the default subvolume, changing default first..."
-            NEW_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@snapshots/@ota_new" {print $2}')
-            btrfs subvolume set-default "$NEW_ID" "$BTRFS_TOP"
+            log_msg "@ is still the default subvolume, changing default to candidate first..."
+            CANDIDATE_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk -v s="${CURRENT_SUBVOL#/}" '$NF==s {print $2}')
+            btrfs subvolume set-default "$CANDIDATE_ID" "$BTRFS_TOP"
         fi
-        
+
         if ! btrfs subvolume delete "$BTRFS_TOP/@"; then
-            log_msg "Error: Failed to delete @ subvolume"
+            log_msg "Error: Failed to delete old @ subvolume"
             umount "$BTRFS_TOP"
             exit 1
         fi
         log_msg "Old @ subvolume deleted successfully"
     fi
-    
-    # Step 2: Create new @ as a snapshot of @ota_new
-    log_msg "Creating new @ subvolume from current @ota_new..."
-    if ! btrfs subvolume snapshot "$BTRFS_TOP/@snapshots/@ota_new" "$BTRFS_TOP/@"; then
-        log_msg "Error: Failed to create @ snapshot"
-        umount "$BTRFS_TOP"
-        exit 1
-    fi
-    log_msg "New @ subvolume created successfully"
-    
-    # Step 3: Set @ as default subvolume
-    log_msg "Setting @ as default subvolume..."
-    AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@" {print $2}')
+
+    # Step 4: Rename current subvolume to @snapshots/@
+    log_msg "Renaming $CURRENT_SUBVOL to @snapshots/@..."
+    mv "$BTRFS_TOP$CURRENT_SUBVOL" "$BTRFS_TOP/@snapshots/@"
+
+    # Step 5: Set @snapshots/@ as default subvolume
+    log_msg "Setting @snapshots/@ as default subvolume..."
+    AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@snapshots/@" {print $2}')
     if ! btrfs subvolume set-default "$AT_ID" "$BTRFS_TOP"; then
-        log_msg "Error: Failed to set @ as default"
+        log_msg "Error: Failed to set @snapshots/@ as default"
         umount "$BTRFS_TOP"
         exit 1
     fi
-    log_msg "@ set as default subvolume (ID: $AT_ID)"
-    
+    log_msg "@snapshots/@ set as default subvolume (ID: $AT_ID)"
+
+    # Step 6: If factory reset used recovery candidate, promote it to @factory_reset
+    if [[ "$CURRENT_SUBVOL" == "/@snapshots/@factory_reset_new" ]] && \
+       [[ -f /var/lib/recovery_update/candidate_used ]]; then
+        log_msg "Recovery candidate was used for this factory reset. Promoting to @factory_reset..."
+
+        if [[ -d "$BTRFS_TOP/@snapshots/@factory_reset" ]]; then
+            log_msg "Deleting old @factory_reset..."
+            btrfs subvolume delete "$BTRFS_TOP/@snapshots/@factory_reset" || \
+                log_msg "Warning: Failed to delete old @factory_reset"
+        fi
+
+        if [[ -d "$BTRFS_TOP/@snapshots/@recovery_candidate" ]]; then
+            mv "$BTRFS_TOP/@snapshots/@recovery_candidate" "$BTRFS_TOP/@snapshots/@factory_reset"
+            log_msg "@recovery_candidate promoted to @factory_reset successfully."
+        fi
+    fi
+
     # Unmount
     umount "$BTRFS_TOP"
     rmdir "$BTRFS_TOP"
-    
-    log_msg "Subvolume rotation complete! System should boot from @ on next reboot."
-    systemctl reboot
-elif [[ "$CURRENT_SUBVOL" == "/@snapshots/@factory_reset_new" ]]; then
-    log_msg "System booted from @snapshots/@factory_reset_new, performing subvolume rotation..."
-    
-    # Mount btrfs top-level
-    BTRFS_TOP="/mnt/btrfs-top-manager"
+
+    rm -f /boot/loader/entries/arch-candidate.conf
+    log_msg "Cleanup complete."
+
+    log_msg "Promotion complete. No reboot required."
+    ;;
+
+/@snapshots/@)
+    #
+    # === NORMAL BOOT (or fallback after failed candidate) — CLEANUP ===
+    #
+    log_msg "System booted from @snapshots/@ subvolume. Checking for orphans..."
+
     mkdir -p "$BTRFS_TOP"
     mount -o subvolid=0 "$ROOT_DEV" "$BTRFS_TOP"
-    
-    # Step 1: Delete old @ subvolume if it exists
-    if [[ -d "$BTRFS_TOP/@" ]]; then
-        log_msg "Deleting old @ subvolume..."
-        # First, check if @ is not the default subvolume
-        DEFAULT_ID=$(btrfs subvolume get-default "$BTRFS_TOP" | awk '{print $2}')
-        AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@" {print $2}')
-        
-        if [[ "$DEFAULT_ID" == "$AT_ID" ]]; then
-            log_msg "Warning: @ is still the default subvolume, changing default first..."
-            NEW_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@snapshots/@factory_reset_new" {print $2}')
-            btrfs subvolume set-default "$NEW_ID" "$BTRFS_TOP"
+
+    # Clean up orphaned candidate subvolumes (from failed boot counting or interrupted updates)
+    for orphan in @snapshots/@ota_new @snapshots/@factory_reset_new; do
+        if [[ -d "$BTRFS_TOP/$orphan" ]]; then
+            log_msg "Found orphaned $orphan, cleaning up..."
+            btrfs subvolume delete "$BTRFS_TOP/$orphan" || \
+                log_msg "Warning: Failed to delete orphaned $orphan"
         fi
-        
-        if ! btrfs subvolume delete "$BTRFS_TOP/@"; then
-            log_msg "Error: Failed to delete @ subvolume"
-            umount "$BTRFS_TOP"
-            exit 1
+    done
+
+    if [[ -f /var/lib/recovery_update/attempted ]]; then
+        log_msg "Attempt to do factory reset with recovery candidate detected."
+        FAILED_VERSION=$(cat /var/lib/recovery_update/attempted)
+        # Fallback: if marker was empty (touch'd), try installed_version
+        if [[ -z "$FAILED_VERSION" && -f /var/lib/recovery_update/installed_version ]]; then
+            FAILED_VERSION=$(cat /var/lib/recovery_update/installed_version)
         fi
-        log_msg "Old @ subvolume deleted successfully"
-    fi
-    
-    # Step 2: Create new @ as a snapshot of @factory_reset_new
-    log_msg "Creating new @ subvolume from current @snapshots/@factory_reset_new..."
-    if ! btrfs subvolume snapshot "$BTRFS_TOP/@snapshots/@factory_reset_new" "$BTRFS_TOP/@"; then
-        log_msg "Error: Failed to create @ snapshot"
-        umount "$BTRFS_TOP"
-        exit 1
-    fi
-    log_msg "New @ subvolume created successfully"
-    
-    # Step 3: Set @ as default subvolume
-    log_msg "Setting @ as default subvolume..."
-    AT_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@" {print $2}')
-    if ! btrfs subvolume set-default "$AT_ID" "$BTRFS_TOP"; then
-        log_msg "Error: Failed to set @ as default"
-        umount "$BTRFS_TOP"
-        exit 1
-    fi
-    log_msg "@ set as default subvolume (ID: $AT_ID)"
-    
-    # Unmount
-    umount "$BTRFS_TOP"
-    rmdir "$BTRFS_TOP"
-    
-    log_msg "Subvolume rotation complete! System should boot from @ on next reboot."
-    systemctl reboot
-elif [[ "$CURRENT_SUBVOL" == "/@" ]]; then
-    log_msg "System booted from @ subvolume. No action needed."
-    
-    # Check if there's an orphaned snapshots that needs cleanup
-    BTRFS_TOP="/mnt/btrfs-top-manager"
-    mkdir -p "$BTRFS_TOP"
-    mount -o subvolid=0 "$ROOT_DEV" "$BTRFS_TOP"
-    
-    if [[ -d "$BTRFS_TOP/@snapshots/@ota_new" ]]; then
-        log_msg "Found orphaned @snapshots/@ota_new, cleaning up..."
-        btrfs subvolume delete "$BTRFS_TOP/@snapshots/@ota_new" || log_msg "Warning: Failed to delete orphaned @snapshots/@ota_new"
+        if [[ -n "$FAILED_VERSION" ]]; then
+            echo "$FAILED_VERSION" > /var/lib/recovery_update/failed_version
+            log_msg "Marked version $FAILED_VERSION as failed"
+        else
+            log_msg "Warning: Could not determine failed candidate version"
+        fi
+
+        if [[ -d "$BTRFS_TOP/@snapshots/@recovery_candidate" ]]; then
+            if btrfs subvolume delete "$BTRFS_TOP/@snapshots/@recovery_candidate"; then
+                log_msg "Deleted failed @recovery_candidate subvolume."
+            else
+                log_msg "Warning: Failed to delete failed @recovery_candidate"
+            fi
+        fi
+        rm -f /var/lib/recovery_update/attempted
     fi
 
-    if [[ -d "$BTRFS_TOP/@snapshots/@factory_reset_new" ]]; then
-        log_msg "Found orphaned @snapshots/@factory_reset_new, cleaning up..."
-        btrfs subvolume delete "$BTRFS_TOP/@snapshots/@factory_reset_new" || log_msg "Warning: Failed to delete orphaned @snapshots/@factory_reset_new"
-    fi
-    
     umount "$BTRFS_TOP"
     rmdir "$BTRFS_TOP"
 
-else
+    # Clean up candidate boot files from ESP
+    rm -f /boot/loader/entries/arch-candidate.conf
+    rm -rf /boot/candidate
+
+    log_msg "Cleanup complete."
+    ;;
+
+*)
     log_msg "System booted from unexpected subvolume: $CURRENT_SUBVOL"
     log_msg "Manual intervention may be required."
-fi
+    ;;
+
+esac
 
 sync
 

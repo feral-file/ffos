@@ -40,6 +40,12 @@ BTRFS_TOP="/mnt/btrfs-top"
 cleanup() {
   trap - ERR
   cd /
+  
+  # Kill progress monitor if still running
+  if [[ -n "${PROGRESS_PID:-}" ]]; then
+    kill "$PROGRESS_PID" 2>/dev/null || true
+  fi
+
   sync
   sleep 2
   umount -Rl "$NEW_ROOT" 2>/dev/null || true
@@ -51,7 +57,7 @@ cleanup() {
 }
 trap cleanup EXIT
  
-log_info "=== OTA Update: Snapshot-based Update with Btrfs Default Switching ==="
+log_info "=== OTA Update: Snapshot-based Update with Boot Counting ==="
  
 # --- Step 1: Load local config ------------------------------------------------
 log_progress "0" "Getting device information..."
@@ -79,8 +85,8 @@ if [[ -d "$BTRFS_TOP/@snapshots/@ota_new" ]]; then
   btrfs subvolume delete "$BTRFS_TOP/@snapshots/@ota_new"
 fi
 
-# Create new writable snapshot from current @
-if btrfs subvolume snapshot "$BTRFS_TOP/@" "$BTRFS_TOP/@snapshots/@ota_new"; then
+# Create new writable snapshot from current @snapshots/@
+if btrfs subvolume snapshot "$BTRFS_TOP/@snapshots/@" "$BTRFS_TOP/@snapshots/@ota_new"; then
   log_info "Snapshot '@snapshots/@ota_new' created successfully."
 else
   log_error "Failed to create snapshot '@snapshots/@ota_new'. Aborting."
@@ -108,6 +114,7 @@ fi
 log_info "Total file size to download: $TOTAL_SIZE bytes"
 
 # Background progress loop with speed tracking
+PROGRESS_PID=""
 (
   LAST_SIZE=0
   LAST_TIME=$(date +%s)
@@ -119,7 +126,12 @@ log_info "Total file size to download: $TOTAL_SIZE bytes"
       ELAPSED=$((CUR_TIME - LAST_TIME))
       DIFF=$((CUR_SIZE - LAST_SIZE))
 
-      SPEED_MBPS=$(awk "BEGIN { printf \"%.3f\", $DIFF / $ELAPSED / 1024 / 1024 }")
+      # Avoid division by zero
+      if [[ $ELAPSED -gt 0 ]]; then
+        SPEED_MBPS=$(awk "BEGIN { printf \"%.3f\", $DIFF / $ELAPSED / 1024 / 1024 }")
+      else
+        SPEED_MBPS="0.000"
+      fi
       PERCENT=$(awk "BEGIN { printf \"%d\", (70 * $CUR_SIZE / $TOTAL_SIZE) + 10 }")
       [[ $PERCENT -gt 79 ]] && PERCENT=79
  
@@ -149,10 +161,8 @@ if [[ -f "$ISO_FILE.sig" ]]; then
   log_info "Signature file downloaded successfully."
   if ! openssl dgst -sha256 -verify "$RELEASE_PK" -signature "$ISO_FILE.sig" "$ISO_FILE"; then
     log_error "Error: Signature verification failed for $ISO_FILE."
-    rm -f "$ISO_FILE.sha256"
     exit 1
   fi
-  rm -f "$ISO_FILE.sha256"
 else
   log_error "Error: Signature file $ISO_FILE.sig not found after download."
   exit 1
@@ -182,108 +192,77 @@ rsync -aAX --delete --info=progress2 \
   --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed","/home/feralfile/.config/chromium","/home/feralfile/.logs","/home/feralfile/.state"} \
   "$SFS_MOUNT"/ "$NEW_ROOT"/
 
-# Clean up unwanted files in new snapshot
-rm -f "$NEW_ROOT"/root/.automated_script.sh
-rm -f "$NEW_ROOT"/root/.bash_profile
-rm -rf "$NEW_ROOT"/home/soaktest
-rm -f "$NEW_ROOT"/usr/local/bin/websocat
+log_progress "90" "Preparing boot files..."
 
-# Remove soaktest user if exists
-arch-chroot "$NEW_ROOT" /bin/bash -c "id soaktest &>/dev/null && userdel soaktest || true"
-
-log_progress "90" "Updating boot configuration..."
-
-# --- Step 7: Update boot files -------------------------------------------------
+# --- Step 7: Stage boot files (don't touch live /boot yet) --------------------
 7z e "$ISO_FILE" "[BOOT]/Boot-NoEmul.img" -o"$TMP_DIR"
 
 mkdir -p "$BOOT_MOUNT"
 mount -o loop "$TMP_DIR"/Boot-NoEmul.img "$BOOT_MOUNT"
 
-rsync -a "$BOOT_MOUNT"/arch/boot/x86_64/vmlinuz-linux /boot/vmlinuz-linux
-rsync -a "$BOOT_MOUNT"/arch/boot/x86_64/initramfs-linux.img /boot/initramfs-linux.img
-rsync -a "$BOOT_MOUNT"/arch/boot/intel-ucode.img /boot/intel-ucode.img
-rsync -a "$BOOT_MOUNT"/loader /boot
-rsync -a "$BOOT_MOUNT"/EFI /boot
+# Create boot staging directory in the new snapshot
+BOOT_STAGING="$NEW_ROOT/var/lib/ota_boot_staging"
+mkdir -p "$BOOT_STAGING"
 
-sync
+# Copy boot files from ISO to staging directory
+log_info "Staging boot files from ISO..."
+rsync -a "$BOOT_MOUNT"/arch/boot/x86_64/vmlinuz-linux "$BOOT_STAGING"/vmlinuz-linux
+rsync -a "$BOOT_MOUNT"/arch/boot/x86_64/initramfs-linux.img "$BOOT_STAGING"/initramfs-linux.img
+rsync -a "$BOOT_MOUNT"/arch/boot/intel-ucode.img "$BOOT_STAGING"/intel-ucode.img
+rsync -a "$BOOT_MOUNT"/loader "$BOOT_STAGING"
+rsync -a "$BOOT_MOUNT"/EFI "$BOOT_STAGING"
 
 umount "$BOOT_MOUNT"
 
-log_info "Detecting root partition PARTUUID..."
-PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
+# --- Step 8: Configure new snapshot using version-specific script -------------
+log_progress "95" "Configuring new snapshot..."
+POST_EXTRACTION_SCRIPT="$NEW_ROOT/root/scripts/post-extraction.sh"
 
-cat > /boot/loader/loader.conf <<EOF
-default arch.conf
-timeout 0
-editor no
-EOF
+# Bind-mount staging directory as /boot for the post-extraction script
+mount --bind "$BOOT_STAGING" "$NEW_ROOT/boot"
 
-cat > /boot/loader/entries/arch.conf <<EOF
-title   FF1
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
-initrd  /intel-ucode.img
-options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
-EOF
-
-cat > /boot/loader/entries/factory_reset.conf <<EOF
-title   FF1 - Factory Reset
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
-initrd  /intel-ucode.img
-options rollback=factory root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
-EOF
-
-# Update mkinitcpio in new snapshot
-mount --bind /boot "$NEW_ROOT/boot"
-arch-chroot "$NEW_ROOT" /bin/bash <<'CHROOT_EOF'
-echo "Overwriting mkinitcpio.conf HOOKS..."
-sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs btrfs-rollback filesystems fsck)/' /etc/mkinitcpio.conf
-
-echo "Generating initramfs..."
-mkinitcpio -P
-
-echo "Applying systemd presets..."
-systemctl preset-all --preset-mode=enable-only
-CHROOT_EOF
-
-log_info "Installing systemd-boot to disk..."
-bootctl install
-
-sync
-umount "$NEW_ROOT/boot"
-
-systemctl restart NetworkManager
-sleep 3
-
-# --- Step 8: Setup pacman in new snapshot --------------------------------------
-log_progress "95" "Setting up package manager..."
-arch-chroot "$NEW_ROOT" /bin/bash <<'CHROOT_EOF'
-pacman-key --init
-pacman-key --populate archlinux
-pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc
-pacman-key --lsign-key AA6B250F2938F3CB
-pacman -Syy
-
-usermod -aG tss feralfile
-mkdir -p /etc/udev/rules.d
-echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
-CHROOT_EOF
-
-# --- Step 9: Set @snapshots/@ota_new as default subvolume --------------------------------
-log_progress "98" "Setting new snapshot as default boot target..."
-log_info "Getting @snapshots/@ota_new subvolume ID..."
-NEW_SUBVOL_ID=$(btrfs subvolume list "$BTRFS_TOP" | awk '$NF=="@snapshots/@ota_new" {print $2}')
-
-if [[ -z "$NEW_SUBVOL_ID" ]]; then
-  log_error "Failed to get @snapshots/@ota_new subvolume ID"
-  umount -R "$NEW_ROOT"
-  umount "$BTRFS_TOP"
+if [[ -f "$POST_EXTRACTION_SCRIPT" && -x "$POST_EXTRACTION_SCRIPT" ]]; then
+  log_info "Found post-extraction script in ISO, executing with ISO's logic..."
+  arch-chroot "$NEW_ROOT" /bin/bash /root/scripts/post-extraction.sh "$ROOT_DEV"
+  log_info "Post-extraction script completed successfully."
+else
+  log_error "No post-extraction script found in ISO"
   exit 1
 fi
 
-log_info "Setting @snapshots/@ota_new (ID: $NEW_SUBVOL_ID) as default subvolume..."
-btrfs subvolume set-default "$NEW_SUBVOL_ID" "$BTRFS_TOP"
+umount "$NEW_ROOT/boot"
+
+# --- Step 9: Stage candidate boot files and create boot entry -----------------
+# NOTE: We do NOT overwrite /boot or change the btrfs default here.
+# The current @ and its kernel remain as automatic fallback via arch.conf.
+log_progress "98" "Finalizing update..."
+
+# Deploy new kernel to /boot/candidate/ (side-by-side with current known-good kernel)
+log_info "Staging candidate boot files to /boot/candidate/..."
+mkdir -p /boot/candidate
+rsync -a "$BOOT_STAGING"/vmlinuz-linux /boot/candidate/
+rsync -a "$BOOT_STAGING"/initramfs-linux.img /boot/candidate/
+rsync -a "$BOOT_STAGING"/intel-ucode.img /boot/candidate/
+sync
+
+# Write candidate boot entry
+log_info "Creating candidate boot entry with boot counting..."
+PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
+
+cat > /boot/loader/entries/arch-candidate.conf <<EOF
+title   FF1 - Update Candidate
+linux   /candidate/vmlinuz-linux
+initrd  /candidate/initramfs-linux.img
+initrd  /candidate/intel-ucode.img
+options rootflags=subvol=@snapshots/@ota_new root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
+EOF
+
+chmod 644 /boot/loader/entries/arch-candidate.conf
+
+bootctl set-oneshot arch-candidate.conf
+
+log_info "Candidate boot entry created. Btrfs default unchanged."
+sync
 
 # --- Step 10: Clean up and reboot ---------------------------------------------
 log_progress "99" "Cleaning up..."
@@ -292,6 +271,6 @@ cleanup
 trap - EXIT
 
 log_progress "100" "Update complete! Restarting device..."
-log_info "OTA update complete. System will boot from @snapshots/@ota_new. Rebooting now..."
+log_info "OTA update complete. Candidate boot entry created for @snapshots/@ota_new. Rebooting now..."
 sync
 systemctl reboot

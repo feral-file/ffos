@@ -99,15 +99,15 @@ echo
 echo "Mounting Btrfs top-level (subvolid=0) on /mnt..."
 mount -o subvolid=0 "$ROOT_PART" /mnt
 
-echo "Creating Btrfs subvolumes: @, @log, @pkg, @snapshots..."
-btrfs subvolume create /mnt/@             # root subvolume
+echo "Creating Btrfs subvolumes: @log, @pkg, @snapshots..."
 btrfs subvolume create /mnt/@log          # /var/log
 btrfs subvolume create /mnt/@pkg          # /var/cache/pacman/pkg
 btrfs subvolume create /mnt/@snapshots    # /.snapshots
+btrfs subvolume create /mnt/@snapshots/@  # root subvolume
 
 # ─── Set default subvolume to @ ────────────────────────────────────────────
-echo "Setting '@' as default subvolume..."
-btrfs subvolume set-default "$(btrfs subvolume list /mnt | awk '$NF=="@" {print $2}')" /mnt
+echo "Setting '@snapshots/@' as default subvolume..."
+btrfs subvolume set-default "$(btrfs subvolume list /mnt | awk '$NF=="@snapshots/@" {print $2}')" /mnt
 
 umount /mnt
 
@@ -183,6 +183,9 @@ rsync -a /live-efi/EFI /mnt/boot
 umount /live-efi
 
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_PART")
+
+# Clean up old entries if they exist
+rm -rf /mnt/boot/loader/entries/*
 
 cat > /mnt/boot/loader/loader.conf <<EOF
 default arch.conf
@@ -280,6 +283,10 @@ rm -f primary.ctx ecdsa.pub ecdsa.priv ecdsa.ctx
 usermod -aG tss feralfile
 mkdir -p /etc/udev/rules.d
 echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
+
+version=$(jq -r '.version // empty' "/home/feralfile/ff1-config.json")
+mkdir -p /var/lib/factory_reset
+echo "$version" > "/var/lib/factory_reset/installed_version"
 EOF
 
 echo "Backing up boot files to root filesystem..."

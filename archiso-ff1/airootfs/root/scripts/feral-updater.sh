@@ -29,6 +29,14 @@ if [[ "${FLOCK_ACTIVE:-}" != "1" ]]; then
   fi
 fi
 
+# Terminate recovery update if it's running to avoid conflicts
+if systemctl is-active --quiet feral-recovery-update.service; then
+  log_info "Recovery update service is running. Stopping it to proceed with normal OTA update..."
+  systemctl stop feral-recovery-update.service || log_error "Failed to stop recovery update service"
+  # Wait a moment for cleanup
+  sleep 2
+fi
+
 if ! ping -q -c 1 -W 2 8.8.8.8 >/dev/null; then
   log_error "No network connection. Aborting update."
   exit 0
