@@ -184,6 +184,9 @@ umount /live-efi
 
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_PART")
 
+# Clean up old entries if they exist
+rm -rf /mnt/boot/loader/entries/*
+
 cat > /mnt/boot/loader/loader.conf <<EOF
 default arch.conf
 timeout 0
@@ -280,6 +283,10 @@ rm -f primary.ctx ecdsa.pub ecdsa.priv ecdsa.ctx
 usermod -aG tss feralfile
 mkdir -p /etc/udev/rules.d
 echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
+
+version=$(jq -r '.version // empty' "/home/feralfile/ff1-config.json")
+mkdir -p /var/lib/factory_reset
+echo "$version" > "/var/lib/factory_reset/installed_version"
 EOF
 
 echo "Backing up boot files to root filesystem..."
