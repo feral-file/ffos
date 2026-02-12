@@ -1,315 +1,214 @@
-# New Snapshot System v2 — Flow Documentation
+# Snapshot System v2 — Technical Reference
 
-
-## Overview
-
-This branch introduces three major changes to the FFOS update and recovery architecture:
-
-1. **V2 root subvolume layout** — The root filesystem moves from `/@` to `/@snapshots/@`.
-2. **One-shot candidate boot** — OTA and factory-reset no longer swap the btrfs default subvolume before reboot. Instead, a one-shot candidate boot entry is created with `bootctl set-oneshot`. The candidate gets a single attempt; if it fails, systemd-boot automatically falls back to the known-good `@snapshots/@` on the next boot.
-3. **Recovery update service** — A new standalone timer/service that periodically downloads a server-specified recovery image and installs it as `@snapshots/@recovery_candidate`, which is used by factory reset if available.
+This document describes how the FFOS snapshot system v2 works: subvolume layout, OTA updates, factory reset, recovery updates, and boot-time rollback. It is intended for developers and operators who need to understand or modify these flows.
 
 ---
 
-## Changed Files
+## Summary
 
-| File | Change |
-|------|--------|
-| `auto-install.sh` / `install-to-disk.sh` | Create root subvol at `@snapshots/@` instead of `@` |
-| `feral-system-update.sh` | Snapshot from `@snapshots/@`, stage boot files, write candidate boot entry, use `bootctl set-oneshot` |
-| `factory_reset.sh` | Prefer `@recovery_candidate` over `@factory_reset` as source; stage boot files + candidate entry |
-| `btrfs-subvolume-manager.sh` | Unified case-based handler for candidate promotion and orphan cleanup |
-| `btrfs-rollback` (initcpio hook) | Detect v2 layout via marker file; rollback targets `@snapshots/@` |
-| `feral-recovery-update.sh` | **New** — downloads, verifies, and installs a recovery candidate snapshot |
-| `feral-recovery-update.service/.timer` | **New** — systemd units for the recovery update service |
-| `post-extraction.sh` | **New** — unified post-install configuration (boot entries, mkinitcpio, pacman, cleanup) |
-| `support_v2_root_snapshot` | **New** — marker file that signals v2 layout support |
-| `feral-updater.sh` | Stops recovery update service before starting OTA to avoid conflicts |
-| `profiledef.sh` | Registers new scripts with correct permissions |
-| `.github/workflows/*.yml` | Adds `update_recovery_version` field to `version-info.json` |
+Snapshot system v2 has three main characteristics:
+
+1. **Root subvolume under `@snapshots/@`** — The live root filesystem is `@snapshots/@` instead of a top-level `@`. All snapshot and candidate subvolumes live under `@snapshots/`, which simplifies atomic renames and keeps a single hierarchy.
+
+2. **One-shot candidate boot** — OTA and factory reset do not change the btrfs default subvolume before reboot. They create a candidate subvolume and a one-shot boot entry (`bootctl set-oneshot`). The next boot uses that entry once; if the candidate fails to boot, the following reboot uses the default entry and the known-good root. The btrfs default is only updated after a successful boot from the candidate (see Post-boot promotion).
+
+3. **Recovery update service** — A background timer runs `feral-recovery-update.sh`, which downloads a server-advertised recovery image and installs it as `@snapshots/@recovery_candidate`. Factory reset prefers this candidate when present, so devices can receive a newer recovery image without a full reinstall.
+
+**V1 vs v2 (high level)** — In v1, the root was a top-level `@`, and OTA/factory reset set the btrfs default to the new subvolume before rebooting (no one-shot, no staged boot files). v2 keeps the default unchanged until the candidate has booted successfully and uses a one-shot boot entry plus staged kernels for safe fallback.
 
 ---
 
-## Subvolume Layout
+## Subvolume Layout (v2)
 
-### V1 (old — `develop`)
+On a v2 system the btrfs layout is:
 
 ```
 btrfs top-level (subvolid=0)
-├── @                          ← default subvol, root filesystem
-├── @log                       ← /var/log
-├── @pkg                       ← /var/cache/pacman/pkg
+├── @log                       # bind-mounted as /var/log
+├── @pkg                       # bind-mounted as /var/cache/pacman/pkg
 └── @snapshots
-    ├── @factory_reset         ← factory reset snapshot
-    ├── @ota_new               ← (transient) OTA candidate
-    └── @factory_reset_new     ← (transient) factory reset candidate
+    ├── @                      # default subvolume; live root filesystem
+    ├── @factory_reset         # factory reset image (from initial install)
+    ├── @recovery_candidate    # optional; newer recovery image from recovery update
+    ├── @ota_new               # transient; OTA candidate (removed after promotion or cleanup)
+    └── @factory_reset_new    # transient; factory reset candidate (removed after promotion or cleanup)
 ```
 
-### V2 (new — this branch)
+- **Default subvolume** is always `@snapshots/@` on v2. Boot loader entries that do not specify `rootflags=subvol=...` use this default.
+- **Transient subvolumes** (`@ota_new`, `@factory_reset_new`) exist only while an update or factory reset is in progress; they are either promoted to `@snapshots/@` or deleted during cleanup.
 
-```
-btrfs top-level (subvolid=0)
-├── @log                       ← /var/log
-├── @pkg                       ← /var/cache/pacman/pkg
-└── @snapshots
-    ├── @                      ← default subvol, root filesystem
-    ├── @factory_reset         ← factory reset snapshot (from initial install)
-    ├── @recovery_candidate    ← (optional) newer recovery image
-    ├── @ota_new               ← (transient) OTA candidate
-    └── @factory_reset_new     ← (transient) factory reset candidate
-```
-
-Key change: root `@` now lives inside `@snapshots/`, simplifying snapshot management and atomic rename operations.
+**V1 layout (legacy)** — On v1, the default subvolume was top-level `@`, and `@snapshots/` contained only `@factory_reset`, `@ota_new`, and `@factory_reset_new`. The rollback hook and install scripts detect v1 vs v2 via the marker file `var/lib/factory_reset/support_v2_root_snapshot` (present only in v2 images).
 
 ---
 
-## Flow 1: OTA Update (`feral-system-update.sh`)
+## Key Scripts and Components
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        OTA Update Flow                          │
-└─────────────────────────────────────────────────────────────────┘
-
-1. Mount btrfs top-level
-2. Delete old @snapshots/@ota_new if it exists
-3. Snapshot @snapshots/@ → @snapshots/@ota_new           ← was: @ → @ota_new
-4. Download ISO, verify signature
-5. Mount ISO → SquashFS
-6. Rsync filesystem into @ota_new
-7. Stage boot files to @ota_new/var/lib/ota_boot_staging ← NEW: no longer writes to /boot
-8. Run post-extraction.sh inside @ota_new (chroot)       ← NEW: unified script
-9. Copy staged kernel to /boot/candidate/                ← NEW: side-by-side with current
-10. Write /boot/loader/entries/arch-candidate.conf        ← NEW: candidate boot entry
-11. bootctl set-oneshot arch-candidate.conf               ← NEW: single-attempt one-shot boot
-12. Reboot
-
- ┌──────────────────────────────────┐
- │   BTRFS DEFAULT NEVER CHANGES    │
- │   during OTA — stays @snapshots/@│
- └──────────────────────────────────┘
-```
-
-### What changed from V1
-
-- **No btrfs default swap before reboot** — the candidate is booted via `bootctl set-oneshot` (single attempt)
-- **Boot files staged inside snapshot** — not written to live `/boot` until post-promotion
-- **`post-extraction.sh`** replaces inline chroot blocks (mkinitcpio, pacman keys, boot entries, cleanup)
-- **Candidate kernel at `/boot/candidate/`** — current kernel stays at `/boot/` as automatic fallback if the one-shot fails
+| Component | Role |
+|-----------|------|
+| `feral-system-update.sh` | OTA: creates `@ota_new`, stages boot files, sets one-shot candidate boot, reboots |
+| `factory_reset.sh` | Factory reset: chooses source (recovery candidate or factory_reset), creates `@factory_reset_new`, one-shot boot, reboots |
+| `btrfs-subvolume-manager.sh` | Post-boot: promotes candidate to `@snapshots/@` or cleans orphans and failed recovery state |
+| `feral-recovery-update.sh` | Background: downloads recovery image, installs as `@recovery_candidate` |
+| `post-extraction.sh` | Shared chroot script: boot entries, mkinitcpio, pacman keys, cleanup (used by OTA and recovery update) |
+| `btrfs-rollback` (initcpio) | Boot-time rollback when `rollback=factory` is in kernel cmdline; detects v1 vs v2 and targets the correct root subvolume |
+| `support_v2_root_snapshot` | Marker file in the root fs indicating v2 layout; used by rollback and migration logic |
 
 ---
 
-## Flow 2: Post-Boot Promotion (`btrfs-subvolume-manager.sh`)
+## OTA Update Flow
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│               Btrfs Subvolume Manager (boot service)            │
-└─────────────────────────────────────────────────────────────────┘
+OTA is implemented in `feral-system-update.sh`. High-level sequence:
 
-CASE: Booted from @snapshots/@ota_new OR @snapshots/@factory_reset_new
-  ─────────────────────────────────────────────────────────────────
-  1. (OTA only) touch /etc/FF_OS_OTA_AUTO_TEST
-  2. Deploy staged boot files from snapshot to /boot (rsync --delete)
-  3. Mount btrfs top-level
-  4. Delete old @snapshots/@ subvolume
-  5. (Migration) Delete old top-level @ if present
-  6. mv @snapshots/@ota_new → @snapshots/@              ← atomic rename, no snapshot copy
-  7. Set @snapshots/@ as default subvolume
-  8. (Factory reset + recovery candidate) Promote @recovery_candidate → @factory_reset
-  9. Clean up arch-candidate.conf from /boot
-  10. Done — no reboot needed                            ← was: reboot required
+1. Mount btrfs top-level (subvolid=0).
+2. Remove any existing `@snapshots/@ota_new`.
+3. Create a writable snapshot: `@snapshots/@` → `@snapshots/@ota_new`.
+4. Download the release ISO and verify its signature.
+5. Mount the ISO and its SquashFS; rsync the filesystem into `@ota_new` (with standard exclusions).
+6. **Stage boot files** into `@ota_new/var/lib/ota_boot_staging` (vmlinuz, initramfs, ucode, loader, EFI). The live `/boot` is not modified yet.
+7. Bind-mount that staging directory as `/boot` inside `@ota_new` and run **`post-extraction.sh`** in chroot (boot entries, mkinitcpio, pacman keys, etc.).
+8. Copy the staged kernel and initrd into **`/boot/candidate/`** on the live ESP, so the current known-good kernel remains at `/boot/` and the new one sits alongside.
+9. Write **`/boot/loader/entries/arch-candidate.conf`** with `rootflags=subvol=@snapshots/@ota_new` (and candidate kernel paths).
+10. Run **`bootctl set-oneshot arch-candidate.conf`** so the next boot uses the candidate entry once.
+11. Reboot.
 
-CASE: Booted from @snapshots/@ (normal boot or fallback)
-  ─────────────────────────────────────────────────────────────────
-  1. Mount btrfs top-level
-  2. Delete orphaned @ota_new / @factory_reset_new if found
-  3. If recovery candidate boot failed (marker file present):
-     a. Record failed version
-     b. Delete failed @recovery_candidate
-     c. Clean marker
-  4. Remove /boot/loader/entries/arch-candidate.conf
-  5. Remove /boot/candidate/
+The btrfs default subvolume remains `@snapshots/@` throughout. Only after a successful boot from `@ota_new` does the subvolume manager promote it (see Post-boot promotion).
 
-CASE: Unexpected subvolume
-  ─────────────────────────────────────────────────────────────────
-  → Log warning, manual intervention required
-```
-
-### What changed from V1
-
-- **Unified handler** — single `case` statement replaces separate if/elif blocks for OTA and factory reset
-- **`mv` instead of snapshot+delete** — candidate is atomically renamed to `@snapshots/@` (faster, no data copy)
-- **No reboot after promotion** — boot files are deployed, default is set, system continues running
-- **Fallback cleanup** — if the one-shot candidate failed and the system fell back to `@snapshots/@`, orphaned candidates and failed recovery markers are cleaned up
+**V1 difference** — In v1, OTA wrote boot files directly to `/boot`, updated mkinitcpio in chroot, and set the btrfs default to `@ota_new` before rebooting. v2 defers writing to `/boot` until after a successful candidate boot and uses a one-shot entry so a bad update does not change the default.
 
 ---
 
-## Flow 3: Factory Reset (`factory_reset.sh`)
+## Post-Boot Promotion (Btrfs Subvolume Manager)
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Factory Reset Flow                         │
-└─────────────────────────────────────────────────────────────────┘
+`btrfs-subvolume-manager.sh` runs early in boot. It decides what to do based on the **current root subvolume** (where the system booted from).
 
-1. Mount btrfs top-level
-2. Delete old @factory_reset_new if it exists
-3. Pick source:                                           ← NEW: recovery candidate preferred
-   - @snapshots/@recovery_candidate (if exists) → use it
-   - @snapshots/@factory_reset       (fallback) → use it
-4. Snapshot source → @snapshots/@factory_reset_new
-5. (If recovery candidate used) Leave breadcrumb:
-   - candidate_used marker in @factory_reset_new/var/lib/recovery_update/
-   - attempted marker in /var/lib/recovery_update/
-6. Stage boot files to /boot/candidate/                   ← NEW: side-by-side staging
-7. Write /boot/loader/entries/arch-candidate.conf
-8. bootctl set-oneshot arch-candidate.conf                ← NEW: single-attempt one-shot
-9. Reboot
+### Booted from a candidate (`@ota_new` or `@factory_reset_new`)
 
- ┌────────────────────────────────────────────────┐
- │  If recovery candidate was used and boot fails │
- │  → fallback to @snapshots/@                    │
- │  → btrfs-subvolume-manager marks version failed│
- │  → recovery update skips that version next time│
- └────────────────────────────────────────────────┘
-```
+Promotion path:
 
-### What changed from V1
+1. **(OTA only)** Create `/etc/FF_OS_OTA_AUTO_TEST` for any post-update checks.
+2. **Deploy staged boot files** from the snapshot (`var/lib/ota_boot_staging` or `var/lib/factory_reset_boot`) to the live `/boot` (rsync with delete).
+3. Mount btrfs top-level.
+4. Delete the existing `@snapshots/@` subvolume (old root).
+5. **(Migration)** If an old top-level `@` exists (v1 remnant), delete it.
+6. **Rename** the candidate into place: `mv @snapshots/@ota_new` (or `@factory_reset_new`) **→** `@snapshots/@`. This is a metadata-only rename; no data copy.
+7. Set `@snapshots/@` as the default subvolume.
+8. **(Factory reset only, when recovery candidate was used)** Promote `@recovery_candidate` to `@factory_reset` (rename) and remove the old `@factory_reset` if present.
+9. Remove `/boot/loader/entries/arch-candidate.conf` and `/boot/candidate/`.
+10. Exit; **no reboot**. The system is now running from the new `@snapshots/@` with the new kernel already in use.
 
-- **Recovery candidate as preferred source** — factory reset uses the latest recovery image if available
-- **One-shot boot** — same mechanism as OTA; if the single attempt fails, system falls back automatically
-- **Breadcrumb trail** — `candidate_used` and `attempted` markers allow post-boot promotion of recovery candidate to `@factory_reset` and failed version tracking
+**V1 difference** — In v1, promotion created a new `@` by snapshotting the candidate and then deleting the candidate; the default was switched to that new `@` and a reboot was required. v2 uses a single rename and deploys boot files in place, so no second reboot is needed.
 
----
+### Booted from `@snapshots/@` (normal boot or fallback)
 
-## Flow 4: Recovery Update (`feral-recovery-update.sh`) — NEW
+Cleanup path:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Recovery Update Flow                          │
-│           (timer-driven, runs periodically in background)       │
-└─────────────────────────────────────────────────────────────────┘
+1. Mount btrfs top-level.
+2. Delete any orphaned `@ota_new` or `@factory_reset_new` (e.g. after a failed or abandoned update).
+3. If a recovery candidate was tried and failed (marker under `/var/lib/recovery_update/`): record the failed version, delete `@recovery_candidate`, clear the marker.
+4. Remove `arch-candidate.conf` and `/boot/candidate/`.
 
-Preconditions:
-  - OTA updater not running (checks feral-updater.lock)
-  - Network available
-  - Server provides recovery_version in version-info.json
-  - Version not already installed, not previously failed
+This keeps the system in a consistent state after a failed candidate boot (one-shot expired, next boot used default `@snapshots/@`).
 
-1. Check server API for recovery_version
-2. Skip if:
-   - Same as installed factory reset version
-   - Same as installed recovery candidate version
-   - Same as previously failed version
-3. Mount btrfs top-level
-4. Clean up leftover @recovery_candidate_old / @recovery_candidate_new
-5. Snapshot @factory_reset → @recovery_candidate_new
-6. Download recovery ISO, verify signature
-7. Mount ISO → SquashFS
-8. Rsync filesystem into @recovery_candidate_new
-9. Extract boot files, backup into snapshot
-10. Run post-extraction.sh inside @recovery_candidate_new (chroot)
-11. Atomic swap:
-    a. mv @recovery_candidate → @recovery_candidate_old
-    b. mv @recovery_candidate_new → @recovery_candidate
-    c. Delete @recovery_candidate_old
-12. Record installed version at /var/lib/recovery_update/installed_version
-13. Done — candidate used on next factory reset
-```
+### Booted from any other subvolume
 
-### Conflict avoidance
-
-- `feral-updater.sh` stops recovery update service before starting OTA
-- `feral-recovery-update.sh` checks OTA lock before starting
-- Both use `flock` for self-exclusion
+The script logs a warning and does nothing; manual intervention may be required.
 
 ---
 
-## Flow 5: Initcpio Rollback Hook (`btrfs-rollback`)
+## Factory Reset Flow
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│              Boot-time Rollback (initcpio hook)                  │
-│         Triggered by: rollback=factory kernel param             │
-└─────────────────────────────────────────────────────────────────┘
+Factory reset is implemented in `factory_reset.sh`. Sequence:
 
-1. Read rollback= kernel parameter → find source snapshot
-2. Mount btrfs top-level at /run/rollback
-3. Detect v2 layout:                                      ← NEW
-   - Check for support_v2_root_snapshot marker in source snapshot
-   - If v2: target_root = "@snapshots/@"
-   - If v1: target_root = "@"                             ← backward compatible
-4. Delete old target_root subvolume
-5. Snapshot source → target_root
-6. Set target_root as default subvolume
-7. Recover /boot from backup inside target_root
-8. Unmount and continue boot
-```
+1. Mount btrfs top-level.
+2. Remove any existing `@snapshots/@factory_reset_new`.
+3. **Choose source:** if `@snapshots/@recovery_candidate` exists, use it; otherwise use `@snapshots/@factory_reset`.
+4. Create snapshot: source → `@snapshots/@factory_reset_new`.
+5. If the source was `@recovery_candidate`, create marker files so post-boot logic can promote `@recovery_candidate` to `@factory_reset` and track failures (see Post-boot promotion and Recovery update).
+6. Stage boot files from the source into **`/boot/candidate/`** (same pattern as OTA).
+7. Write **`arch-candidate.conf`** with `rootflags=subvol=@snapshots/@factory_reset_new` and candidate kernel paths.
+8. **`bootctl set-oneshot arch-candidate.conf`** and reboot.
 
-### What changed from V1
+If the factory reset candidate fails to boot, the next boot uses the default entry (`@snapshots/@`). The subvolume manager then cleans up the failed candidate and records the version so the recovery update service does not reuse it.
 
-- **V2 detection** via `support_v2_root_snapshot` marker file
-- **Dynamic target** — rollback targets `@snapshots/@` on v2 or `@` on v1
-- Backward compatible with devices still on v1 layout
+**V1 difference** — In v1, factory reset always used `@factory_reset`, wrote boot files directly to `/boot`, and set the btrfs default to `@factory_reset_new` before rebooting. v2 adds recovery candidate as a source and uses the same one-shot + staged boot pattern as OTA.
 
 ---
 
-## Flow 6: Post-Extraction Script (`post-extraction.sh`) — NEW
+## Recovery Update Flow
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│          Unified Post-Extraction Configuration                   │
-│      Called by: OTA update, Recovery update (via chroot)         │
-└─────────────────────────────────────────────────────────────────┘
+The recovery update service (`feral-recovery-update.sh`) runs on a timer. It fetches a **recovery_version** (and optional **recovery_image_url**) from the same API used for OTA (e.g. version-info or latest endpoint) and, when appropriate, installs that image as `@snapshots/@recovery_candidate`. Factory reset then prefers this candidate over the original `@factory_reset`.
 
-1. Clean up test files (automated_script, bash_profile, soaktest user, websocat)
-2. Configure autologin for feralfile user
-3. Set environment to "live"
-4. Write boot entries (arch.conf, factory_reset.conf) with correct PARTUUID
-5. Configure mkinitcpio hooks (including btrfs-rollback)
-6. Generate initramfs (mkinitcpio -P)
-7. Initialize pacman keys + FeralFile signing key
-8. Sync package databases
-9. Configure TPM access (tss group, udev rules)
-10. Apply systemd presets
-```
+Rough sequence:
 
-This script replaces the inline chroot blocks that were previously duplicated across `feral-system-update.sh` and `auto-install.sh`.
+1. **Preconditions:** OTA updater not running (flock / service check), network up, API returns a recovery version and URL.
+2. **Skip if:** recovery version equals the installed factory reset version, equals the installed recovery candidate version, or equals a previously failed version (stored under `/var/lib/recovery_update/`).
+3. Mount btrfs top-level; remove any leftover `@recovery_candidate_old` or `@recovery_candidate_new`.
+4. Snapshot `@factory_reset` → `@recovery_candidate_new`.
+5. Download the recovery ISO and signature; verify signature.
+6. Mount ISO and SquashFS; rsync into `@recovery_candidate_new`; extract and store boot files in the snapshot.
+7. Bind-mount boot dir and run **`post-extraction.sh`** inside `@recovery_candidate_new`.
+8. Write the recovery version into the snapshot (e.g. `var/lib/factory_reset/installed_version`).
+9. **Atomic swap:** rename `@recovery_candidate` → `@recovery_candidate_old`, `@recovery_candidate_new` → `@recovery_candidate`, then delete `@recovery_candidate_old`.
+10. Record the installed version in `/var/lib/recovery_update/installed_version`.
+
+**Conflict avoidance** — The OTA updater stops the recovery update service before running. The recovery script also checks the OTA lock and skips if an OTA is in progress. Both use flock to prevent concurrent runs of the same script.
 
 ---
 
-## CI/CD Changes
+## Boot-Time Rollback (initcpio hook)
 
-Both `build-image-to-cf.yml` and `pure-build-image-to-cf.yml` gain:
+The `btrfs-rollback` initcpio hook runs when the kernel command line contains **`rollback=factory`** (typically from the factory reset boot menu entry). It restores the root filesystem from the factory reset snapshot and restores `/boot` from the snapshot’s backup.
 
-- New input: `update_recovery_version` (boolean)
-- New field in `version-info.json`: `recovery_version`
-- Logic to preserve/update the recovery version field across builds
+Sequence:
 
-This allows the server API to advertise a `recovery_version`, which `feral-recovery-update.sh` fetches to decide when to update the recovery candidate.
+1. Parse `rollback=` to determine the source snapshot (e.g. factory reset snapshot).
+2. Mount the btrfs top-level at `/run/rollback`.
+3. **Detect v1 vs v2:** look for `support_v2_root_snapshot` inside the source snapshot. If present, **target_root** is `@snapshots/@`; otherwise **target_root** is `@` (v1).
+4. Delete the existing target_root subvolume.
+5. Snapshot the source snapshot into target_root.
+6. Set target_root as the default subvolume.
+7. Restore `/boot` from the backup stored inside the target_root (e.g. `var/lib/factory_reset_boot`).
+8. Unmount and continue boot.
+
+This keeps v1 devices (root at `@`) and v2 devices (root at `@snapshots/@`) working with the same hook.
 
 ---
 
-## Boot Entry Layout (ESP)
+## Post-Extraction Script
 
-```
-/boot/
-├── loader/
-│   ├── loader.conf                    (default: arch.conf)
-│   └── entries/
-│       ├── arch.conf                  → boots @snapshots/@ (always present, known-good fallback)
-│       ├── factory_reset.conf         → triggers rollback hook
-│       └── arch-candidate.conf        → one-shot candidate entry (transient, created by OTA/reset)
-├── vmlinuz-linux                      ← current known-good kernel
-├── initramfs-linux.img
-├── intel-ucode.img
-└── candidate/                         ← transient, created during OTA/reset
-    ├── vmlinuz-linux
-    ├── initramfs-linux.img
-    └── intel-ucode.img
-```
+`post-extraction.sh` is the shared script run inside a newly populated root (OTA snapshot or recovery candidate). It is invoked by `feral-system-update.sh` and `feral-recovery-update.sh` with the root device as an argument. It:
+
+- Removes test/development files and the soaktest user
+- Configures getty autologin and environment (e.g. "live")
+- Writes `/boot/loader/loader.conf` and entries (`arch.conf`, `factory_reset.conf`) with the correct PARTUUID
+- Configures mkinitcpio (including the btrfs-rollback hook) and runs `mkinitcpio -P`
+- Initializes pacman keys and FeralFile package key; runs `pacman -Syy`
+- Sets TPM udev rules and group membership
+- Applies systemd presets
+
+The caller is responsible for bind-mounting the correct boot or staging directory as `/boot` before chrooting.
+
+---
+
+## Boot Loader Layout (ESP)
+
+Typical layout under the ESP mount (`/boot`):
+
+- **loader/loader.conf** — default entry `arch.conf`, timeout 0.
+- **loader/entries/arch.conf** — main entry; boots the default subvolume `@snapshots/@` (known-good root and kernel).
+- **loader/entries/factory_reset.conf** — adds `rollback=factory` and boots the default subvolume so the initcpio hook can perform rollback.
+- **loader/entries/arch-candidate.conf** — created by OTA or factory reset; points to the candidate subvolume and **/candidate/** kernel/initrd. Present only transiently; removed by the subvolume manager after promotion or cleanup.
+- **vmlinuz-linux**, **initramfs-linux.img**, **intel-ucode.img** — current deployed (known-good) kernel.
+- **candidate/** — directory created during OTA or factory reset; holds the new kernel/initrd until promotion or cleanup.
+
+The one-shot mechanism uses `bootctl set-oneshot arch-candidate.conf`, so the next boot uses the candidate once; after that, the default entry is used again unless another one-shot is set.
 
 ---
 
 ## Safety Model
+
+- The **btrfs default subvolume** is only changed **after** a successful boot from a candidate, when the subvolume manager renames the candidate to `@snapshots/@` and sets it as default.
+- Until then, the default remains `@snapshots/@`. The candidate is booted only via the **one-shot** entry. If that boot fails (panic, hang, or failure before the manager runs), the next reboot uses the default entry and the known-good root; the subvolume manager then cleans up the orphaned candidate and any recovery failure state.
 
 ```
                     ┌──────────────┐
@@ -333,11 +232,11 @@ This allows the server API to advertise a `recovery_version`, which `feral-recov
            │     └───────────────────┘     │
            │                               │
     ┌──────▼──────┐                 ┌──────▼──────┐
-    │  Promote    │                 │  Next boot: │
+    │  Promote    │                 │  Next boot:  │
     │  candidate  │                 │  one-shot   │
-    │  → @        │                 │  expired →  │
-    └─────────────┘                 │  fallback   │
-                                    │  to @       │
+    │  → @        │                 │  expired →   │
+    └─────────────┘                 │  fallback to │
+                                    │  @snapshots/@│
                                     └──────┬──────┘
                                            │
                                     ┌──────▼──────┐
@@ -345,5 +244,3 @@ This allows the server API to advertise a `recovery_version`, which `feral-recov
                                     │  orphans    │
                                     └─────────────┘
 ```
-
-The btrfs default subvolume **never changes** until after the candidate has proven it can boot successfully. Since `bootctl set-oneshot` is used, the candidate entry is consumed on the first boot attempt. If the candidate fails to start the subvolume manager (crash, hang, kernel panic), the next reboot automatically loads the default `arch.conf` entry, which boots the known-good `@snapshots/@`.
