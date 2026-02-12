@@ -102,12 +102,18 @@ bootctl set-oneshot arch-candidate.conf
 # Step 7: If recovery candidate was used, mark it as attempted for tracking in btrfs-rollback hook
 if [[ "$SOURCE_SNAP" == "@snapshots/@recovery_candidate" ]]; then
     mkdir -p /var/lib/recovery_update
-    if [[ -f "$BTRFS_TOP/@snapshots/@factory_reset_new/var/lib/factory_reset/installed_version" ]]; then
-        cp "$BTRFS_TOP/@snapshots/@factory_reset_new/var/lib/factory_reset/installed_version" \
-        /var/lib/recovery_update/attempted
+    CANDIDATE_CONFIG="$BTRFS_TOP/@snapshots/@factory_reset_new/home/feralfile/ff1-config.json"
+    if [[ -f "$CANDIDATE_CONFIG" ]]; then
+        CANDIDATE_VERSION=$(jq -r '.version // empty' "$CANDIDATE_CONFIG")
+        if [[ -n "$CANDIDATE_VERSION" ]]; then
+            echo "$CANDIDATE_VERSION" > /var/lib/recovery_update/attempted
+        else
+            touch /var/lib/recovery_update/attempted
+            log_msg "Warning: version field empty in ff1-config.json of factory_reset_new snapshot."
+        fi
     else
         touch /var/lib/recovery_update/attempted
-        log_msg "Warning: installed_version file not found in factory_reset_new snapshot. Using empty version for tracking."
+        log_msg "Warning: ff1-config.json not found in factory_reset_new snapshot. Using empty version for tracking."
     fi
 fi
 
