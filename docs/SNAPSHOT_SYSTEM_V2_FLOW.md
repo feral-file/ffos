@@ -136,7 +136,7 @@ If the factory reset candidate fails to boot, the next boot uses the default ent
 
 ## Recovery Update Flow
 
-The recovery update service (`feral-recovery-update.sh`) runs on a timer. It fetches a **recovery_version** (and optional **recovery_image_url**) from the same API used for OTA (e.g. version-info or latest endpoint) and, when appropriate, installs that image as `@snapshots/@recovery_candidate`. Factory reset then prefers this candidate over the original `@factory_reset`.
+The recovery update service (`feral-recovery-update.sh`) runs on a timer. It fetches a **recovery_version** and **recovery_image_url** from the same API used for OTA (e.g. version-info or latest endpoint) and, when appropriate, installs that image as `@snapshots/@recovery_candidate`. Factory reset then prefers this candidate over the original `@factory_reset`.
 
 Rough sequence:
 
