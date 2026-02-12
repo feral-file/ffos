@@ -99,15 +99,15 @@ echo
 echo "Mounting Btrfs top-level (subvolid=0) on /mnt..."
 mount -o subvolid=0 "$ROOT_PART" /mnt
 
-echo "Creating Btrfs subvolumes: @, @log, @pkg, @snapshots..."
-btrfs subvolume create /mnt/@             # root subvolume
+echo "Creating Btrfs subvolumes: @log, @pkg, @snapshots..."
 btrfs subvolume create /mnt/@log          # /var/log
 btrfs subvolume create /mnt/@pkg          # /var/cache/pacman/pkg
 btrfs subvolume create /mnt/@snapshots    # /.snapshots
+btrfs subvolume create /mnt/@snapshots/@  # root subvolume
 
 # ─── Set default subvolume to @ ────────────────────────────────────────────
-echo "Setting '@' as default subvolume..."
-btrfs subvolume set-default "$(btrfs subvolume list /mnt | awk '$NF=="@" {print $2}')" /mnt
+echo "Setting '@snapshots/@' as default subvolume..."
+btrfs subvolume set-default "$(btrfs subvolume list /mnt | awk '$NF=="@snapshots/@" {print $2}')" /mnt
 
 umount /mnt
 
