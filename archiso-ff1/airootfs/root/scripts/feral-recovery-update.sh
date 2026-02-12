@@ -264,6 +264,7 @@ fi
 
 # Step 2: Rename new into place (fast, metadata-only)
 mv "$BTRFS_TOP/@snapshots/@recovery_candidate_new" "$BTRFS_TOP/@snapshots/@recovery_candidate"
+btrfs property set "$BTRFS_TOP/@snapshots/@recovery_candidate" ro true
 log_info "Successfully replaced @recovery_candidate."
 
 # Step 3: Delete the old one (slow, but no longer on the critical path)
