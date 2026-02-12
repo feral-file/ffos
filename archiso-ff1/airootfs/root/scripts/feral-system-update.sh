@@ -235,7 +235,6 @@ umount "$NEW_ROOT/boot"
 # --- Step 9: Stage candidate boot files and create boot entry -----------------
 # NOTE: We do NOT overwrite /boot or change the btrfs default here.
 # The current @ and its kernel remain as automatic fallback via arch.conf.
-# Boot counting in systemd-boot gives the candidate 3 attempts before fallback.
 log_progress "98" "Finalizing update..."
 
 # Deploy new kernel to /boot/candidate/ (side-by-side with current known-good kernel)
@@ -246,7 +245,7 @@ rsync -a "$BOOT_STAGING"/initramfs-linux.img /boot/candidate/
 rsync -a "$BOOT_STAGING"/intel-ucode.img /boot/candidate/
 sync
 
-# Write candidate boot entry with boot counting (3 attempts before fallback to @)
+# Write candidate boot entry
 log_info "Creating candidate boot entry with boot counting..."
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
 
