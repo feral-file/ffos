@@ -5,6 +5,8 @@ set -euo pipefail
 # Standalone service that checks for and installs new recovery versions.
 # The recovery candidate will be used on next factory reset.
 
+LOCKFILE="/run/feral-recovery-update.lock"
+
 log_info() {
   local message="$1"
   echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [INFO] recovery_update message=\"$message\""
@@ -27,15 +29,19 @@ else
   exit 0
 fi
 
-# Use flock to prevent concurrent runs of recovery update
-if [[ "${FLOCK_ACTIVE:-}" != "1" ]]; then
-  if /usr/bin/flock -n /run/feral-recovery-update.lock bash -c 'exec env FLOCK_ACTIVE=1 "$0" "$@"' "$0" "$@"; then
-    exit 0
-  else
-    log_error "Recovery update lock already held by another instance."
-    exit 0
-  fi
+# Acquire exclusive lock (non-blocking)
+exec 8>"$LOCKFILE"
+if ! flock -n 8; then
+  log_error "Recovery update lock already held by another instance."
+  exit 0
 fi
+
+# Ensure lock is released on any exit (overridden later by full cleanup trap)
+release_lock() {
+  flock -u 8 2>/dev/null || true
+  rm -f "$LOCKFILE" 2>/dev/null || true
+}
+trap release_lock EXIT
 
 # Check network connectivity
 if ! ping -q -c 1 -W 5 8.8.8.8 >/dev/null 2>&1; then
@@ -97,6 +103,10 @@ cleanup() {
   umount -Rl "$SFS_MOUNT" 2>/dev/null || true
   umount -Rl "$ISO_MOUNT" 2>/dev/null || true
   rm -rf "$TMP_DIR"
+
+  # Release lock
+  flock -u 8 2>/dev/null || true
+  rm -f "$LOCKFILE" 2>/dev/null || true
 }
 trap cleanup EXIT
 
