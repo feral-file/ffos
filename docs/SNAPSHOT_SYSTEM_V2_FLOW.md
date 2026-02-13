@@ -104,7 +104,7 @@ Cleanup path:
 
 1. Mount btrfs top-level.
 2. Delete any orphaned `@ota_new` or `@factory_reset_new` (e.g. after a failed or abandoned update).
-3. If a recovery candidate was tried and failed (marker under `/var/lib/recovery_update/`): record the failed version, delete `@recovery_candidate`, clear the marker.
+3. If a recovery candidate was tried and failed (marker `/var/lib/recovery_update/attempted`): record the failed version in `/home/feralfile/.state/failed_recovery_version` (falling back to reading the version from the `@recovery_candidate` snapshot's `ff1-config.json` if the marker is empty), delete `@recovery_candidate`, clear the marker.
 4. Remove `arch-candidate.conf` and `/boot/candidate/`.
 
 This keeps the system in a consistent state after a failed candidate boot (one-shot expired, next boot used default `@snapshots/@`).
@@ -141,15 +141,14 @@ The recovery update service (`feral-recovery-update.sh`) runs on a timer. It fet
 Rough sequence:
 
 1. **Preconditions:** OTA updater not running (flock / service check), network up, API returns a recovery version and URL.
-2. **Skip if:** recovery version equals the installed factory reset version, equals the installed recovery candidate version, or equals a previously failed version (stored under `/var/lib/recovery_update/`).
-3. Mount btrfs top-level; remove any leftover `@recovery_candidate_old` or `@recovery_candidate_new`.
-4. Snapshot `@factory_reset` → `@recovery_candidate_new`.
-5. Download the recovery ISO and signature; verify signature.
-6. Mount ISO and SquashFS; rsync into `@recovery_candidate_new`; extract and store boot files in the snapshot.
-7. Bind-mount boot dir and run **`post-extraction.sh`** inside `@recovery_candidate_new`.
-8. Write the recovery version into the snapshot (e.g. `var/lib/factory_reset/installed_version`).
+2. Mount btrfs top-level.
+3. **Skip if:** recovery version equals the factory reset version (read from `@factory_reset/home/feralfile/ff1-config.json`), equals the recovery candidate version (read from `@recovery_candidate/home/feralfile/ff1-config.json`), or equals a previously failed version (stored in `/home/feralfile/.state/failed_recovery_version`).
+4. Remove any leftover `@recovery_candidate_old` or `@recovery_candidate_new`.
+5. Snapshot `@factory_reset` → `@recovery_candidate_new`.
+6. Download the recovery ISO and signature; verify signature.
+7. Mount ISO and SquashFS; rsync into `@recovery_candidate_new`; extract and store boot files in the snapshot.
+8. Bind-mount boot dir and run **`post-extraction.sh`** inside `@recovery_candidate_new`.
 9. **Atomic swap:** rename `@recovery_candidate` → `@recovery_candidate_old`, `@recovery_candidate_new` → `@recovery_candidate`, then delete `@recovery_candidate_old`.
-10. Record the installed version in `/var/lib/recovery_update/installed_version`.
 
 **Conflict avoidance** — The OTA updater stops the recovery update service before running. The recovery script also checks the OTA lock and skips if an OTA is in progress. Both use flock to prevent concurrent runs of the same script.
 

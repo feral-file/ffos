@@ -5,6 +5,8 @@ set -euo pipefail
 # Standalone service that checks for and installs new recovery versions.
 # The recovery candidate will be used on next factory reset.
 
+LOCKFILE="/run/feral-recovery-update.lock"
+
 log_info() {
   local message="$1"
   echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [INFO] recovery_update message=\"$message\""
@@ -27,15 +29,19 @@ else
   exit 0
 fi
 
-# Use flock to prevent concurrent runs of recovery update
-if [[ "${FLOCK_ACTIVE:-}" != "1" ]]; then
-  if /usr/bin/flock -n /run/feral-recovery-update.lock bash -c 'exec env FLOCK_ACTIVE=1 "$0" "$@"' "$0" "$@"; then
-    exit 0
-  else
-    log_error "Recovery update lock already held by another instance."
-    exit 0
-  fi
+# Acquire exclusive lock (non-blocking)
+exec 8>"$LOCKFILE"
+if ! flock -n 8; then
+  log_error "Recovery update lock already held by another instance."
+  exit 0
 fi
+
+# Ensure lock is released on any exit (overridden later by full cleanup trap)
+release_lock() {
+  flock -u 8 2>/dev/null || true
+  rm -f "$LOCKFILE" 2>/dev/null || true
+}
+trap release_lock EXIT
 
 # Check network connectivity
 if ! ping -q -c 1 -W 5 8.8.8.8 >/dev/null 2>&1; then
@@ -75,40 +81,7 @@ if [[ -z "$RECOVERY_VERSION" || -z "$RECOVERY_URL" ]]; then
   exit 0
 fi
 
-# Skip if this version is already the same as a factory reset version
-if [[ -f /var/lib/factory_reset/installed_version ]]; then
-  INSTALLED_FR_VERSION=$(cat /var/lib/factory_reset/installed_version)
-  if [[ "$RECOVERY_VERSION" == "$INSTALLED_FR_VERSION" ]]; then
-    log_info "Recovery version $RECOVERY_VERSION already installed as factory reset version."
-    exit 0
-  fi
-fi
-
-# Skip if this version is already installed as a candidate
-if [[ -f /var/lib/recovery_update/installed_version ]]; then
-  INSTALLED_RC_VERSION=$(cat /var/lib/recovery_update/installed_version)
-  if [[ "$RECOVERY_VERSION" == "$INSTALLED_RC_VERSION" ]]; then
-    log_info "Recovery version $RECOVERY_VERSION already installed as candidate."
-    exit 0
-  fi
-fi
-
-# Skip if this version previously failed to boot
-if [[ -f /var/lib/recovery_update/failed_version ]]; then
-  FAILED_VERSION=$(cat /var/lib/recovery_update/failed_version)
-  if [[ "$RECOVERY_VERSION" == "$FAILED_VERSION" ]]; then
-    log_info "Recovery version $FAILED_VERSION previously failed boot. Skipping."
-    exit 0
-  fi
-  # Different version available — clear failed marker and proceed
-  log_info "New recovery version $RECOVERY_VERSION available (previous failed version was $FAILED_VERSION). Clearing failed marker."
-  rm -f /var/lib/recovery_update/failed_version
-fi
-
-log_info "New recovery version available: $RECOVERY_VERSION"
-log_info "Starting recovery candidate installation..."
-
-# --- Begin Installation ---
+# --- Begin Setup ---
 
 ISO_MOUNT="/mnt/recovery-iso"
 SFS_MOUNT="/mnt/recovery-sfs"
@@ -130,6 +103,10 @@ cleanup() {
   umount -Rl "$SFS_MOUNT" 2>/dev/null || true
   umount -Rl "$ISO_MOUNT" 2>/dev/null || true
   rm -rf "$TMP_DIR"
+
+  # Release lock
+  flock -u 8 2>/dev/null || true
+  rm -f "$LOCKFILE" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -140,6 +117,45 @@ ROOT_DEV="${ROOT_DEV%%\[*}"
 
 mkdir -p "$BTRFS_TOP"
 mount -o subvolid=0 "$ROOT_DEV" "$BTRFS_TOP"
+
+# Skip if this version is already the same as factory reset version
+# (read directly from @factory_reset snapshot's config)
+FACTORY_RESET_CONFIG="$BTRFS_TOP/@snapshots/@factory_reset/home/feralfile/ff1-config.json"
+if [[ -f "$FACTORY_RESET_CONFIG" ]]; then
+  INSTALLED_FR_VERSION=$(jq -r '.version // empty' "$FACTORY_RESET_CONFIG")
+  if [[ -n "$INSTALLED_FR_VERSION" && "$RECOVERY_VERSION" == "$INSTALLED_FR_VERSION" ]]; then
+    log_info "Recovery version $RECOVERY_VERSION already installed as factory reset version."
+    exit 0
+  fi
+fi
+
+# Skip if this version is already installed as a candidate
+# (read directly from @recovery_candidate snapshot's config)
+RECOVERY_CANDIDATE_CONFIG="$BTRFS_TOP/@snapshots/@recovery_candidate/home/feralfile/ff1-config.json"
+if [[ -f "$RECOVERY_CANDIDATE_CONFIG" ]]; then
+  INSTALLED_RC_VERSION=$(jq -r '.version // empty' "$RECOVERY_CANDIDATE_CONFIG")
+  if [[ -n "$INSTALLED_RC_VERSION" && "$RECOVERY_VERSION" == "$INSTALLED_RC_VERSION" ]]; then
+    log_info "Recovery version $RECOVERY_VERSION already installed as candidate."
+    exit 0
+  fi
+fi
+
+# Skip if this version previously failed to boot
+# (stored in /home/feralfile/.state/ to survive OTA updates; the failed snapshot is deleted after failure)
+FAILED_RECOVERY_VERSION_FILE="/home/feralfile/.state/failed_recovery_version"
+if [[ -f "$FAILED_RECOVERY_VERSION_FILE" ]]; then
+  FAILED_VERSION=$(cat "$FAILED_RECOVERY_VERSION_FILE")
+  if [[ "$RECOVERY_VERSION" == "$FAILED_VERSION" ]]; then
+    log_info "Recovery version $FAILED_VERSION previously failed boot. Skipping."
+    exit 0
+  fi
+  # Different version available — clear failed marker and proceed
+  log_info "New recovery version $RECOVERY_VERSION available (previous failed version was $FAILED_VERSION). Clearing failed marker."
+  rm -f "$FAILED_RECOVERY_VERSION_FILE"
+fi
+
+log_info "New recovery version available: $RECOVERY_VERSION"
+log_info "Starting recovery candidate installation..."
 
 # Prepare @recovery_candidate_new subvolume (fresh install)
 log_info "Preparing @snapshots/@recovery_candidate_new subvolume..."
@@ -244,9 +260,6 @@ else
   exit 1
 fi
 
-mkdir -p "$RECOVERY_ROOT/var/lib/factory_reset"
-echo "$RECOVERY_VERSION" > "$RECOVERY_ROOT/var/lib/factory_reset/installed_version"
-
 umount "$RECOVERY_ROOT/boot"
 
 # Atomically replace @recovery_candidate with @recovery_candidate_new
@@ -273,12 +286,6 @@ if [[ -d "$BTRFS_TOP/@snapshots/@recovery_candidate_old" ]]; then
   btrfs subvolume delete "$BTRFS_TOP/@snapshots/@recovery_candidate_old" || \
     log_error "Warning: Failed to delete old recovery candidate. It can be cleaned up manually."
 fi
-
-# Step 4: Record installed version for tracking
-log_info "Recording installed version for tracking..."
-mkdir -p /var/lib/recovery_update
-echo "$RECOVERY_VERSION" > /var/lib/recovery_update/installed_version
-log_info "Version tracking complete."
 
 # Cleanup
 log_info "Cleaning up..."

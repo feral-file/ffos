@@ -169,12 +169,16 @@ case "$CURRENT_SUBVOL" in
     if [[ -f /var/lib/recovery_update/attempted ]]; then
         log_msg "Attempt to do factory reset with recovery candidate detected."
         FAILED_VERSION=$(cat /var/lib/recovery_update/attempted)
-        # Fallback: if marker was empty (touch'd), try installed_version
-        if [[ -z "$FAILED_VERSION" && -f /var/lib/recovery_update/installed_version ]]; then
-            FAILED_VERSION=$(cat /var/lib/recovery_update/installed_version)
+        # Fallback: if marker was empty (touch'd), try reading from @recovery_candidate snapshot's config
+        if [[ -z "$FAILED_VERSION" ]]; then
+            RC_CONFIG="$BTRFS_TOP/@snapshots/@recovery_candidate/home/feralfile/ff1-config.json"
+            if [[ -f "$RC_CONFIG" ]]; then
+                FAILED_VERSION=$(jq -r '.version // empty' "$RC_CONFIG")
+            fi
         fi
         if [[ -n "$FAILED_VERSION" ]]; then
-            echo "$FAILED_VERSION" > /var/lib/recovery_update/failed_version
+            mkdir -p /home/feralfile/.state
+            echo "$FAILED_VERSION" > /home/feralfile/.state/failed_recovery_version
             log_msg "Marked version $FAILED_VERSION as failed"
         else
             log_msg "Warning: Could not determine failed candidate version"

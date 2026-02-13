@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+LOCKFILE="/run/feral-updater.lock"
+
 log_info() {
   local message="$1"
   echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [INFO] id=$UNIQUE_ID message=\"$message\""
@@ -11,8 +13,6 @@ log_error() {
   echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [ERROR] id=$UNIQUE_ID message=\"$message\""
 }
 
-trap 'code=$?; log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""; exit $code' ERR
-
 # Accept UNIQUE_ID from argument, or default to current UNIX timestamp
 if [[ $# -ge 1 && -n "$1" ]]; then
   UNIQUE_ID="$1"
@@ -20,14 +20,20 @@ else
   UNIQUE_ID="$(date +%s)"
 fi
 
-if [[ "${FLOCK_ACTIVE:-}" != "1" ]]; then
-  if /usr/bin/flock -n /run/feral-updater.lock bash -c 'exec env FLOCK_ACTIVE=1 "$0" "$@"' "$0" "$@"; then
-    exit 0  # Child process completed successfully, parent exits
-  else
-    log_error "Exception: either Lock already held by another instance or some error happened."
-    exit 0
-  fi
+# Acquire exclusive lock (non-blocking)
+exec 9>"$LOCKFILE"
+if ! flock -n 9; then
+  log_error "Lock already held by another instance."
+  exit 0
 fi
+
+# Release lock and clean up on any exit (success, error, or signal)
+cleanup() {
+  flock -u 9 2>/dev/null || true
+  rm -f "$LOCKFILE" 2>/dev/null || true
+}
+trap 'code=$?; log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""; exit $code' ERR
+trap cleanup EXIT
 
 # Terminate recovery update if it's running to avoid conflicts
 if systemctl is-active --quiet feral-recovery-update.service; then
@@ -86,10 +92,10 @@ if [[ "$ENV_MODE" == "live" ]]; then
       log_error "VMAGENT not reachable at $VMAGENT_IMPORT_API, not pushing OTA update notification."
     fi
     log_info "📦 New Image version detected. Running full OTA update..."
-    exec /root/scripts/feral-system-update.sh "$image_url" "$UNIQUE_ID"
+    /root/scripts/feral-system-update.sh "$image_url" "$UNIQUE_ID" 9>&-
   else
     log_info "✅ Image already up-to-date. Checking for package updates..."
-    exec /root/scripts/feral-service-update.sh "$UNIQUE_ID"
+    /root/scripts/feral-service-update.sh "$UNIQUE_ID" 9>&-
   fi
 else
   log_info "Aborting update in test mode. No updates will be applied."
