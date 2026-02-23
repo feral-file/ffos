@@ -77,26 +77,10 @@ jobs:
     uses: ./.github/workflows/permission-check.yaml
 
   resolve-container:
-    name: Resolve Container Image
-    runs-on: ubuntu-latest
     needs: permission-check
-    outputs:
-      image: ${{ steps.resolve.outputs.image }}
-    steps:
-      - name: Resolve container image for snapshot
-        id: resolve
-        run: |
-          case "${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}" in
-            "2025/11/25")
-              echo "image=archlinux:base-20251214.0.467559" >> $GITHUB_OUTPUT
-              ;;
-            "2025/05/31")
-              echo "image=archlinux:base-20250525.0.354646" >> $GITHUB_OUTPUT
-              ;;
-            *)
-              echo "image=archlinux:latest" >> $GITHUB_OUTPUT
-              ;;
-          esac
+    uses: ./.github/workflows/resolve-container.yaml
+    with:
+      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
 
   build-image:
     needs: [permission-check, resolve-container]

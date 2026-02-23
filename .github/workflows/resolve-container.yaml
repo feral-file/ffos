@@ -1,0 +1,36 @@
+name: 🔒 Resolve Container Image
+
+on:
+  workflow_call:
+    inputs:
+      pacman_snapshot:
+        description: 'Pacman repository snapshot to use'
+        required: false
+        type: string
+        default: 'latest'
+    outputs:
+      image:
+        description: 'Container image resolved for the given snapshot'
+        value: ${{ jobs.resolve.outputs.image }}
+
+jobs:
+  resolve:
+    name: Resolve Container Image
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.resolve.outputs.image }}
+    steps:
+      - name: Resolve container image for snapshot
+        id: resolve
+        run: |
+          case "${{ inputs.pacman_snapshot }}" in
+            "2025/11/25")
+              echo "image=archlinux:base-20251214.0.467559" >> $GITHUB_OUTPUT
+              ;;
+            "2025/05/31")
+              echo "image=archlinux:base-20250525.0.354646" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "image=archlinux:latest" >> $GITHUB_OUTPUT
+              ;;
+          esac

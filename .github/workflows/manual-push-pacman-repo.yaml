@@ -11,6 +11,15 @@ on:
         options:
           - Development
           - Production
+      pacman_snapshot:
+        description: "Pacman repository snapshot to use"
+        required: false
+        default: "2025/11/25"
+        type: choice
+        options:
+          - "2025/11/25"
+          - "2025/05/31"
+          - "latest"
 
 permissions:
   id-token: write
@@ -21,12 +30,18 @@ jobs:
     name: Permission Check
     uses: ./.github/workflows/permission-check.yaml
 
-  update-repo:
+  resolve-container:
     needs: permission-check
+    uses: ./.github/workflows/resolve-container.yaml
+    with:
+      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+
+  update-repo:
+    needs: [permission-check, resolve-container]
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
     runs-on: ubuntu-latest
     container:
-      image: archlinux:latest
+      image: ${{ needs.resolve-container.outputs.image }}
 
     steps:
       - name: Install Required Packages

@@ -40,6 +40,15 @@ on:
         required: true
         type: string
         default: 'develop'
+      pacman_snapshot:
+        description: "Pacman repository snapshot to use"
+        required: false
+        default: "2025/11/25"
+        type: choice
+        options:
+          - "2025/11/25"
+          - "2025/05/31"
+          - "latest"
 
 permissions:
   id-token: write
@@ -50,12 +59,18 @@ jobs:
     name: Permission Check
     uses: ./.github/workflows/permission-check.yaml
 
-  build-component:
+  resolve-container:
     needs: permission-check
+    uses: ./.github/workflows/resolve-container.yaml
+    with:
+      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+
+  build-component:
+    needs: [permission-check, resolve-container]
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
     runs-on: ubuntu-latest
     container:
-      image: archlinux:latest
+      image: ${{ needs.resolve-container.outputs.image }}
 
     steps:
       - name: Checkout ffos-user Repository

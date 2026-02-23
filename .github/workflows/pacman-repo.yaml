@@ -8,6 +8,10 @@ on:
         required: true
         type: string
         default: 'Development'
+      container_image:
+        description: 'Container image to use for the build'
+        required: true
+        type: string
     secrets:
         CLOUDFLARE_ACCOUNT_ID:
           required: true
@@ -29,7 +33,7 @@ jobs:
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
     runs-on: ubuntu-latest
     container:
-      image: archlinux:latest
+      image: ${{ inputs.container_image }}
 
     steps:
       - name: Install Required Packages
