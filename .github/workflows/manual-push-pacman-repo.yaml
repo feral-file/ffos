@@ -44,9 +44,17 @@ jobs:
       image: ${{ needs.resolve-container.outputs.image }}
 
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup pacman
+        uses: ./.github/actions/setup-pacman
+        with:
+          pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+
       - name: Install Required Packages
         run: |
-          pacman -Sy --noconfirm rclone pacman-contrib git
+          pacman -S --noconfirm rclone pacman-contrib git
 
       - name: Configure Rclone
         run: |

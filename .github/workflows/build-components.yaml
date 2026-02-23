@@ -65,6 +65,9 @@ jobs:
       image: ${{ inputs.container_image }}
 
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Checkout ffos-user Repository
         uses: actions/checkout@v4
         with:
@@ -72,6 +75,11 @@ jobs:
           ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
           path: ffos-user
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Setup pacman
+        uses: ./.github/actions/setup-pacman
+        with:
+          pacman_snapshot: ${{ inputs.pacman_snapshot }}
 
       - name: Determine Build Type
         id: build-type
@@ -94,13 +102,11 @@ jobs:
       - name: Install Go Dependencies
         if: steps.build-type.outputs.type == 'go'
         run: |
-          pacman -Syu --noconfirm
           pacman -S --noconfirm go git base-devel shadow
 
       - name: Install Rust Dependencies
         if: steps.build-type.outputs.type == 'rust'
         run: |
-          pacman -Syu --noconfirm
           pacman -S --noconfirm rust cargo git base-devel shadow
 
       - name: Set Version
