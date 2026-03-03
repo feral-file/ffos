@@ -241,6 +241,7 @@ pacman-key --lsign-key AA6B250F2938F3CB
 echo "Setting up hostname..."
 DEVICE_ID_PREFIX="FF1-"
 MD5_LENGTH=8
+HOSTNAME_CHARSET="0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
 # Get MAC address or fallback
 MAC_ADDRESS=$(ip link | grep -o -E 'link/ether ([0-9a-fA-F:]{17})' | awk '{print $2}' | sort | head -n1)
@@ -251,13 +252,13 @@ else
   MAC_HEX=$(echo "$MAC_ADDRESS" | tr -d ':')
   MD5_DIGEST=$(echo -n "$MAC_HEX" | xxd -r -p | md5sum | awk '{print $1}')
 
-  # Encode first 8 bytes of hash into base36
-  ALPHABET="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  # Encode first 8 bytes of hash into a human-friendly charset
   RESULT_STRING=""
+  CHARSET_LENGTH=${#HOSTNAME_CHARSET}
   for (( i=0; i<MD5_LENGTH*2; i+=2 )); do
       BYTE_HEX="${MD5_DIGEST:i:2}"
       DEC=$((0x$BYTE_HEX))
-      CHAR=${ALPHABET:$((DEC % 36)):1}
+      CHAR=${HOSTNAME_CHARSET:$((DEC % CHARSET_LENGTH)):1}
       RESULT_STRING+=$CHAR
   done
 

@@ -31,4 +31,5 @@ file_permissions=(
   ["/root/scripts/feral-update.sh"]="0:0:755"
   ["/root/scripts/factory_reset.sh"]="0:0:755"
   ["/root/scripts/btrfs-subvolume-manager.sh"]="0:0:755"
+  ["/root/scripts/dev-ssh.sh"]="0:0:700"
 )
