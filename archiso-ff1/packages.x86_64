@@ -63,6 +63,7 @@ pamixer
 # Debug / Monitoring
 intel-gpu-tools
 lm_sensors
+earlyoom
 
 # Feralfile 
 feral-controld
