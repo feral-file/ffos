@@ -32,6 +32,6 @@ file_permissions=(
   ["/root/scripts/factory_reset.sh"]="0:0:755"
   ["/root/scripts/btrfs-subvolume-manager.sh"]="0:0:755"
   ["/root/scripts/dev-ssh.sh"]="0:0:700"
-  ["/usr/local/bin/ff1-earlyoom-hook.sh"]="0:0:755"
-  ["/usr/local/bin/ff1-earlyoom-hook-impl.sh"]="0:0:755"
+  ["/root/scripts/earlyoom-hook.sh"]="0:0:755"
+  ["/usr/local/bin/earlyoom-notify.sh"]="0:0:755"
 )
