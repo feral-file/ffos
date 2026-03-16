@@ -1,4 +1,4 @@
 enable bluetooth.service
 enable NetworkManager.service
 enable btrfs-subvolume-manager.service
-enable earlyoom
+enable earlyoom.service
