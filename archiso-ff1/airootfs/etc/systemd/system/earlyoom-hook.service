@@ -1,0 +1,9 @@
+[Unit]
+Description=Earlyoom hook
+
+[Service]
+Type=oneshot
+EnvironmentFile=/run/earlyoom-hook.env
+ExecStart=/root/scripts/earlyoom-hook.sh
+StandardOutput=append:/var/log/earlyoom-hook.log
+StandardError=append:/var/log/earlyoom-hook.log
