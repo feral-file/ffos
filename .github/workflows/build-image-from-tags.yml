@@ -1,0 +1,471 @@
+name: ▶️ Build FFOS Image From Tags
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Image and local package version"
+        required: true
+        default: "0.0.1"
+      ffos_ref:
+        description: "ffos git tag/ref to checkout"
+        required: true
+        default: "main"
+      ffos_user_ref:
+        description: "ffos-user git tag/ref to checkout"
+        required: true
+        default: "develop"
+      soak-test:
+        description: "Include soak test"
+        required: true
+        type: choice
+        options:
+          - true
+          - false
+        default: false
+      environment:
+        description: "Environment to build"
+        required: true
+        default: "Development"
+        type: choice
+        options:
+          - Development
+          - Production
+      pacman_snapshot:
+        description: "Pacman repository snapshot to use"
+        required: false
+        default: "2025/11/25"
+        type: choice
+        options:
+          - "2025/11/25"
+          - "2025/05/31"
+          - "latest"
+      webapp_url:
+        description: "Optional: WebApp URL to include in ff1-config.json"
+        required: false
+        default: ""
+      dev_iso:
+        description: "Build development ISO"
+        required: true
+        default: false
+        type: boolean
+      enable_local_hub:
+        description: "Enable local hub for communication"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  permission-check:
+    name: Permission Check
+    uses: ./.github/workflows/permission-check.yaml
+
+  resolve-container:
+    needs: permission-check
+    uses: ./.github/workflows/resolve-container.yaml
+    with:
+      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+
+  build-image:
+    name: Generate FFOS iso from tags
+    needs: [permission-check, resolve-container]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+    container:
+      image: ${{ needs.resolve-container.outputs.image }}
+      options: --privileged
+
+    steps:
+      - name: Checkout ffos repository at tag/ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ffos_ref || github.event.inputs.ffos_ref }}
+
+      - name: Checkout ffos-user Repository at tag/ref
+        uses: actions/checkout@v4
+        with:
+          repository: feral-file/ffos-user
+          ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
+          path: ffos-user
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Setup pacman
+        uses: ./.github/actions/setup-pacman
+        with:
+          pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+
+      - name: Install build dependencies
+        run: |
+          pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
+            git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli \
+            pacman-contrib shadow go rust cargo
+
+      - name: Build local FFOS component packages (no R2 upload)
+        env:
+          PKG_VERSION: ${{ inputs.version || github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+
+          COMPONENTS=(
+            feral-controld
+            feral-setupd
+            feral-sys-monitord
+            feral-watchdog
+          )
+
+          useradd -m builder || true
+          mkdir -p /build/local-repo/x86_64
+
+          for COMP in "${COMPONENTS[@]}"; do
+            WORKDIR="$GITHUB_WORKSPACE/ffos-user/components/$COMP"
+            TARBALL="${COMP}_${PKG_VERSION}.tar.gz"
+
+            cd "$WORKDIR"
+            rm -f ./*.pkg.tar.zst ./*.pkg.tar.zst.sig "$TARBALL" PKGBUILD
+
+            tar czf "/tmp/${TARBALL}" --exclude="${TARBALL}" .
+            mv "/tmp/${TARBALL}" .
+
+            if [ -f "Cargo.toml" ]; then
+              BINARY_NAME=$(grep -m 1 '^[[:space:]]*name[[:space:]]*=' Cargo.toml | cut -d '"' -f 2 || true)
+              if [ -z "$BINARY_NAME" ]; then
+                BINARY_NAME="$COMP"
+              fi
+              cat > PKGBUILD <<EOF
+# Maintainer: GitHub Actions
+pkgname=${COMP}
+pkgver=${PKG_VERSION}
+pkgrel=1
+pkgdesc="Feral File component package"
+arch=('x86_64' 'aarch64')
+url="https://github.com/${{ github.repository }}"
+license=('MIT')
+depends=()
+makedepends=('rust' 'cargo')
+options=(!strip)
+source=("${TARBALL}")
+sha256sums=('SKIP')
+
+build() {
+  cd "\$srcdir"
+  cargo build --profile=release
+}
+
+package() {
+  install -Dm755 "\$srcdir/target/release/${BINARY_NAME}" "\$pkgdir/usr/bin/${COMP}"
+}
+EOF
+            else
+              cat > PKGBUILD <<EOF
+# Maintainer: GitHub Actions
+pkgname=${COMP}
+pkgver=${PKG_VERSION}
+pkgrel=1
+pkgdesc="Feral File component package"
+arch=('x86_64' 'aarch64')
+url="https://github.com/${{ github.repository }}"
+license=('MIT')
+depends=()
+makedepends=('go')
+options=(!strip)
+source=("${TARBALL}")
+sha256sums=('SKIP')
+
+build() {
+  cd "\$srcdir"
+  go build -v -o "${COMP}"
+}
+
+package() {
+  install -Dm755 "\$srcdir/${COMP}" "\$pkgdir/usr/bin/${COMP}"
+}
+EOF
+            fi
+
+            chown -R builder:builder "$WORKDIR"
+            su builder -c "cd \"$WORKDIR\" && makepkg -f --skipinteg"
+            cp ./*.pkg.tar.zst /build/local-repo/x86_64/
+          done
+
+          cd /build/local-repo/x86_64
+          repo-add feralfile-local.db.tar.gz ./*.pkg.tar.zst
+
+      - name: Apply version-specific patches
+        run: |
+          if [ "${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}" = "2025/05/31" ]; then
+            echo "Applying patches for 2025/05/31 snapshot..."
+            sed -i "s/bootmodes=('uefi.systemd-boot')/bootmodes=('uefi-x64.systemd-boot.esp' 'uefi-x64.systemd-boot.eltorito')/" archiso-ff1/profiledef.sh
+            sed -i 's/wlroots0.18/wlroots/' archiso-ff1/packages.x86_64
+          fi
+
+      - name: Copy archiso profile and setup home directories
+        run: |
+          mkdir -p /build
+          cp -r archiso-ff1 /build/
+
+          mkdir -p /build/archiso-ff1/airootfs/home
+          cp -r ffos-user/users/feralfile /build/archiso-ff1/airootfs/home/
+
+          if [ "${{ inputs.soak-test }}" = "false" ]; then
+            rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf
+            rm -f /build/archiso-ff1/airootfs/usr/local/bin/websocat
+          else
+            cp -r ffos-user/users/soaktest /build/archiso-ff1/airootfs/home/
+            cat >> /build/archiso-ff1/packages.x86_64 << EOF
+# soak test tools
+foot
+bc
+stress-ng
+mesa-utils
+python-rich
+EOF
+          fi
+
+          mkdir -p /build/archiso-ff1/pacman.d
+          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
+
+          mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
+          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
+          cp /build/archiso-ff1/airootfs/etc/pacman.d/feralfile-pkg-pubkey.asc /etc/pacman.d/feralfile-pkg-pubkey.asc
+
+          pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc
+          pacman-key --lsign-key AA6B250F2938F3CB
+
+      - name: Update start-kiosk.sh
+        if: ${{ inputs.dev_iso }}
+        run: |
+          sed -i 's/--kiosk//' /build/archiso-ff1/airootfs/home/feralfile/scripts/start-kiosk.sh
+
+      - name: Add development tools to packages list
+        if: ${{ inputs.dev_iso }}
+        run: |
+          cat >> /build/archiso-ff1/packages.x86_64 << EOF
+
+# Development tools
+go
+rust
+base-devel
+EOF
+          sed -i 's/#NoConfirm/NoConfirm/' /etc/pacman.conf 2>/dev/null || echo "NoConfirm" >> /etc/pacman.conf
+
+      - name: Setup source directory and copy components
+        if: ${{ inputs.dev_iso }}
+        run: |
+          mkdir -p /build/archiso-ff1/airootfs/home/feralfile/src
+          echo "ffos ref: ${{ inputs.ffos_ref || github.event.inputs.ffos_ref }}" > /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
+          echo "ffos-user ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
+          echo "Version: ${{ inputs.version || github.event.inputs.version }}" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
+          echo "Build Date: $(date)" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
+          cp -r ffos-user/components /build/archiso-ff1/airootfs/home/feralfile/src/
+
+      - name: Inject pacman.conf for build and runtime
+        run: |
+          set -e
+
+          if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
+            DOMAIN="ffos.feralfile.com"
+          else
+            DOMAIN="ffosdev.feralfile.com"
+          fi
+
+          # Save the archiso profile's original pacman.conf before modifying
+          cp /build/archiso-ff1/pacman.conf /build/archiso-ff1/pacman.conf.orig
+
+          # Build-time pacman config:
+          # 1) local repo with freshly built packages from selected tags
+          # 2) remote repo for dependencies not rebuilt in this workflow
+          cat >> /build/archiso-ff1/pacman.conf << EOF
+[feralfile-local]
+SigLevel = Optional TrustAll
+Server = file:///build/local-repo/\$arch
+
+[feralfile]
+SigLevel = Required DatabaseOptional TrustedOnly
+Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
+EOF
+
+          # Runtime pacman config inside ISO should point to remote R2 repo only,
+          # so systems can update to latest packages from that channel.
+          # Use archiso profile's original pacman.conf as base (not the container's /etc/pacman.conf)
+          cp /build/archiso-ff1/pacman.conf.orig /build/archiso-ff1/airootfs/etc/pacman.conf
+          cat >> /build/archiso-ff1/airootfs/etc/pacman.conf << EOF
+[feralfile]
+SigLevel = Required DatabaseOptional TrustedOnly
+Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
+EOF
+
+      - name: Copy UI files
+        run: |
+          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/launcher
+          cp -r ffos-user/components/launcher-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/launcher/
+          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
+          cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
+          mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
+
+      - name: Add Configs and Services
+        run: |
+          if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
+            ENDPOINT="https://ffos.feralfile.com"
+          else
+            ENDPOINT="https://ffosdev.feralfile.com"
+          fi
+
+          mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.config
+
+          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json << EOF
+{
+  "relayer": {
+      "endpoint": "${{ vars.RELAYER_ENDPOINT }}",
+      "apiKey": "${{ secrets.RELAYER_API_KEY }}"
+  },
+  "cdp": {
+      "endpoint": "http://127.0.0.1:9222"
+  },
+  "sentry": {
+      "dsn": "${{ secrets.SENTRY_DSN_CONTROLD }}",
+      "debug": "false",
+      "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
+      "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+      "release": "${{ inputs.version || github.event.inputs.version }}",
+      "repository": "${{ github.repository }}"
+  },
+  "openpanel": {
+    "clientId": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_ID || secrets.OPENPANEL_CLIENT_ID_TEST }}",
+    "clientSecret": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_SECRET || secrets.OPENPANEL_CLIENT_SECRET_TEST }}"
+  },
+  "enableHub": ${{ inputs.enable_local_hub || github.event.inputs.enable_local_hub }}
+}
+EOF
+          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json
+
+          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json << EOF
+{
+  "cdp": {
+      "endpoint": "http://127.0.0.1:9222"
+  },
+  "sentry": {
+      "dsn": "${{ secrets.SENTRY_DSN_WATCHDOG }}",
+      "debug": "false",
+      "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
+      "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+      "release": "${{ inputs.version || github.event.inputs.version }}",
+      "repository": "${{ github.repository }}"
+  }
+}
+EOF
+          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json
+
+          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json << EOF
+{
+  "sentry": {
+      "dsn": "${{ secrets.SENTRY_DSN_SYS_MONITORD }}",
+      "debug": "false",
+      "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
+      "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+      "release": "${{ inputs.version || github.event.inputs.version }}",
+      "repository": "${{ github.repository }}"
+  }
+}
+EOF
+          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json
+
+          WEBAPP_URL="${{ inputs.webapp_url || github.event.inputs.webapp_url }}"
+          jq -n \
+            --arg ffos_ref "${{ inputs.ffos_ref || github.event.inputs.ffos_ref }}" \
+            --arg ffos_user_ref "${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}" \
+            --arg version "${{ inputs.version || github.event.inputs.version }}" \
+            --arg endpoint "${ENDPOINT}" \
+            --arg heartbeat "${{ secrets.HEARTBEAT_ENDPOINT }}" \
+            --arg vmagent_url "${{ secrets.VMAGENT_REMOTE_URL }}" \
+            --arg vmagent_token "${{ secrets.VMAGENT_REMOTE_BEARER_TOKEN }}" \
+            --arg webapp_url "${WEBAPP_URL}" \
+            '{
+              ffos_ref: $ffos_ref,
+              ffos_user_ref: $ffos_user_ref,
+              version: $version,
+              endpoint: $endpoint,
+              heartbeat_endpoint: $heartbeat,
+              vmagent_remote_url: $vmagent_url,
+              vmagent_remote_bearer_token: $vmagent_token
+            } + (if $webapp_url != "" then {webapp_url: $webapp_url} else {} end)' \
+            > /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
+          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
+
+      - name: Configure rclone
+        run: |
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf << EOF
+[r2]
+type = s3
+provider = Cloudflare
+access_key_id = ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+secret_access_key = ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+endpoint = https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+acl = private
+no_check_bucket = true
+EOF
+
+      - name: Configure AWS credentials (OIDC for KMS)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
+          aws-region: "ap-northeast-1"
+
+      - name: Build, sign and upload ISO image
+        run: |
+          cd /build
+          mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
+          ISO_FILE=$(ls /build/out/*.iso | head -n 1)
+          if [ -f "$ISO_FILE" ]; then
+            IMAGE_TYPE="${{ inputs.dev_iso && 'dev-' || '' }}"
+            if [ "${{ github.ref_name }}" = "release" ]; then
+              IMAGE_TAG="-release"
+            elif [ "${{ github.ref_name }}" = "demo" ]; then
+              IMAGE_TAG="-demo"
+            elif [ "${{ github.ref_name }}" = "develop" ]; then
+              IMAGE_TAG="-develop"
+            elif [ "${{ github.ref_name }}" = "staging" ]; then
+              IMAGE_TAG="-staging"
+            else
+              IMAGE_TAG=""
+            fi
+            NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
+            mv "$ISO_FILE" "/build/out/$NEW_NAME"
+            echo "ISO created: /build/out/$NEW_NAME"
+
+            cd /build/out
+            openssl dgst -sha256 -binary "$NEW_NAME" > iso.sha256
+
+            SIGNATURE_B64=$(aws kms sign \
+              --key-id "${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}" \
+              --message fileb://iso.sha256 \
+              --message-type DIGEST \
+              --signing-algorithm RSASSA_PKCS1_V1_5_SHA_256 \
+              --output text \
+              --query Signature)
+            echo "$SIGNATURE_B64" | base64 --decode > "$NEW_NAME.sig"
+
+            rclone copyto "$NEW_NAME" \
+              "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/$NEW_NAME" \
+              --s3-upload-cutoff=100M \
+              --s3-chunk-size=100M \
+              --transfers=7 \
+              --verbose \
+              --stats=1s
+
+            rclone copyto "$NEW_NAME.sig" \
+              "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/$NEW_NAME.sig" \
+              --verbose
+          else
+            echo "Error: ISO file not found"
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf /build
