@@ -10,11 +10,11 @@ on:
       ffos_ref:
         description: "ffos git tag/ref to checkout"
         required: true
-        default: "main"
+        default: "v1.0.1"
       ffos_user_ref:
         description: "ffos-user git tag/ref to checkout"
         required: true
-        default: "develop"
+        default: "v1.0.1"
       soak-test:
         description: "Include soak test"
         required: true
@@ -94,9 +94,23 @@ jobs:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
       - name: Setup pacman
-        uses: ./.github/actions/setup-pacman
-        with:
-          pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+        run: |
+          SNAPSHOT="${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}"
+          if [ "$SNAPSHOT" = "latest" ]; then
+            echo "Using latest Arch Linux repositories"
+            curl -o /etc/pacman.d/mirrorlist \
+              "https://archlinux.org/mirrorlist/?country=US&protocol=https&ip_version=4&use_mirror_status=on"
+            sed -i 's/^#Server/Server/' /etc/pacman.d/mirrorlist
+          else
+            echo "Using Arch Linux Archive snapshot: $SNAPSHOT"
+            {
+              echo "# Arch Linux Archive - ${SNAPSHOT} snapshot"
+              echo "Server = https://archive.archlinux.org/repos/${SNAPSHOT}/\$repo/os/\$arch"
+            } > /etc/pacman.d/mirrorlist
+          fi
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syy
 
       - name: Install build dependencies
         run: |
@@ -135,55 +149,55 @@ jobs:
               if [ -z "$BINARY_NAME" ]; then
                 BINARY_NAME="$COMP"
               fi
-              cat > PKGBUILD <<EOF
-# Maintainer: GitHub Actions
-pkgname=${COMP}
-pkgver=${PKG_VERSION}
-pkgrel=1
-pkgdesc="Feral File component package"
-arch=('x86_64' 'aarch64')
-url="https://github.com/${{ github.repository }}"
-license=('MIT')
-depends=()
-makedepends=('rust' 'cargo')
-options=(!strip)
-source=("${TARBALL}")
-sha256sums=('SKIP')
+              cat <<EOF > PKGBUILD
+          # Maintainer: GitHub Actions
+          pkgname=${COMP}
+          pkgver=${PKG_VERSION}
+          pkgrel=1
+          pkgdesc="Feral File component package"
+          arch=('x86_64' 'aarch64')
+          url="https://github.com/${{ github.repository }}"
+          license=('MIT')
+          depends=()
+          makedepends=('rust' 'cargo')
+          options=(!strip)
+          source=("${TARBALL}")
+          sha256sums=('SKIP')
 
-build() {
-  cd "\$srcdir"
-  cargo build --profile=release
-}
+          build() {
+            cd "\$srcdir"
+            cargo build --profile=release
+          }
 
-package() {
-  install -Dm755 "\$srcdir/target/release/${BINARY_NAME}" "\$pkgdir/usr/bin/${COMP}"
-}
-EOF
+          package() {
+            install -Dm755 "\$srcdir/target/release/${BINARY_NAME}" "\$pkgdir/usr/bin/${COMP}"
+          }
+          EOF
             else
-              cat > PKGBUILD <<EOF
-# Maintainer: GitHub Actions
-pkgname=${COMP}
-pkgver=${PKG_VERSION}
-pkgrel=1
-pkgdesc="Feral File component package"
-arch=('x86_64' 'aarch64')
-url="https://github.com/${{ github.repository }}"
-license=('MIT')
-depends=()
-makedepends=('go')
-options=(!strip)
-source=("${TARBALL}")
-sha256sums=('SKIP')
+              cat <<EOF > PKGBUILD
+          # Maintainer: GitHub Actions
+          pkgname=${COMP}
+          pkgver=${PKG_VERSION}
+          pkgrel=1
+          pkgdesc="Feral File component package"
+          arch=('x86_64' 'aarch64')
+          url="https://github.com/${{ github.repository }}"
+          license=('MIT')
+          depends=()
+          makedepends=('go')
+          options=(!strip)
+          source=("${TARBALL}")
+          sha256sums=('SKIP')
 
-build() {
-  cd "\$srcdir"
-  go build -v -o "${COMP}"
-}
+          build() {
+            cd "\$srcdir"
+            go build -v -o "${COMP}"
+          }
 
-package() {
-  install -Dm755 "\$srcdir/${COMP}" "\$pkgdir/usr/bin/${COMP}"
-}
-EOF
+          package() {
+            install -Dm755 "\$srcdir/${COMP}" "\$pkgdir/usr/bin/${COMP}"
+          }
+          EOF
             fi
 
             chown -R builder:builder "$WORKDIR"
@@ -216,13 +230,13 @@ EOF
           else
             cp -r ffos-user/users/soaktest /build/archiso-ff1/airootfs/home/
             cat >> /build/archiso-ff1/packages.x86_64 << EOF
-# soak test tools
-foot
-bc
-stress-ng
-mesa-utils
-python-rich
-EOF
+          # soak test tools
+          foot
+          bc
+          stress-ng
+          mesa-utils
+          python-rich
+          EOF
           fi
 
           mkdir -p /build/archiso-ff1/pacman.d
@@ -245,19 +259,18 @@ EOF
         run: |
           cat >> /build/archiso-ff1/packages.x86_64 << EOF
 
-# Development tools
-go
-rust
-base-devel
-EOF
+          # Development tools
+          go
+          rust
+          base-devel
+          EOF
           sed -i 's/#NoConfirm/NoConfirm/' /etc/pacman.conf 2>/dev/null || echo "NoConfirm" >> /etc/pacman.conf
 
       - name: Setup source directory and copy components
         if: ${{ inputs.dev_iso }}
         run: |
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/src
-          echo "ffos ref: ${{ inputs.ffos_ref || github.event.inputs.ffos_ref }}" > /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
-          echo "ffos-user ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
+          echo "Branch: ${{ github.ref_name }}" > /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           echo "Version: ${{ inputs.version || github.event.inputs.version }}" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           echo "Build Date: $(date)" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           cp -r ffos-user/components /build/archiso-ff1/airootfs/home/feralfile/src/
@@ -276,27 +289,25 @@ EOF
           cp /build/archiso-ff1/pacman.conf /build/archiso-ff1/pacman.conf.orig
 
           # Build-time pacman config:
-          # 1) local repo with freshly built packages from selected tags
-          # 2) remote repo for dependencies not rebuilt in this workflow
+          # Only the local repo with freshly built packages from selected tags.
+          # The remote [feralfile] repo is NOT included here because the R2 path
+          # may not exist for the branch/tag being built. All feralfile component
+          # packages are built locally, so the remote repo is not needed at build time.
           cat >> /build/archiso-ff1/pacman.conf << EOF
-[feralfile-local]
-SigLevel = Optional TrustAll
-Server = file:///build/local-repo/\$arch
-
-[feralfile]
-SigLevel = Required DatabaseOptional TrustedOnly
-Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
-EOF
+          [feralfile-local]
+          SigLevel = Optional TrustAll
+          Server = file:///build/local-repo/\$arch
+          EOF
 
           # Runtime pacman config inside ISO should point to remote R2 repo only,
           # so systems can update to latest packages from that channel.
           # Use archiso profile's original pacman.conf as base (not the container's /etc/pacman.conf)
           cp /build/archiso-ff1/pacman.conf.orig /build/archiso-ff1/airootfs/etc/pacman.conf
           cat >> /build/archiso-ff1/airootfs/etc/pacman.conf << EOF
-[feralfile]
-SigLevel = Required DatabaseOptional TrustedOnly
-Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
-EOF
+          [feralfile]
+          SigLevel = Required DatabaseOptional TrustedOnly
+          Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
+          EOF
 
       - name: Copy UI files
         run: |
@@ -317,66 +328,65 @@ EOF
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.config
 
           cat > /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json << EOF
-{
-  "relayer": {
-      "endpoint": "${{ vars.RELAYER_ENDPOINT }}",
-      "apiKey": "${{ secrets.RELAYER_API_KEY }}"
-  },
-  "cdp": {
-      "endpoint": "http://127.0.0.1:9222"
-  },
-  "sentry": {
-      "dsn": "${{ secrets.SENTRY_DSN_CONTROLD }}",
-      "debug": "false",
-      "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-      "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
-      "release": "${{ inputs.version || github.event.inputs.version }}",
-      "repository": "${{ github.repository }}"
-  },
-  "openpanel": {
-    "clientId": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_ID || secrets.OPENPANEL_CLIENT_ID_TEST }}",
-    "clientSecret": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_SECRET || secrets.OPENPANEL_CLIENT_SECRET_TEST }}"
-  },
-  "enableHub": ${{ inputs.enable_local_hub || github.event.inputs.enable_local_hub }}
-}
-EOF
+          {
+            "relayer": {
+                "endpoint": "${{ vars.RELAYER_ENDPOINT }}",
+                "apiKey": "${{ secrets.RELAYER_API_KEY }}"
+            },
+            "cdp": {
+                "endpoint": "http://127.0.0.1:9222"
+            },
+            "sentry": {
+                "dsn": "${{ secrets.SENTRY_DSN_CONTROLD }}",
+                "debug": "false",
+                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
+                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+                "release": "${{ inputs.version || github.event.inputs.version }}",
+                "repository": "${{ github.repository }}"
+            },
+            "openpanel": {
+              "clientId": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_ID || secrets.OPENPANEL_CLIENT_ID_TEST }}",
+              "clientSecret": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_SECRET || secrets.OPENPANEL_CLIENT_SECRET_TEST }}"
+            },
+            "enableHub": ${{ inputs.enable_local_hub || github.event.inputs.enable_local_hub }}
+          }
+          EOF
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json
 
           cat > /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json << EOF
-{
-  "cdp": {
-      "endpoint": "http://127.0.0.1:9222"
-  },
-  "sentry": {
-      "dsn": "${{ secrets.SENTRY_DSN_WATCHDOG }}",
-      "debug": "false",
-      "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-      "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
-      "release": "${{ inputs.version || github.event.inputs.version }}",
-      "repository": "${{ github.repository }}"
-  }
-}
-EOF
+          {
+            "cdp": {
+                "endpoint": "http://127.0.0.1:9222"
+            },
+            "sentry": {
+                "dsn": "${{ secrets.SENTRY_DSN_WATCHDOG }}",
+                "debug": "false",
+                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
+                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+                "release": "${{ inputs.version || github.event.inputs.version }}",
+                "repository": "${{ github.repository }}"
+            }
+          }
+          EOF
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json
 
           cat > /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json << EOF
-{
-  "sentry": {
-      "dsn": "${{ secrets.SENTRY_DSN_SYS_MONITORD }}",
-      "debug": "false",
-      "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-      "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
-      "release": "${{ inputs.version || github.event.inputs.version }}",
-      "repository": "${{ github.repository }}"
-  }
-}
-EOF
+          {
+            "sentry": {
+                "dsn": "${{ secrets.SENTRY_DSN_SYS_MONITORD }}",
+                "debug": "false",
+                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
+                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+                "release": "${{ inputs.version || github.event.inputs.version }}",
+                "repository": "${{ github.repository }}"
+            }
+          }
+          EOF
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json
 
           WEBAPP_URL="${{ inputs.webapp_url || github.event.inputs.webapp_url }}"
           jq -n \
-            --arg ffos_ref "${{ inputs.ffos_ref || github.event.inputs.ffos_ref }}" \
-            --arg ffos_user_ref "${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}" \
+            --arg branch "${{ github.ref_name }}" \
             --arg version "${{ inputs.version || github.event.inputs.version }}" \
             --arg endpoint "${ENDPOINT}" \
             --arg heartbeat "${{ secrets.HEARTBEAT_ENDPOINT }}" \
@@ -384,8 +394,7 @@ EOF
             --arg vmagent_token "${{ secrets.VMAGENT_REMOTE_BEARER_TOKEN }}" \
             --arg webapp_url "${WEBAPP_URL}" \
             '{
-              ffos_ref: $ffos_ref,
-              ffos_user_ref: $ffos_user_ref,
+              branch: $branch,
               version: $version,
               endpoint: $endpoint,
               heartbeat_endpoint: $heartbeat,
@@ -399,15 +408,15 @@ EOF
         run: |
           mkdir -p ~/.config/rclone
           cat > ~/.config/rclone/rclone.conf << EOF
-[r2]
-type = s3
-provider = Cloudflare
-access_key_id = ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
-secret_access_key = ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
-endpoint = https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-acl = private
-no_check_bucket = true
-EOF
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+          secret_access_key = ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+          endpoint = https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          acl = private
+          no_check_bucket = true
+          EOF
 
       - name: Configure AWS credentials (OIDC for KMS)
         uses: aws-actions/configure-aws-credentials@v4
@@ -446,8 +455,16 @@ EOF
               --message-type DIGEST \
               --signing-algorithm RSASSA_PKCS1_V1_5_SHA_256 \
               --output text \
-              --query Signature)
+              --query Signature) || {
+                echo "Error: AWS KMS signing failed"
+                exit 1
+              }
+            if [ -z "$SIGNATURE_B64" ]; then
+              echo "Error: Empty signature output from AWS KMS"
+              exit 1
+            fi
             echo "$SIGNATURE_B64" | base64 --decode > "$NEW_NAME.sig"
+            echo "Signature written to $NEW_NAME.sig"
 
             rclone copyto "$NEW_NAME" \
               "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/$NEW_NAME" \
@@ -456,10 +473,12 @@ EOF
               --transfers=7 \
               --verbose \
               --stats=1s
+            echo "Image successfully uploaded to R2: ${NEW_NAME}"
 
             rclone copyto "$NEW_NAME.sig" \
               "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/$NEW_NAME.sig" \
               --verbose
+            echo "Image signature successfully uploaded to R2: ${NEW_NAME}.sig"
           else
             echo "Error: ISO file not found"
             exit 1
