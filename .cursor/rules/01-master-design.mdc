@@ -1,0 +1,53 @@
+---
+description: Core FFOS repository boundaries and non-negotiable safety constraints.
+globs:
+  - ".github/**"
+  - "archiso-ff1/**"
+  - "docs/**"
+  - "AGENTS.md"
+alwaysApply: true
+---
+
+# Core FFOS Design Rule
+
+Use this rule for structural decisions, release automation changes, and runtime-image changes.
+
+## 1) Non-negotiable constraints
+
+- FFOS is the image assembly and release orchestration repository, not the home for arbitrary component logic that belongs in `ffos-user`.
+- Prefer replacing or deleting flawed workflow paths over adding more branching, flags, or compatibility logic.
+- Do not preserve legacy behavior unless the user explicitly asks for compatibility.
+- OTA, recovery, rollback, package signing, package publication, and boot entry management are safety-critical. Preserve their invariants when editing related code.
+- Keep build logic deterministic, explicit, and auditable.
+- Prefer scripts and workflows that make failure states visible instead of hiding them behind silent fallbacks.
+- When touching non-obvious logic, add comments that preserve context for future agent sessions:
+  - why this branch or block exists;
+  - what invariant it protects;
+  - what trade-off was accepted;
+  - what would break if it were removed or changed casually.
+
+## 2) Repository boundary
+
+- This repo owns:
+  - ArchISO profile configuration;
+  - root filesystem overlay and runtime scripts already stored here;
+  - packaging/release orchestration;
+  - GitHub Actions workflows and shared CI actions;
+  - FFOS documentation for device/update/build behavior.
+- `ffos-user` owns:
+  - component implementation source;
+  - user payloads and user-specific filesystem content;
+  - component-level business logic unless explicitly mirrored here as runtime integration.
+
+## 3) Safety model to preserve
+
+- Candidate boots must remain recoverable.
+- Known-good default boot behavior must remain intact unless the change explicitly redesigns it.
+- Recovery and rollback paths must remain understandable from code and docs.
+- Package publication and signing steps must remain traceable and hard to misuse.
+
+## 4) Planning activation
+
+- Use deeper planning when the request changes runtime architecture, update/recovery semantics, image assembly strategy, or cross-repo ownership.
+- Do not invoke planning for narrow documentation, lint, or workflow readability fixes.
+

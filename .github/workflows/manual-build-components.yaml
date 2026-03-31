@@ -94,17 +94,17 @@ jobs:
         working-directory: ffos-user/components/${{ inputs.component }}
         run: |
           if [ -f "Cargo.toml" ]; then
-            echo "type=rust" >> $GITHUB_OUTPUT
+            echo "type=rust" >> "$GITHUB_OUTPUT"
             # Get the binary name from Cargo.toml if possible
             if [ -f "Cargo.toml" ]; then
               BINARY_NAME=$(grep -m 1 'name\s*=' Cargo.toml | cut -d '"' -f 2 || echo "${{ inputs.component }}")
-              echo "binary_name=${BINARY_NAME}" >> $GITHUB_OUTPUT
+              echo "binary_name=${BINARY_NAME}" >> "$GITHUB_OUTPUT"
             else
-              echo "binary_name=${{ inputs.component }}" >> $GITHUB_OUTPUT
+              echo "binary_name=${{ inputs.component }}" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "type=go" >> $GITHUB_OUTPUT
-            echo "binary_name=${{ inputs.component }}" >> $GITHUB_OUTPUT
+            echo "type=go" >> "$GITHUB_OUTPUT"
+            echo "binary_name=${{ inputs.component }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install Go Dependencies
@@ -121,15 +121,15 @@ jobs:
         id: set-version
         run: |
           VERSION="${{ inputs.version }}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build Pacman Package
         working-directory: ffos-user/components/${{ inputs.component }}
         run: |
           set -euo pipefail
-          COMP=${{ inputs.component }}
-          VER=${VERSION}
+          COMP="${{ inputs.component }}"
+          VER="${VERSION}"
           TARBALL="${COMP}_${VER}.tar.gz"
 
           PROFILE=release
@@ -147,8 +147,8 @@ jobs:
             # PKGBUILD for Rust component
             cat <<EOF > PKGBUILD
           # Maintainer: ${{ inputs.maintainer }}
-          pkgname=${COMP}
-          pkgver=${VER}
+          pkgname="${COMP}"
+          pkgver="${VER}"
           pkgrel=1
           pkgdesc="${{ inputs.description }}"
           arch=('x86_64' 'aarch64')
@@ -163,7 +163,7 @@ jobs:
 
           build() {
             cd "\$srcdir"
-            cargo build --profile=${PROFILE}
+            cargo build --profile="${PROFILE}"
           }
 
           package() {
@@ -174,8 +174,8 @@ jobs:
             # PKGBUILD for Go component
             cat <<EOF > PKGBUILD
           # Maintainer: ${{ inputs.maintainer }}
-          pkgname=${COMP}
-          pkgver=${VER}
+          pkgname="${COMP}"
+          pkgver="${VER}"
           pkgrel=1
           pkgdesc="${{ inputs.description }}"
           arch=('x86_64' 'aarch64')

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md"
+  ],
+  "agent": {
+    "planner-researcher": {
+      "description": "Read-only planning sub-agent for large FFOS architecture, workflow, and release questions. Use only when the request is both large and ambiguous.",
+      "mode": "subagent",
+      "prompt": "Read AGENTS.md, README.md, docs/DEVICE_LIFECYCLE.md, docs/SNAPSHOT_SYSTEM_V2_FLOW.md, and the relevant .cursor rules before advising. Summarize current ownership boundaries and safety invariants first. Prefer deletion or simplification before additive design. If the request depends on architectural direction or API contract direction, call out the TBD files owned by @lpopo0856 instead of inventing strategy. Return design branches, trade-offs, validation expectations, and a recommended smallest safe path.",
+      "tools": {
+        "write": false,
+        "edit": false
+      }
+    },
+    "reviewer": {
+      "description": "Read-only FFOS reviewer. Use after implementation for a fresh-context review of safety risks, regressions, lint gaps, and missing documentation.",
+      "mode": "subagent",
+      "prompt": "{file:./prompts/code-review.md}",
+      "tools": {
+        "write": false,
+        "edit": false
+      }
+    }
+  },
+  "command": {
+    "review": {
+      "description": "Run a fresh-context FFOS code review using the shared repository review contract",
+      "template": "Review the current changes using prompts/code-review.md and AGENTS.md. Use this evidence:\\n- Diff: !`git diff --stat`\\n- Full diff: !`git diff`\\n- Relevant lint/test output if available\\n\\nReport findings in severity order, call out missing guardrails or documentation, and end with Verdict: accept or Verdict: revise.",
+      "agent": "reviewer",
+      "subtask": true
+    }
+  }
+}
+

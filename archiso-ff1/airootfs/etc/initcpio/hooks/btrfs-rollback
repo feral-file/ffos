@@ -1,8 +1,11 @@
+#!/bin/bash
+
 run_hook() {
   mkdir -p /run
   LOG="/run/btrfs-rollback.log"
   local mode="" 
 
+  # shellcheck disable=SC2013
   for param in $(cat /proc/cmdline); do
     case "$param" in
       rollback=factory) mode="factory" ;;
@@ -17,6 +20,7 @@ run_hook() {
   mkdir -p /run/rollback
 
   local root_partuuid=""
+  # shellcheck disable=SC2013
   for param in $(cat /proc/cmdline); do
     case "$param" in
       root_partuuid=*) root_partuuid="${param#root_partuuid=}" ;;
@@ -114,12 +118,11 @@ run_hook() {
           if [[ -d "$backup_path" ]]; then
               echo "[btrfs-rollback] Restoring kernel files from $backup_path..." >> $LOG
               
-              rsync -a --delete --quiet "$backup_path/" "/run/rollback_boot/"
-                  
-              if [[ $? -eq 0 ]]; then
+              if rsync -a --delete --quiet "$backup_path/" "/run/rollback_boot/"; then
                   echo "[btrfs-rollback] Boot files synced successfully via rsync." >> $LOG
               else
-                  echo "[btrfs-rollback] ERROR: rsync failed with exit code $?" >> $LOG
+                  rsync_status=$?
+                  echo "[btrfs-rollback] ERROR: rsync failed with exit code $rsync_status" >> $LOG
                   umount /run/rollback_boot
                   umount /run/rollback
                   return 1

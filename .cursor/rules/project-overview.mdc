@@ -1,5 +1,28 @@
 ---
-description:
+description: Quick FFOS repository map and domain vocabulary.
 globs:
 alwaysApply: false
 ---
+
+# FFOS Project Overview
+
+## Repository map
+
+- `.github/workflows/`: build, package, publish, and image-generation automation.
+- `.github/actions/setup-pacman/`: shared package-manager setup primitive.
+- `archiso-ff1/`: ArchISO profile, rootfs overlay, runtime scripts, and boot files.
+- `docs/`: current device lifecycle and snapshot/update behavior references.
+
+## Primary flows
+
+- Build components from `ffos-user`.
+- Publish packages and repository metadata to R2.
+- Build FFOS images from the profile plus user payloads.
+- Preserve OTA, factory reset, recovery update, and rollback behavior described in `docs/SNAPSHOT_SYSTEM_V2_FLOW.md`.
+
+## Vocabulary
+
+- `FFOS`: the image and release system in this repository.
+- `ffos-user`: the separate repository containing components and user payloads.
+- `candidate boot`: a one-shot boot into a staged update or recovery snapshot.
+- `known-good boot`: the default boot path that must remain recoverable.

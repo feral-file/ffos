@@ -1,0 +1,13 @@
+---
+alwaysApply: true
+---
+
+# Review Workflow Rule
+
+When implementation is complete, run a review loop until the reviewer qualifies the change. Do not commit, push, or create a PR before `Verdict: accept`.
+
+1. Handoff: produce a compact handoff with goal, files changed, key decisions, checks run, and unresolved risks or TBDs.
+2. Review: invoke the reviewer sub-agent with the handoff, `git diff --stat`, `git diff`, and any lint/test output.
+3. Revise when needed: if the reviewer returns `Verdict: revise`, fix the findings, rerun the checks, and review again.
+4. Ship only after acceptance: once the reviewer returns `Verdict: accept`, commit, push, and create the PR if requested.
+

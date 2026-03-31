@@ -146,7 +146,7 @@ EOF
 echo
 echo "Copying systemd-boot..."
 
-for i in {1..5}; do
+for _ in {1..5}; do
   if [ -e /dev/disk/by-label/ARCHISO_EFI ]; then
     break
   fi

@@ -1,0 +1,32 @@
+---
+description: Repository-owner API and contract direction placeholder. Agents must not invent this.
+globs:
+  - ".github/**"
+  - "archiso-ff1/**"
+  - "docs/**"
+  - "AGENTS.md"
+alwaysApply: true
+---
+
+# API And Contract Design Rule — TBD By Repository Owner
+
+Status: `TBD`
+
+Owner: `@lpopo0856`
+
+This file is intentionally incomplete. It should define how agents should reason about external contracts touched by FFOS.
+
+## Owner-owned TBDs
+
+- Contract posture for version metadata APIs consumed by update and recovery flows.
+- Expected stability guarantees for config payloads embedded into the image.
+- Rules for introducing, renaming, or deprecating runtime configuration keys.
+- Rules for cross-repo interfaces with `ffos-user`.
+- Documentation expectations when a workflow or runtime script changes an external contract.
+
+## Temporary agent behavior until filled
+
+- Do not invent or silently normalize new contract rules.
+- Prefer documenting the current observed contract rather than redefining it.
+- If a task requires contract design decisions, surface this gap and ask for owner direction.
+

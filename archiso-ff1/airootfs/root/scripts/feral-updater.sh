@@ -32,7 +32,14 @@ cleanup() {
   flock -u 9 2>/dev/null || true
   rm -f "$LOCKFILE" 2>/dev/null || true
 }
-trap 'code=$?; log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""; exit $code' ERR
+
+handle_err() {
+  local exit_code=$?
+  log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""
+  exit "$exit_code"
+}
+
+trap handle_err ERR
 trap cleanup EXIT
 
 # Terminate recovery update if it's running to avoid conflicts

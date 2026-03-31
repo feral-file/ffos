@@ -39,8 +39,7 @@ query_service() {
     local response
     local tz
     
-    response=$(curl -sf --max-time "$TIMEOUT" "$url" 2>/dev/null)
-    if [ $? -eq 0 ] && [ -n "$response" ]; then
+    if response=$(curl -sf --max-time "$TIMEOUT" "$url" 2>/dev/null) && [ -n "$response" ]; then
         tz=$(extract_tz "$response" "$filter")
         if [ -n "$tz" ] && validate_timezone "$tz"; then
             echo "$tz"

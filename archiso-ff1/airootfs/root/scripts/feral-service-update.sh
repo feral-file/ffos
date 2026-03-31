@@ -17,7 +17,13 @@ log_error() {
   echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [ERROR] id=$UNIQUE_ID message=\"$message\""
 }
 
-trap 'code=$?; log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""; exit $code' ERR
+handle_err() {
+  local exit_code=$?
+  log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""
+  exit "$exit_code"
+}
+
+trap handle_err ERR
 
 if [[ $# -lt 1 || -z "${1:-}" ]]; then
   echo "ERROR: Usage: $0 2025-06-19T16:00:00"

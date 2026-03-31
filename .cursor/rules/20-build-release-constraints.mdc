@@ -1,0 +1,32 @@
+---
+description: Build, release, and script readability constraints for FFOS.
+globs:
+  - ".github/**"
+  - "archiso-ff1/**"
+alwaysApply: true
+---
+
+# Build And Release Constraints
+
+## 1) Workflow design
+
+- Prefer small, named steps over dense monolithic shell blocks.
+- Keep step names descriptive enough that failed CI runs tell a readable story.
+- Reuse composite actions or workflow calls when it reduces duplication without hiding safety-critical behavior.
+- Set shell scripts to fail fast with `set -euo pipefail` when practical.
+- Keep environment-sensitive logic explicit and easy to audit.
+
+## 2) Script design
+
+- Prefer repository-owned scripts for complex shell logic rather than oversized inline workflow blocks.
+- Keep shell functions narrow and name them by intent.
+- Quote variables by default.
+- Use comments to preserve design constraints, recovery assumptions, and cross-repo expectations when the logic is not obvious.
+- When editing a dangerous path such as OTA, factory reset, rollback, or publishing, explain the preserved invariant in a nearby comment if the code does not already make it obvious.
+
+## 3) Readability over cleverness
+
+- Prefer explicit loops and conditionals over terser but less readable shell patterns.
+- Avoid hidden fallthrough behavior, silent retries, and ambiguous defaults in safety-critical paths.
+- Keep version/source selection logic easy to trace from docs to code.
+

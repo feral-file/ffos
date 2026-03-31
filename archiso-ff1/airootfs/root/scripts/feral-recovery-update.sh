@@ -17,7 +17,13 @@ log_error() {
   echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [ERROR] recovery_update message=\"$message\""
 }
 
-trap 'code=$?; log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""; exit $code' ERR
+handle_err() {
+  local exit_code=$?
+  log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""
+  exit "$exit_code"
+}
+
+trap handle_err ERR
 
 # Check if OTA updater is running - don't interfere with normal updates
 if /usr/bin/flock -n /run/feral-updater.lock -c "exit 0" 2>/dev/null; then

@@ -1,0 +1,38 @@
+---
+description: Repository-owner architectural direction placeholder. Agents must not invent this.
+globs:
+  - ".github/**"
+  - "archiso-ff1/**"
+  - "docs/**"
+  - "AGENTS.md"
+alwaysApply: true
+---
+
+# Architecture Direction Rule — TBD By Repository Owner
+
+Status: `TBD`
+
+Owner: `@lpopo0856`
+
+This file is intentionally a placeholder. It should capture the architectural direction that future agent sessions must optimize for.
+
+## Owner-owned TBDs
+
+- Which responsibilities must remain in `ffos` versus move to `ffos-user`.
+- Desired long-term split between reusable workflow primitives, shell scripts, and image-time configuration.
+- Preferred direction for update/recovery orchestration complexity:
+  - keep current script-centric model;
+  - move toward more structured orchestration;
+  - other explicit target chosen by the repo owner.
+- How strongly the repo should bias toward:
+  - fewer larger workflows versus smaller composable workflows;
+  - fewer long scripts versus more narrowly scoped scripts;
+  - generated config versus committed config.
+- The architectural north star agents should aim for when simplifying or extending the repository.
+
+## Temporary agent behavior until filled
+
+- Do not invent strategic architecture direction.
+- Keep changes tactical, reversible, and local.
+- If a requested change depends on architectural direction, call out this TBD and ask for owner guidance.
+

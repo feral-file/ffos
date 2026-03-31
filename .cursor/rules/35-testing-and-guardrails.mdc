@@ -1,0 +1,34 @@
+---
+description: Required verification and lint guardrails for FFOS repository changes.
+globs:
+  - ".github/**"
+  - "archiso-ff1/**"
+  - "docs/**"
+  - "*.md"
+alwaysApply: true
+---
+
+# Testing And Guardrails Rule
+
+## 1) Required checks
+
+Run the relevant repository guardrails after changes:
+
+- `actionlint` for GitHub Actions workflow correctness.
+- `yamllint` for workflow and config readability.
+- `markdownlint-cli2` for documentation and agent-instruction quality.
+- `shellcheck` for repository-owned shell scripts.
+
+## 2) Scope expectations
+
+- If you change workflows, run workflow and YAML checks.
+- If you change shell scripts or ArchISO runtime logic, run shell linting.
+- If you change docs, rules, prompts, or agent files, run markdown linting.
+- If you cannot run a tool locally, say so clearly and rely on CI as the follow-up gate.
+
+## 3) Documentation as enforcement
+
+- Keep docs aligned with runtime behavior when they describe boot, update, recovery, packaging, or release flows.
+- Prefer documenting constraints and trade-offs near the changed code and in docs when both are needed.
+- Documentation lint failures are real failures in this repo; do not treat them as optional polish.
+

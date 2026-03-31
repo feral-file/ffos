@@ -1,54 +1,51 @@
 ---
-description: 
-globs: 
+description: FFOS ArchISO profile, runtime script, and rootfs overlay guidance.
+globs:
+  - "archiso-ff1/**"
 alwaysApply: false
 ---
+
 # ArchISO Development Guidelines
 
-## Image Configuration
-Working with the ArchISO profile in `archiso-ff1/` to build the FFOS image.
+Use this rule when editing the FFOS image profile or runtime scripts in `archiso-ff1/`.
 
-## Key Configuration Files
-- `profiledef.sh` - Main profile definition with build settings
-- `packages.x86_64` - List of packages to include in the ISO
-- `pacman.conf` - Package manager configuration
-- `airootfs/` - Filesystem overlay that becomes the live system
+## Core expectation
 
-## File Permissions & Ownership
-ALL files in the final system should be owned by `feralfile` (1000:1000) unless they are system files.
+Every change should preserve a coherent bootable image and a debuggable runtime. Prefer explicit, well-commented changes over clever compact edits.
 
-Key permission patterns in `profiledef.sh`:
-- `/home/feralfile/` and subdirectories: `1000:1000:755`
-- Scripts in `/home/feralfile/scripts/`: `1000:1000:755`
-- System config files: `0:0:644` or appropriate system permissions
+## Key configuration files
 
-## Filesystem Overlay Structure (`airootfs/`)
-- `etc/` - System configuration (polkit rules, systemd services)
-- `home/feralfile/` - User space with `.config/`, `.logs/`, `.state/`, `scripts/`
-- `usr/local/bin/` - Custom binaries and services
-- `opt/` - Application data (UI bundles, etc.)
+- `profiledef.sh`: top-level image profile, permissions, and build-time behavior.
+- `packages.x86_64`: package set for the image.
+- `pacman.conf`: repository configuration for the image build.
+- `airootfs/`: filesystem overlay copied into the final image.
 
-## Polkit Rules (NOT sudo)
-Create rules in `airootfs/etc/polkit-1/rules.d/` for privilege escalation:
-- Network management (nmcli)
-- Time synchronization
-- System service control
-- Hardware access
+## Runtime structure
 
-## Package Management
-- Keep the ISO minimal - only include necessary packages
-- Group related packages logically in `packages.x86_64`
-- Consider package dependencies and conflicts
-- Use official Arch packages when possible
+- `airootfs/etc/`: system configuration, systemd units, initcpio hooks, polkit rules.
+- `airootfs/root/scripts/`: image-owned operational scripts. These are safety-relevant and should be easy to audit.
+- `airootfs/usr/local/bin/`: helper binaries and runtime utilities already committed into the image.
 
-## Systemd Integration
-- Service files go in `airootfs/etc/systemd/system/`
-- Use proper service dependencies and ordering
-- Implement `setup.target` vs `kiosk.target` isolation
-- Enable services in the appropriate target
+## Commenting standard for shell and boot logic
 
-## Build & Testing
-- Test the ISO in a VM before deploying to hardware
-- Verify all services start correctly
-- Check file permissions after build
-- Validate network connectivity and BLE functionality
+- Prefer higher-than-normal comment density around non-obvious logic.
+- Capture the design intent, invariant, rollback assumption, and trade-off when a future maintainer could otherwise misread the code.
+- Add comments before risky blocks such as:
+  - subvolume promotion or cleanup;
+  - boot-entry generation;
+  - package key handling;
+  - recovery selection;
+  - update and rollback branching.
+
+## Permissions and ownership
+
+- Final-system ownership and mode choices must remain intentional and reviewable.
+- When changing ownership or mode rules, explain why the change is safe.
+- Avoid broad permission expansion as a convenience shortcut.
+
+## Package and service posture
+
+- Keep the ISO minimal and purpose-driven.
+- Prefer official packages when possible.
+- Keep systemd service dependencies explicit and readable.
+- Avoid adding services or packages without documenting the operational reason.

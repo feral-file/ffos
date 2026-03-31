@@ -428,7 +428,7 @@ jobs:
         run: |
           cd /build
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
-          ISO_FILE=$(ls /build/out/*.iso | head -n 1)
+          ISO_FILE=$(find /build/out -maxdepth 1 -type f -name '*.iso' | head -n 1)
           if [ -f "$ISO_FILE" ]; then
             IMAGE_TYPE="${{ inputs.dev_iso && 'dev-' || '' }}"
             if [ "${{ github.ref_name }}" = "release" ]; then
