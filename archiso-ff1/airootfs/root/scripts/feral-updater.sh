@@ -57,7 +57,7 @@ fi
 
 ENV_MODE="test"
 if [[ -r /home/feralfile/.state/environment ]]; then
-  ENV_MODE="$(cat /home/feralfile/.state/environment 2>/dev/null | xargs)"
+  ENV_MODE="$(xargs < /home/feralfile/.state/environment 2>/dev/null)"
 fi
 
 if [[ "$ENV_MODE" == "live" ]]; then
