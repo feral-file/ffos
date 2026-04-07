@@ -29,6 +29,7 @@ mesa
 intel-media-driver
 vulkan-radeon
 ethtool
+ddcutil
 
 # Boot support
 intel-ucode
