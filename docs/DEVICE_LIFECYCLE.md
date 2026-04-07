@@ -121,7 +121,7 @@ All the events should only consider network connected scenario otherwise it can'
 ## Version control
 
 We deploy the firmware versions through 2 main channels:
-- Dev channel: https://feralfile-device-distribution.bitmark-development.workers.dev/
+- Dev channel: https://ffosdev.feralfile.com/
 - Prod channel: https://ffos.feralfile.com/
 
 Our versioning follow Semantic Versioning format.

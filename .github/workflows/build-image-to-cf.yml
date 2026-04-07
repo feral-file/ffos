@@ -303,7 +303,7 @@ jobs:
           if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
             DOMAIN="ffos.feralfile.com"
           else
-            DOMAIN="feralfile-device-distribution.bitmark-development.workers.dev"
+            DOMAIN="ffosdev.feralfile.com"
           fi
 
           cat >> /build/archiso-ff1/pacman.conf << EOF
@@ -327,7 +327,7 @@ jobs:
           if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
             ENDPOINT="https://ffos.feralfile.com"
           else
-            ENDPOINT="https://feralfile-device-distribution.bitmark-development.workers.dev"
+            ENDPOINT="https://ffosdev.feralfile.com"
           fi
 
           # Add controld config
