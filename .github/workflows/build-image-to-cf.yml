@@ -66,6 +66,10 @@ on:
         required: true
         type: boolean
         default: false
+      ff_player_bundle_url:
+        description: "Optional: HTTPS URL to ff-player static .tar.gz (gzip). See workflow step for archive layout."
+        required: false
+        default: ""
 
 permissions:
   id-token: write
@@ -321,6 +325,24 @@ jobs:
           mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
           cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
+
+      - name: Install ff-player static bundle
+        if: ${{ inputs.ff_player_bundle_url != '' }}
+        run: |
+          set -euo pipefail
+          URL="${{ inputs.ff_player_bundle_url }}"
+          # Expected: tar.gz of `out/` contents at archive root (index.html, _next/, …), e.g. (cd out && tar -czf ../ff-player-static.tgz .)
+          # Or a single top-level `out/` directory in the archive.
+          STAGE="$(mktemp -d)"
+          trap 'rm -rf "$STAGE"' EXIT
+          curl -fsSL "$URL" | tar -xzf - -C "$STAGE"
+          rm -rf /build/archiso-ff1/airootfs/opt/feral/ff-player
+          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ff-player
+          if [[ -d "$STAGE/out" ]]; then
+            cp -a "$STAGE/out/." /build/archiso-ff1/airootfs/opt/feral/ff-player/
+          else
+            cp -a "$STAGE/." /build/archiso-ff1/airootfs/opt/feral/ff-player/
+          fi
 
       - name: Add Configs and Services
         run: |
