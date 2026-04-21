@@ -15,6 +15,11 @@ on:
         description: "ffos-user git tag/ref to checkout"
         required: true
         default: "v1.0.1"
+      ff_player_ref:
+        description: "ff-player repository reference to build static export"
+        required: true
+        default: "main"
+        type: string
       soak-test:
         description: "Include soak test"
         required: true
@@ -54,11 +59,6 @@ on:
         required: false
         default: true
         type: boolean
-      ff_player_bundle_url:
-        description: "Optional: HTTPS URL to ff-player static .tar.gz (gzip). See workflow step for archive layout."
-        required: false
-        default: ""
-
 permissions:
   id-token: write
   contents: read
@@ -74,9 +74,21 @@ jobs:
     with:
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
 
+  build-ff-player-static:
+    name: Build ff-player static
+    needs: permission-check
+    if: ${{ inputs.ff_player_ref != '' }}
+    uses: feral-file/ff-player/.github/workflows/build-ff-player-static.yaml@main
+    secrets:
+      REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+    with:
+      ff_player_ref: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
+      environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+
   build-image:
     name: Generate FFOS iso from tags
-    needs: [permission-check, resolve-container]
+    needs: [permission-check, resolve-container, build-ff-player-static]
+    if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
     container:
@@ -321,20 +333,25 @@ jobs:
           cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
 
+      - name: Download ff-player static artifact
+        if: ${{ inputs.ff_player_ref != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ff-player-static
+          path: /tmp/ff-player-static
+
       - name: Install ff-player static bundle
-        if: ${{ inputs.ff_player_bundle_url != '' }}
         run: |
           set -euo pipefail
-          URL="${{ inputs.ff_player_bundle_url }}"
-          STAGE="$(mktemp -d)"
-          trap 'rm -rf "$STAGE"' EXIT
-          curl -fsSL "$URL" | tar -xzf - -C "$STAGE"
-          rm -rf /build/archiso-ff1/airootfs/opt/feral/ff-player
-          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ff-player
-          if [[ -d "$STAGE/out" ]]; then
-            cp -a "$STAGE/out/." /build/archiso-ff1/airootfs/opt/feral/ff-player/
+          DEST=/build/archiso-ff1/airootfs/opt/feral/ff-player
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+
+          if [ -n "${{ inputs.ff_player_ref }}" ]; then
+            cp -a /tmp/ff-player-static/. "$DEST/"
+            echo "ff-player installed from git ref: ${{ inputs.ff_player_ref }}"
           else
-            cp -a "$STAGE/." /build/archiso-ff1/airootfs/opt/feral/ff-player/
+            echo "Warning: ff_player_ref not provided; ff-player will not be bundled."
           fi
 
       - name: Add Configs and Services

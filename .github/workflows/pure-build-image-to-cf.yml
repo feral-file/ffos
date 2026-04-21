@@ -41,6 +41,11 @@ on:
         required: true
         type: string
         default: 'develop'
+      ff_player_ref:
+        description: "ff-player repository reference to build static export"
+        required: true
+        default: "main"
+        type: string
       dev_iso:
         description: "Build development ISO"
         required: true
@@ -66,11 +71,6 @@ on:
         required: true
         type: boolean
         default: false
-      ff_player_bundle_url:
-        description: "Optional: HTTPS URL to ff-player static .tar.gz (gzip). See workflow step for archive layout."
-        required: false
-        default: ""
-
 permissions:
   id-token: write
   contents: read
@@ -86,8 +86,20 @@ jobs:
     with:
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
 
+  build-ff-player-static:
+    name: Build ff-player static
+    needs: permission-check
+    if: ${{ inputs.ff_player_ref != '' }}
+    uses: feral-file/ff-player/.github/workflows/build-ff-player-static.yaml@main
+    secrets:
+      REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+    with:
+      ff_player_ref: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
+      environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+
   build-image:
-    needs: [permission-check, resolve-container]
+    needs: [permission-check, resolve-container, build-ff-player-static]
+    if: always() && !failure() && !cancelled()
     name: Generate FFOS iso
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
@@ -130,21 +142,21 @@ jobs:
         run: |
           mkdir -p /build
           cp -r archiso-ff1 /build/
-          
+
           # Create home directory structure
           mkdir -p /build/archiso-ff1/airootfs/home
-          
+
           # Copy user data from ffos-user repository
           cp -r ffos-user/users/feralfile /build/archiso-ff1/airootfs/home/
-          
+
           if [ "${{ inputs.soak-test }}" = "false" ]; then
             # Remove soaktest if not needed
             rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf
             rm -f /build/archiso-ff1/airootfs/usr/local/bin/websocat
-          else 
+          else
             # Copy soaktest user data
             cp -r ffos-user/users/soaktest /build/archiso-ff1/airootfs/home/
-            
+
             cat >> /build/archiso-ff1/packages.x86_64 << EOF
           # soak test tools
           foot
@@ -153,12 +165,12 @@ jobs:
           mesa-utils
           python-rich
           EOF
-          fi 
+          fi
 
           # CRITICAL: Create and set up the mirrorlist for the archiso build environment
           mkdir -p /build/archiso-ff1/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
-          
+
           # Also copy mirror list to the final ISO
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
@@ -186,7 +198,7 @@ jobs:
           rust
           base-devel
           EOF
-          
+
           # Configure pacman to not ask for input
           sed -i 's/#NoConfirm/NoConfirm/' /etc/pacman.conf 2>/dev/null || echo "NoConfirm" >> /etc/pacman.conf
 
@@ -195,12 +207,12 @@ jobs:
         run: |
           # Create source directory
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/src
-          
+
           # Create a file with repository information
           echo "Branch: ${{ github.ref_name }}" > /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           echo "Version: ${{ inputs.version || github.event.inputs.version }}" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           echo "Build Date: $(date)" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
-          
+
           # Copy components directory with current checkout
           cp -r ffos-user/components /build/archiso-ff1/airootfs/home/feralfile/src/
 
@@ -230,20 +242,25 @@ jobs:
           cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
 
+      - name: Download ff-player static artifact
+        if: ${{ inputs.ff_player_ref != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ff-player-static
+          path: /tmp/ff-player-static
+
       - name: Install ff-player static bundle
-        if: ${{ inputs.ff_player_bundle_url != '' }}
         run: |
           set -euo pipefail
-          URL="${{ inputs.ff_player_bundle_url }}"
-          STAGE="$(mktemp -d)"
-          trap 'rm -rf "$STAGE"' EXIT
-          curl -fsSL "$URL" | tar -xzf - -C "$STAGE"
-          rm -rf /build/archiso-ff1/airootfs/opt/feral/ff-player
-          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ff-player
-          if [[ -d "$STAGE/out" ]]; then
-            cp -a "$STAGE/out/." /build/archiso-ff1/airootfs/opt/feral/ff-player/
+          DEST=/build/archiso-ff1/airootfs/opt/feral/ff-player
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+
+          if [ -n "${{ inputs.ff_player_ref }}" ]; then
+            cp -a /tmp/ff-player-static/. "$DEST/"
+            echo "ff-player installed from git ref: ${{ inputs.ff_player_ref }}"
           else
-            cp -a "$STAGE/." /build/archiso-ff1/airootfs/opt/feral/ff-player/
+            echo "Warning: ff_player_ref not provided; ff-player will not be bundled."
           fi
 
       - name: Add Configs and Services
@@ -376,7 +393,7 @@ jobs:
             NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
             mv "$ISO_FILE" "/build/out/$NEW_NAME"
             echo "ISO created: /build/out/$NEW_NAME"
-            
+
             cd /build/out
 
             openssl dgst -sha256 -binary "$NEW_NAME" > iso.sha256
@@ -419,14 +436,14 @@ jobs:
       - name: Update version info JSON
         run: |
           set -e
-          
+
           VERSION_INFO_PATH="${{ github.ref_name }}/version-info.json"
           VERSION_INFO_FILE="/tmp/version-info.json"
           CURRENT_VERSION="${{ inputs.version || github.event.inputs.version }}"
           UPDATE_MIN_VERSION="${{ inputs.update_min_version || github.event.inputs.update_min_version }}"
           UPDATE_REQUIRED_VERSION="${{ inputs.update_required_version || github.event.inputs.update_required_version }}"
           UPDATE_RECOVERY_VERSION="${{ inputs.update_recovery_version || github.event.inputs.update_recovery_version }}"
-          
+
           # Try to download existing version info JSON
           if rclone copyto "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${VERSION_INFO_PATH}" "$VERSION_INFO_FILE" 2>/dev/null; then
             echo "Downloaded existing version-info.json"
@@ -449,11 +466,11 @@ jobs:
             EXISTING_RUNTIME=""
             echo '{}' > "$VERSION_INFO_FILE"
           fi
-          
+
           # Prepare updated JSON - always update latest_version
           jq --arg latest "$CURRENT_VERSION" '.latest_version = $latest' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
           mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-          
+
           # Update min_upgradeable_version if checkbox is checked
           if [ "$UPDATE_REQUIRED_VERSION" = "true" ] || [ "$UPDATE_REQUIRED_VERSION" = true ]; then
             jq --arg upgradeable "$CURRENT_VERSION" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
@@ -465,7 +482,7 @@ jobs:
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
             echo "Kept existing min_upgradeable_version: $EXISTING_UPGRADEABLE"
           fi
-          
+
           # Update min_runtime_version if checkbox is checked
           if [ "$UPDATE_MIN_VERSION" = "true" ] || [ "$UPDATE_MIN_VERSION" = true ]; then
             jq --arg runtime "$CURRENT_VERSION" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
@@ -489,17 +506,17 @@ jobs:
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
             echo "Kept existing recovery_version: $EXISTING_RECOVERY"
           fi
-          
+
           # Display final JSON
           echo "Final version-info.json:"
           cat "$VERSION_INFO_FILE" | jq .
-          
+
           # Validate final JSON before uploading
           if ! jq empty "$VERSION_INFO_FILE" 2>/dev/null; then
             echo "Error: Generated JSON is invalid"
             exit 1
           fi
-          
+
           # Upload updated JSON to R2
           rclone copyto "$VERSION_INFO_FILE" \
             "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${VERSION_INFO_PATH}" \
@@ -509,4 +526,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -rf /build 
+          rm -rf /build
