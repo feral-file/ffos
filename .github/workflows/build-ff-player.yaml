@@ -1,0 +1,234 @@
+name: 🔒 Build ff-player Package
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Package version'
+        required: true
+        type: string
+      description:
+        description: 'Package description'
+        required: false
+        type: string
+        default: 'FF Player Static Web Application'
+      maintainer:
+        description: 'Package maintainer'
+        required: false
+        type: string
+        default: 'GitHub Actions'
+      environment:
+        description: 'GitHub Environment name (Development or Production)'
+        required: true
+        type: string
+        default: 'Development'
+      ff_player_ref:
+        description: 'ff-player repository reference'
+        required: true
+        type: string
+        default: 'main'
+      container_image:
+        description: 'Container image to use for the pacman build'
+        required: true
+        type: string
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+      CLOUDFLARE_ACCESS_KEY_ID:
+        required: true
+      CLOUDFLARE_SECRET_ACCESS_KEY:
+        required: true
+      REPO_ACCESS_TOKEN:
+        required: true
+      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN:
+        required: true
+      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID:
+        required: true
+      SENTRY_AUTH_TOKEN:
+        required: false
+      SENTRY_DSN_PLAYER:
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-static:
+    name: Build ff-player static export
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout ff-player
+        uses: actions/checkout@v4
+        with:
+          repository: feral-file/ff-player
+          ref: ${{ inputs.ff_player_ref }}
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate required environment variables
+        env:
+          NEXT_PUBLIC_ENVIRONMENT: ${{ inputs.environment }}
+          NEXT_PUBLIC_PUB_DOC_URL: ${{ vars.PUB_DOC_URL }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN_PLAYER }}
+        run: |
+          echo "NEXT_PUBLIC_ENVIRONMENT=${NEXT_PUBLIC_ENVIRONMENT}"
+          echo "NEXT_PUBLIC_PUB_DOC_URL=${NEXT_PUBLIC_PUB_DOC_URL}"
+          echo "NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN}"
+
+          if [ -z "${NEXT_PUBLIC_PUB_DOC_URL}" ]; then
+            echo "::error::Missing required environment variable: NEXT_PUBLIC_PUB_DOC_URL"
+            exit 1
+          fi
+
+      - name: Build static export
+        env:
+          NEXT_PUBLIC_ENVIRONMENT: ${{ inputs.environment }}
+          NEXT_PUBLIC_PUB_DOC_URL: ${{ vars.PUB_DOC_URL }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN_PLAYER }}
+          NEXT_PUBLIC_DISABLE_VERSION_CHECK: 'true'
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: npm run build
+
+      - name: Upload static artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ff-player-static
+          path: out/
+          retention-days: 1
+
+  package:
+    name: Package ff-player as pacman package
+    needs: build-static
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    container:
+      image: ${{ inputs.container_image }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download static artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ff-player-static
+          path: /tmp/ff-player-static
+
+      - name: Setup pacman
+        uses: ./.github/actions/setup-pacman
+
+      - name: Install build dependencies
+        run: |
+          pacman -S --noconfirm git base-devel shadow fakeroot binutils
+
+      - name: Set Version
+        run: |
+          echo "VERSION=${{ inputs.version }}" >> $GITHUB_ENV
+
+      - name: Build Pacman Package
+        run: |
+          set -euo pipefail
+          COMP=ff-player
+          VER=${VERSION}
+          TARBALL="${COMP}_${VER}.tar.gz"
+
+          mkdir -p /tmp/ff-player-pkg
+
+          # Create tarball from the pre-built static export
+          tar czf "/tmp/ff-player-pkg/${TARBALL}" -C /tmp/ff-player-static .
+
+          cd /tmp/ff-player-pkg
+
+          cat <<EOF > PKGBUILD
+          # Maintainer: ${{ inputs.maintainer }}
+          pkgname=${COMP}
+          pkgver=${VER}
+          pkgrel=1
+          pkgdesc="${{ inputs.description }}"
+          arch=('x86_64' 'aarch64')
+          url="https://github.com/feral-file/ff-player"
+          license=('MIT')
+          depends=()
+          options=(!strip)
+
+          source=("${TARBALL}")
+          sha256sums=('SKIP')
+
+          package() {
+            install -dm755 "\$pkgdir/opt/feral/ff-player"
+            cp -r "\$srcdir"/. "\$pkgdir/opt/feral/ff-player/"
+          }
+          EOF
+
+          useradd -m builder || true
+          chown -R builder:builder .
+          su builder -c "makepkg -f --skipinteg"
+
+      - name: Configure AWS credentials (OIDC for KMS)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
+          aws-region: 'ap-northeast-1'
+
+      - name: Install kmspgp
+        run: |
+          curl -sL -o /usr/local/bin/kmspgp \
+            https://github.com/hf/kmspgp/releases/download/v1.1.0/kmspgp-v1.1.0-linux-amd64
+          chmod +x /usr/local/bin/kmspgp
+
+      - name: Sign packages with AWS KMS (OpenPGP)
+        working-directory: /tmp/ff-player-pkg
+        env:
+          KMS_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
+        run: |
+          set -euo pipefail
+          for p in *.pkg.tar.zst; do
+            kmspgp sign "$KMS_KEY_ID" < "$p" > "$p.sig"
+          done
+
+      - name: Rclone to r2
+        working-directory: /tmp/ff-player-pkg
+        run: |
+          pacman -S --noconfirm rclone
+
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf << EOF
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+          secret_access_key = ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+          endpoint = https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          acl = private
+          no_check_bucket = true
+          EOF
+
+          rclone copy . \
+            "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${{ github.ref_name }}/os/x86_64/" \
+            --include="*.pkg.tar.zst" \
+            --include="*.pkg.tar.zst.sig" \
+            --s3-upload-cutoff=100M \
+            --s3-chunk-size=100M \
+            --transfers=7 \
+            --verbose \
+            --stats=1s
+
+      - name: Package Info
+        run: |
+          echo "ff-player version ${VERSION} built successfully as pacman package and uploaded to R2"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf /tmp/ff-player-pkg /tmp/ff-player-static
