@@ -32,10 +32,6 @@ on:
           - "2025/11/25"
           - "2025/05/31"
           - "latest"
-      webapp_url:
-        description: "Optional: WebApp URL to include in ff1-config.json"
-        required: false
-        default: ""
       ffos_user_ref:
         description: 'ffos-user repository reference'
         required: true
@@ -417,7 +413,6 @@ jobs:
           EOF
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json
 
-          WEBAPP_URL="${{ inputs.webapp_url || github.event.inputs.webapp_url }}"
           jq -n \
             --arg branch "${{ github.ref_name }}" \
             --arg version "${{ inputs.version || github.event.inputs.version }}" \
@@ -425,7 +420,6 @@ jobs:
             --arg heartbeat "${{ secrets.HEARTBEAT_ENDPOINT }}" \
             --arg vmagent_url "${{ secrets.VMAGENT_REMOTE_URL }}" \
             --arg vmagent_token "${{ secrets.VMAGENT_REMOTE_BEARER_TOKEN }}" \
-            --arg webapp_url "${WEBAPP_URL}" \
             '{
               branch: $branch,
               version: $version,
@@ -433,7 +427,7 @@ jobs:
               heartbeat_endpoint: $heartbeat,
               vmagent_remote_url: $vmagent_url,
               vmagent_remote_bearer_token: $vmagent_token,
-            } + (if $webapp_url != "" then {webapp_url: $webapp_url} else {} end)' \
+            }' \
             > /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
 
