@@ -16,7 +16,7 @@ on:
         required: true
         default: "v1.0.1"
       ff_player_ref:
-        description: "Optional feral-player repository reference to build static export"
+        description: "Optional feral-player repository reference to build local player package"
         required: false
         default: ""
         type: string
@@ -111,32 +111,9 @@ jobs:
             echo "Skipping local player: ffos_ref ${FFOS_REF} is below v${MIN_VERSION}."
           fi
 
-  build-feral-player:
-    name: Build feral-player Package
-    needs: [permission-check, resolve-container, determine-local-player]
-    if: ${{ needs.determine-local-player.outputs.enabled == 'true' }}
-    uses: ./.github/workflows/build-feral-player.yaml
-    secrets:
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
-      CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
-      REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
-      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
-      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
-      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-      SENTRY_DSN_PLAYER: ${{ secrets.SENTRY_DSN_PLAYER }}
-    with:
-      version: ${{ inputs.version || github.event.inputs.version }}
-      description: 'FF Player Static Web Application'
-      maintainer: 'Feral File'
-      environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
-      ff_player_ref: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
-      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
-      container_image: ${{ needs.resolve-container.outputs.image }}
-
   build-image:
     name: Generate FFOS iso from tags
-    needs: [permission-check, resolve-container, determine-local-player, build-feral-player]
+    needs: [permission-check, resolve-container, determine-local-player]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
@@ -157,6 +134,23 @@ jobs:
           ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
           path: ffos-user
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Checkout feral-player Repository at ref
+        if: ${{ needs.determine-local-player.outputs.enabled == 'true' }}
+        uses: actions/checkout@v4
+        with:
+          repository: feral-file/ff-player
+          ref: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
+          path: feral-player
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+
+      - name: Setup Node.js
+        if: ${{ needs.determine-local-player.outputs.enabled == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: feral-player/package-lock.json
 
       - name: Setup pacman
         run: |
@@ -183,12 +177,24 @@ jobs:
             git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli \
             pacman-contrib shadow go rust cargo
 
-      - name: Download feral-player static artifact
+      - name: Build local feral-player bundle
         if: ${{ needs.determine-local-player.outputs.enabled == 'true' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: feral-player-static
-          path: /tmp/feral-player-static
+        working-directory: feral-player
+        env:
+          NEXT_PUBLIC_ENVIRONMENT: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+          NEXT_PUBLIC_PUB_DOC_URL: ${{ vars.PUB_DOC_URL }}
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN_PLAYER }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${NEXT_PUBLIC_PUB_DOC_URL}" ]; then
+            echo "::error::Missing required environment variable: NEXT_PUBLIC_PUB_DOC_URL"
+            exit 1
+          fi
+
+          npm ci
+          NEXT_PUBLIC_DISABLE_VERSION_CHECK=true npm run build
 
       - name: Build local FFOS packages (no R2 upload)
         env:
@@ -280,10 +286,11 @@ jobs:
           if [ "${{ needs.determine-local-player.outputs.enabled }}" = "true" ]; then
             PLAYER_PKG_DIR=/tmp/feral-player-pkg
             PLAYER_TARBALL="feral-player_${PKG_VERSION}.tar.gz"
+            PLAYER_OUT="$GITHUB_WORKSPACE/feral-player/out"
 
             rm -rf "$PLAYER_PKG_DIR"
             mkdir -p "$PLAYER_PKG_DIR"
-            tar czf "$PLAYER_PKG_DIR/$PLAYER_TARBALL" -C /tmp/feral-player-static .
+            tar czf "$PLAYER_PKG_DIR/$PLAYER_TARBALL" -C "$PLAYER_OUT" .
 
             cd "$PLAYER_PKG_DIR"
             cat <<EOF > PKGBUILD
@@ -422,21 +429,6 @@ jobs:
           mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
           cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
-
-      - name: Install feral-player static bundle
-        run: |
-          set -euo pipefail
-          DEST=/build/archiso-ff1/airootfs/opt/feral/feral-player
-
-          if [ "${{ needs.determine-local-player.outputs.enabled }}" = "true" ]; then
-            rm -rf "$DEST"
-            mkdir -p "$DEST"
-            cp -a /tmp/feral-player-static/. "$DEST/"
-            echo "feral-player installed from git ref: ${{ inputs.ff_player_ref }}"
-          else
-            rm -rf "$DEST"
-            echo "Skipping local player bundle for ffos_ref ${{ inputs.ffos_ref || github.event.inputs.ffos_ref }}."
-          fi
 
       - name: Add Configs and Services
         run: |
