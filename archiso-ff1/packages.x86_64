@@ -71,7 +71,7 @@ feral-controld
 feral-setupd
 feral-sys-monitord
 feral-watchdog
-ff-player
+feral-player
 
-# HTTP server to serve ff-player static
+# HTTP server to serve feral-player static
 darkhttpd

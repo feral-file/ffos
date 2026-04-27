@@ -16,9 +16,9 @@ on:
         required: true
         default: "v1.0.1"
       ff_player_ref:
-        description: "ff-player repository reference to build static export"
-        required: true
-        default: "main"
+        description: "Optional feral-player repository reference to build static export"
+        required: false
+        default: ""
         type: string
       soak-test:
         description: "Include soak test"
@@ -70,11 +70,52 @@ jobs:
     with:
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
 
-  build-ff-player:
-    name: Build ff-player Package
-    needs: [permission-check, resolve-container]
-    if: ${{ inputs.ff_player_ref != '' }}
-    uses: ./.github/workflows/build-ff-player.yaml
+  determine-local-player:
+    name: Determine Local Player Support
+    needs: permission-check
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - name: Check if ffos tag supports local player
+        id: check
+        env:
+          FFOS_REF: ${{ inputs.ffos_ref || github.event.inputs.ffos_ref }}
+          FF_PLAYER_REF: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
+        run: |
+          set -euo pipefail
+
+          MIN_VERSION="1.0.13"
+          REF="${FFOS_REF#refs/tags/}"
+          REF="${REF#v}"
+
+          if [ -z "${FF_PLAYER_REF}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping local player: ff_player_ref not provided."
+            exit 0
+          fi
+
+          if ! [[ "$REF" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping local player: ffos_ref '${FFOS_REF}' is not a supported version tag."
+            exit 0
+          fi
+
+          VERSION="$(printf '%s' "$REF" | grep -Eo '^[0-9]+\.[0-9]+\.[0-9]+')"
+
+          if [ "$(printf '%s\n' "$MIN_VERSION" "$VERSION" | sort -V | head -n1)" = "$MIN_VERSION" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Local player enabled for ffos_ref ${FFOS_REF}."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping local player: ffos_ref ${FFOS_REF} is below v${MIN_VERSION}."
+          fi
+
+  build-feral-player:
+    name: Build feral-player Package
+    needs: [permission-check, resolve-container, determine-local-player]
+    if: ${{ needs.determine-local-player.outputs.enabled == 'true' }}
+    uses: ./.github/workflows/build-feral-player.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
@@ -90,11 +131,12 @@ jobs:
       maintainer: 'Feral File'
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ff_player_ref: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-image:
     name: Generate FFOS iso from tags
-    needs: [permission-check, resolve-container, build-ff-player]
+    needs: [permission-check, resolve-container, determine-local-player, build-feral-player]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
@@ -141,7 +183,14 @@ jobs:
             git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli \
             pacman-contrib shadow go rust cargo
 
-      - name: Build local FFOS component packages (no R2 upload)
+      - name: Download feral-player static artifact
+        if: ${{ needs.determine-local-player.outputs.enabled == 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: feral-player-static
+          path: /tmp/feral-player-static
+
+      - name: Build local FFOS packages (no R2 upload)
         env:
           PKG_VERSION: ${{ inputs.version || github.event.inputs.version }}
         run: |
@@ -227,6 +276,40 @@ jobs:
             su builder -c "cd \"$WORKDIR\" && makepkg -f --skipinteg"
             cp ./*.pkg.tar.zst /build/local-repo/x86_64/
           done
+
+          if [ "${{ needs.determine-local-player.outputs.enabled }}" = "true" ]; then
+            PLAYER_PKG_DIR=/tmp/feral-player-pkg
+            PLAYER_TARBALL="feral-player_${PKG_VERSION}.tar.gz"
+
+            rm -rf "$PLAYER_PKG_DIR"
+            mkdir -p "$PLAYER_PKG_DIR"
+            tar czf "$PLAYER_PKG_DIR/$PLAYER_TARBALL" -C /tmp/feral-player-static .
+
+            cd "$PLAYER_PKG_DIR"
+            cat <<EOF > PKGBUILD
+          # Maintainer: GitHub Actions
+          pkgname=feral-player
+          pkgver=${PKG_VERSION}
+          pkgrel=1
+          pkgdesc="FF Player Static Web Application"
+          arch=('x86_64' 'aarch64')
+          url="https://github.com/feral-file/ff-player"
+          license=('MIT')
+          depends=()
+          options=(!strip)
+          source=("${PLAYER_TARBALL}")
+          sha256sums=('SKIP')
+
+          package() {
+            install -dm755 "\$pkgdir/opt/feral/feral-player"
+            cp -r "\$srcdir"/. "\$pkgdir/opt/feral/feral-player/"
+          }
+          EOF
+
+            chown -R builder:builder "$PLAYER_PKG_DIR"
+            su builder -c "cd \"$PLAYER_PKG_DIR\" && makepkg -f --skipinteg"
+            cp ./*.pkg.tar.zst /build/local-repo/x86_64/
+          fi
 
           cd /build/local-repo/x86_64
           repo-add feralfile-local.db.tar.gz ./*.pkg.tar.zst
@@ -340,25 +423,19 @@ jobs:
           cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
 
-      - name: Download ff-player static artifact
-        if: ${{ inputs.ff_player_ref != '' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: ff-player-static
-          path: /tmp/ff-player-static
-
-      - name: Install ff-player static bundle
+      - name: Install feral-player static bundle
         run: |
           set -euo pipefail
-          DEST=/build/archiso-ff1/airootfs/opt/feral/ff-player
-          rm -rf "$DEST"
-          mkdir -p "$DEST"
+          DEST=/build/archiso-ff1/airootfs/opt/feral/feral-player
 
-          if [ -n "${{ inputs.ff_player_ref }}" ]; then
-            cp -a /tmp/ff-player-static/. "$DEST/"
-            echo "ff-player installed from git ref: ${{ inputs.ff_player_ref }}"
+          if [ "${{ needs.determine-local-player.outputs.enabled }}" = "true" ]; then
+            rm -rf "$DEST"
+            mkdir -p "$DEST"
+            cp -a /tmp/feral-player-static/. "$DEST/"
+            echo "feral-player installed from git ref: ${{ inputs.ff_player_ref }}"
           else
-            echo "Warning: ff_player_ref not provided; ff-player will not be bundled."
+            rm -rf "$DEST"
+            echo "Skipping local player bundle for ffos_ref ${{ inputs.ffos_ref || github.event.inputs.ffos_ref }}."
           fi
 
       - name: Add Configs and Services

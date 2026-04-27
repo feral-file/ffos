@@ -38,7 +38,7 @@ on:
         type: string
         default: 'develop'
       ff_player_ref:
-        description: "ff-player repository reference to build static export"
+        description: "feral-player repository reference to build static export"
         required: true
         default: "main"
         type: string
@@ -82,11 +82,11 @@ jobs:
     with:
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
 
-  build-ff-player:
-    name: Build ff-player Package
+  build-feral-player:
+    name: Build feral-player Package
     needs: [permission-check, resolve-container]
     if: ${{ inputs.ff_player_ref != '' }}
-    uses: ./.github/workflows/build-ff-player.yaml
+    uses: ./.github/workflows/build-feral-player.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
@@ -102,10 +102,11 @@ jobs:
       maintainer: 'Feral File'
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ff_player_ref: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-image:
-    needs: [permission-check, resolve-container, build-ff-player]
+    needs: [permission-check, resolve-container, build-feral-player]
     if: always() && !failure() && !cancelled()
     name: Generate FFOS iso
     runs-on: ubuntu-latest
@@ -248,27 +249,6 @@ jobs:
           mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
           cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
-
-      - name: Download ff-player static artifact
-        if: ${{ inputs.ff_player_ref != '' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: ff-player-static
-          path: /tmp/ff-player-static
-
-      - name: Install ff-player static bundle
-        run: |
-          set -euo pipefail
-          DEST=/build/archiso-ff1/airootfs/opt/feral/ff-player
-          rm -rf "$DEST"
-          mkdir -p "$DEST"
-
-          if [ -n "${{ inputs.ff_player_ref }}" ]; then
-            cp -a /tmp/ff-player-static/. "$DEST/"
-            echo "ff-player installed from git ref: ${{ inputs.ff_player_ref }}"
-          else
-            echo "Warning: ff_player_ref not provided; ff-player will not be bundled."
-          fi
 
       - name: Add Configs and Services
         run: |
