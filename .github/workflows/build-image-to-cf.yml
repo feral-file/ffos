@@ -32,15 +32,16 @@ on:
           - "2025/11/25"
           - "2025/05/31"
           - "latest"
-      webapp_url:
-        description: "Optional: WebApp URL to include in ff1-config.json"
-        required: false
-        default: ""
       ffos_user_ref:
         description: 'ffos-user repository reference'
         required: true
         type: string
         default: 'develop'
+      ff_player_ref:
+        description: "feral-player repository reference to build static export"
+        required: true
+        default: "main"
+        type: string
       dev_iso:
         description: "Build development ISO"
         required: true
@@ -66,7 +67,6 @@ on:
         required: true
         type: boolean
         default: false
-
 permissions:
   id-token: write
   contents: read
@@ -103,7 +103,7 @@ jobs:
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
       container_image: ${{ needs.resolve-container.outputs.image }}
-      
+
   build-feral-setupd:
     needs: [permission-check, resolve-container]
     name: Build Feral Setupd
@@ -164,9 +164,31 @@ jobs:
       ffos_user_ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
+  build-feral-player:
+    needs: [permission-check, resolve-container]
+    name: Build feral-player Package
+    uses: ./.github/workflows/build-feral-player.yaml
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+      CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
+      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_DSN_PLAYER: ${{ secrets.SENTRY_DSN_PLAYER }}
+    with:
+      version: ${{ inputs.version || github.event.inputs.version }}
+      description: 'FF Player Static Web Application'
+      maintainer: 'Feral File'
+      environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+      ff_player_ref: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+      container_image: ${{ needs.resolve-container.outputs.image }}
+
   build-feralfile-pacman-repo:
     name: Build Feralfile pacman repo
-    needs: [permission-check, resolve-container, build-feral-controld, build-feral-setupd, build-feral-sys-monitord, build-feral-watchdog]
+    needs: [permission-check, resolve-container, build-feral-controld, build-feral-setupd, build-feral-sys-monitord, build-feral-watchdog, build-feral-player]
     uses: ./.github/workflows/pacman-repo.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -176,12 +198,14 @@ jobs:
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-image:
     name: Generate FFOS iso
     runs-on: ubuntu-latest
     needs: [permission-check, resolve-container, build-feralfile-pacman-repo]
+    if: always() && !failure() && !cancelled()
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
 
     container:
@@ -222,21 +246,21 @@ jobs:
         run: |
           mkdir -p /build
           cp -r archiso-ff1 /build/
-          
+
           # Create home directory structure
           mkdir -p /build/archiso-ff1/airootfs/home
-          
+
           # Copy user data from ffos-user repository
           cp -r ffos-user/users/feralfile /build/archiso-ff1/airootfs/home/
-          
+
           if [ "${{ inputs.soak-test }}" = "false" ]; then
             # Remove soaktest if not needed
             rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf
             rm -f /build/archiso-ff1/airootfs/usr/local/bin/websocat
-          else 
+          else
             # Copy soaktest user data
             cp -r ffos-user/users/soaktest /build/archiso-ff1/airootfs/home/
-            
+
             cat >> /build/archiso-ff1/packages.x86_64 << EOF
           # soak test tools
           foot
@@ -245,12 +269,12 @@ jobs:
           mesa-utils
           python-rich
           EOF
-          fi 
+          fi
 
           # CRITICAL: Create and set up the mirrorlist for the archiso build environment
           mkdir -p /build/archiso-ff1/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
-          
+
           # Also copy mirror list to the final ISO
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
@@ -278,7 +302,7 @@ jobs:
           rust
           base-devel
           EOF
-          
+
           # Configure pacman to not ask for input
           sed -i 's/#NoConfirm/NoConfirm/' /etc/pacman.conf 2>/dev/null || echo "NoConfirm" >> /etc/pacman.conf
 
@@ -287,12 +311,12 @@ jobs:
         run: |
           # Create source directory
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/src
-          
+
           # Create a file with repository information
           echo "Branch: ${{ github.ref_name }}" > /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           echo "Version: ${{ inputs.version || github.event.inputs.version }}" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           echo "Build Date: $(date)" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
-          
+
           # Copy components directory with current checkout
           cp -r ffos-user/components /build/archiso-ff1/airootfs/home/feralfile/src/
 
@@ -391,7 +415,6 @@ jobs:
           EOF
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json
 
-          WEBAPP_URL="${{ inputs.webapp_url || github.event.inputs.webapp_url }}"
           jq -n \
             --arg branch "${{ github.ref_name }}" \
             --arg version "${{ inputs.version || github.event.inputs.version }}" \
@@ -399,7 +422,6 @@ jobs:
             --arg heartbeat "${{ secrets.HEARTBEAT_ENDPOINT }}" \
             --arg vmagent_url "${{ secrets.VMAGENT_REMOTE_URL }}" \
             --arg vmagent_token "${{ secrets.VMAGENT_REMOTE_BEARER_TOKEN }}" \
-            --arg webapp_url "${WEBAPP_URL}" \
             '{
               branch: $branch,
               version: $version,
@@ -407,7 +429,7 @@ jobs:
               heartbeat_endpoint: $heartbeat,
               vmagent_remote_url: $vmagent_url,
               vmagent_remote_bearer_token: $vmagent_token,
-            } + (if $webapp_url != "" then {webapp_url: $webapp_url} else {} end)' \
+            }' \
             > /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
           chmod 755 /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
 
@@ -424,7 +446,7 @@ jobs:
           acl = private
           no_check_bucket = true
           EOF
-      
+
       - name: Configure AWS cred entials (OIDC for KMS)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -452,7 +474,7 @@ jobs:
             NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
             mv "$ISO_FILE" "/build/out/$NEW_NAME"
             echo "ISO created: /build/out/$NEW_NAME"
-            
+
             cd /build/out
 
             openssl dgst -sha256 -binary "$NEW_NAME" > iso.sha256
@@ -495,14 +517,14 @@ jobs:
       - name: Update version info JSON
         run: |
           set -e
-          
+
           VERSION_INFO_PATH="${{ github.ref_name }}/version-info.json"
           VERSION_INFO_FILE="/tmp/version-info.json"
           CURRENT_VERSION="${{ inputs.version || github.event.inputs.version }}"
           UPDATE_MIN_VERSION="${{ inputs.update_min_version || github.event.inputs.update_min_version }}"
           UPDATE_REQUIRED_VERSION="${{ inputs.update_required_version || github.event.inputs.update_required_version }}"
           UPDATE_RECOVERY_VERSION="${{ inputs.update_recovery_version || github.event.inputs.update_recovery_version }}"
-          
+
           # Try to download existing version info JSON
           if rclone copyto "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${VERSION_INFO_PATH}" "$VERSION_INFO_FILE" 2>/dev/null; then
             echo "Downloaded existing version-info.json"
@@ -525,11 +547,11 @@ jobs:
             EXISTING_RUNTIME=""
             echo '{}' > "$VERSION_INFO_FILE"
           fi
-          
+
           # Prepare updated JSON - always update latest_version
           jq --arg latest "$CURRENT_VERSION" '.latest_version = $latest' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
           mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-          
+
           # Update min_upgradeable_version if checkbox is checked
           if [ "$UPDATE_REQUIRED_VERSION" = "true" ] || [ "$UPDATE_REQUIRED_VERSION" = true ]; then
             jq --arg upgradeable "$CURRENT_VERSION" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
@@ -541,7 +563,7 @@ jobs:
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
             echo "Kept existing min_upgradeable_version: $EXISTING_UPGRADEABLE"
           fi
-          
+
           # Update min_runtime_version if checkbox is checked
           if [ "$UPDATE_MIN_VERSION" = "true" ] || [ "$UPDATE_MIN_VERSION" = true ]; then
             jq --arg runtime "$CURRENT_VERSION" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
@@ -565,17 +587,17 @@ jobs:
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
             echo "Kept existing recovery_version: $EXISTING_RECOVERY"
           fi
-          
+
           # Display final JSON
           echo "Final version-info.json:"
           cat "$VERSION_INFO_FILE" | jq .
-          
+
           # Validate final JSON before uploading
           if ! jq empty "$VERSION_INFO_FILE" 2>/dev/null; then
             echo "Error: Generated JSON is invalid"
             exit 1
           fi
-          
+
           # Upload updated JSON to R2
           rclone copyto "$VERSION_INFO_FILE" \
             "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${VERSION_INFO_PATH}" \
@@ -585,4 +607,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -rf /build 
+          rm -rf /build

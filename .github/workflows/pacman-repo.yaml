@@ -8,6 +8,11 @@ on:
         required: true
         type: string
         default: 'Development'
+      pacman_snapshot:
+        description: 'Pacman repository snapshot to use'
+        required: false
+        type: string
+        default: 'latest'
       container_image:
         description: 'Container image to use for the build'
         required: true
@@ -135,4 +140,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -rf repo 
+          rm -rf repo
