@@ -66,8 +66,12 @@ intel-gpu-tools
 lm_sensors
 earlyoom
 
-# Feralfile 
+# Feralfile
 feral-controld
 feral-setupd
 feral-sys-monitord
 feral-watchdog
+feral-player
+
+# HTTP server to serve feral-player static
+darkhttpd
