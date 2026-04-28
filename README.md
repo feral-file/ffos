@@ -1,32 +1,166 @@
 # FFOS - Arch Linux ISO Build Repository
 
-FFOS is the centralized build repository for FF1 operating system images. It coordinates Arch ISO generation, FFOS component packaging, local player packaging, pacman repository updates, and image upload/signing.
+## Architecture Overview
 
-The build uses source and user data from companion repositories:
+FFOS is the centralized build repository responsible for creating FFOS images. It orchestrates the entire build process by coordinating with the ffos-user repository for components and user data.
 
-```text
-ffos-user/components/  -> component pacman packages -> R2 {branch}/os/x86_64/
-ffos-user/users/       -> ISO home directory content
-ff-player              -> optional feral-player static package
-ffos/archiso-ff1       -> Arch ISO profile
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   ffos-user     │    │      ffos       │    │   R2 Storage    │
+│   Repository    │    │   Repository    │    │                 │
+│                 │    │                 │    │                 │
+│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
+│ │ components/ │ │    │ │   GitHub    │ │    │ │ {branch}/   │ │
+│ │ users/      │ │    │ │  Actions    │ │    │ │ os/x86_64/  │ │
+│ └─────────────┘ │    │ └─────────────┘ │    │ │ *.iso       │ │
+│                 │    │                 │    │ └─────────────┘ │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       ▲
+         │                       │                       │
+         │                       │                       │
+         ▼                       ▼                       │
+   Component Code         Build Process           Upload Results
+   User Data             ISO Generation
 ```
 
 ## Repository Structure
 
-```text
+```
 ffos/
-|-- .github/actions/setup-pacman/       # Shared pacman snapshot setup action
-|-- .github/workflows/                  # GitHub Actions workflow definitions
-|-- archiso-ff1/                        # Archiso profile and package lists
-|-- docs/                               # Supporting system documentation
-|-- scripts/verify.sh                   # Repo-wide non-mutating verification
-|-- Makefile                            # Local command entry points
-`-- README.md
+├── .github/workflows/           # GitHub Actions workflows
+│   ├── build-components.yaml    # Individual component build
+│   ├── pacman-repo.yaml        # Pacman repository management
+│   ├── build-image-to-cf.yml   # Complete build pipeline
+│   └── pure-build-image-to-cf.yml # Pure ISO build
+├── archiso-ff1/           # Archiso configuration
+│   ├── airootfs/               # Root filesystem template
+│   ├── efiboot/                # EFI boot configuration
+│   ├── packages.x86_64         # Package list
+│   └── profiledef.sh           # Profile definition
+└── README.md                   # This file
+```
+
+## Workflow Architecture
+
+### 1. Component Build Layer (`build-components.yaml`)
+
+**Purpose**: Build individual components from ffos-user repository
+
+**Inputs**:
+- `component`: Component name (feral-controld, feral-setupd, etc.)
+- `version`: Package version
+- `ffos_user_ref`: ffos-user repository reference
+- `environment`: Build environment (Development/Production)
+
+**Process**:
+1. Checkout ffos-user repository using specified reference
+2. Determine build type (Go/Rust) based on component
+3. Create pacman package with PKGBUILD
+4. Upload package to R2 storage
+
+**Output**: Pacman package uploaded to `{branch}/os/x86_64/`
+
+### 2. Repository Management Layer (`pacman-repo.yaml`)
+
+**Purpose**: Manage pacman repository database
+
+**Process**:
+1. Download all packages from R2
+2. Generate repository database
+3. Clean old packages
+4. Upload updated database
+
+**Output**: Updated `feralfile.db.tar.gz` and `feralfile.files.tar.gz`
+
+### 3. ISO Build Layer (`build-image-to-cf.yml`)
+
+**Purpose**: Complete ISO build pipeline
+
+**Workflow**:
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  Build All      │    │  Update Pacman  │    │  Build ISO      │
+│  Components     │───▶│   Repository    │───▶│   Image         │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         ▼                       ▼                       ▼
+   Upload Packages         Generate DB           Upload ISO
+   to R2 Storage          Clean Old Pkgs        to R2 Storage
+```
+
+**Steps**:
+1. **Component Build Phase**: Build all components in parallel
+2. **Repository Update Phase**: Update pacman repository
+3. **ISO Generation Phase**: 
+   - Copy archiso profile
+   - Merge user data from ffos-user
+   - Configure pacman repositories
+   - Build ISO image
+   - Upload to R2
+
+### 4. Pure Build Layer (`pure-build-image-to-cf.yml`)
+
+**Purpose**: Fast ISO build without component building
+
+**Use Case**: When components already exist in R2 storage
+
+**Process**:
+1. Skip component building
+2. Directly build ISO with existing components
+3. Upload ISO to R2
+
+## Data Flow Architecture
+
+### Component Data Flow
+```
+ffos-user/components/ → ffos build process → R2/{branch}/os/x86_64/
+```
+
+### User Data Flow
+```
+ffos-user/users/ → ISO airootfs/home/ → Final ISO
+```
+
+### Configuration Flow
+```
+ffos-user/users/feralfile/.config/ → ISO /home/feralfile/.config/
+ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
+```
+
+## Build Configuration
+
+### Environment Variables
+- `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account identifier
+- `CLOUDFLARE_ACCESS_KEY_ID`: R2 access key
+- `CLOUDFLARE_SECRET_ACCESS_KEY`: R2 secret key
+- `REPO_ACCESS_TOKEN`: GitHub token for ffos-user access
+
+### Build Parameters
+- `version`: ISO version number
+- `ffos_user_ref`: ffos-user repository reference
+- `soak-test`: Include soak test components
+- `environment`: Development/Production environment
+- `is_development`: Include development tools
+- `install_to_emmc`: Build installation image
+
+## R2 Storage Structure
+
+```
+{branch}/
+├── os/x86_64/
+│   ├── feral-controld-{version}-x86_64.pkg.tar.zst
+│   ├── feral-setupd-{version}-x86_64.pkg.tar.zst
+│   ├── feral-sys-monitord-{version}-x86_64.pkg.tar.zst
+│   ├── feral-watchdog-{version}-x86_64.pkg.tar.zst
+│   ├── feralfile.db.tar.gz
+│   └── feralfile.files.tar.gz
+├── FF1-{develop|release|demo|other}-{version}.iso
+└── release_notes_{version}.md
 ```
 
 ## Local Verification
 
-Run the same non-mutating verification path used by CI:
+Run the same non-mutating repository verification path used by CI:
 
 ```sh
 make verify
@@ -61,7 +195,7 @@ This workflow is intended for fast repository configuration validation. Release/
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `build-image-to-cf.yml` | `workflow_dispatch` | Full FFOS image pipeline: build component packages, build the local player package, update the pacman repo DB, build/sign/upload the ISO, and update version metadata. |
+| `build-image-to-cf.yml` | `workflow_dispatch` | Full FFOS image pipeline: build component packages, update the pacman repo DB, build/sign/upload the ISO, and update version metadata. |
 | `pure-build-image-to-cf.yml` | `workflow_dispatch` | Build/sign/upload an FFOS image using packages that already exist in the remote pacman repo. |
 | `build-image-from-tags.yml` | `workflow_dispatch` | Build an image from explicit `ffos`, `ffos-user`, and optional `ff-player` refs. Component/player packages are built locally for the image path instead of uploaded first. |
 
@@ -82,78 +216,3 @@ This workflow is intended for fast repository configuration validation. Release/
 | `pacman-repo.yaml` | `workflow_call` | Download packages from R2, rebuild/sign the pacman DB, and upload the DB files. |
 | `permission-check.yaml` | `workflow_call` | Restrict privileged staging/release workflow runs to repository admins. |
 | `resolve-container.yaml` | `workflow_call` | Resolve the Arch Linux container image for a requested pacman snapshot. |
-
-## Common Manual Inputs
-
-The manually dispatched workflows share these input patterns where applicable:
-
-| Input | Used by | Meaning |
-| --- | --- | --- |
-| `version` | image, component, and player builds | Image/package version to produce. |
-| `environment` | image, package, and repo workflows | GitHub environment, usually `Development` or `Production`. |
-| `pacman_snapshot` | image, package, and repo workflows | Arch repository snapshot. Current choices are `2025/11/25`, `2025/05/31`, and `latest`. |
-| `ffos_user_ref` | image and component workflows | `feral-file/ffos-user` branch, tag, or commit to checkout. |
-| `ff_player_ref` | image and player workflows | `feral-file/ff-player` branch, tag, or commit to checkout. In `build-image-from-tags.yml`, this is optional and enables local player packaging only when supported by the selected FFOS ref. |
-| `ffos_ref` | `build-image-from-tags.yml` | `feral-file/ffos` branch, tag, or commit used for a tag-based image build. |
-| `component` | `manual-build-components.yaml` | Component package to build, such as `feral-controld`, `feral-setupd`, `feral-sys-monitord`, `feral-watchdog`, or `launcher-ui`. |
-| `soak-test` | image workflows | Include soak test user data and packages. |
-| `dev_iso` | image workflows | Add development tools and source metadata to the ISO. |
-| `enable_local_hub` | image workflows | Set local hub support in generated runtime config. |
-| `update_min_version` | image upload workflows | Update `min_runtime_version` in `version-info.json`. |
-| `update_required_version` | image upload workflows | Update `min_upgradeable_version` in `version-info.json`. |
-| `update_recovery_version` | image upload workflows | Update `recovery_version` in `version-info.json`. |
-
-## Build Outputs
-
-Uploaded artifacts use the current GitHub ref name as the R2 channel:
-
-```text
-{branch}/
-|-- os/x86_64/
-|   |-- feral-controld-{version}-x86_64.pkg.tar.zst
-|   |-- feral-setupd-{version}-x86_64.pkg.tar.zst
-|   |-- feral-sys-monitord-{version}-x86_64.pkg.tar.zst
-|   |-- feral-watchdog-{version}-x86_64.pkg.tar.zst
-|   |-- feral-player-{version}-x86_64.pkg.tar.zst
-|   |-- feralfile.db.tar.gz
-|   `-- feralfile.files.tar.gz
-|-- FF1-{channel}-{version}.iso
-|-- FF1-{channel}-{version}.iso.sig
-`-- version-info.json
-```
-
-## Required Secrets and Variables
-
-Build and upload workflows require repository secrets and variables. `make verify` and `verify.yml` do not.
-
-Common required secrets:
-
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_ACCESS_KEY_ID`
-- `CLOUDFLARE_SECRET_ACCESS_KEY`
-- `REPO_ACCESS_TOKEN`
-- `AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN`
-- `AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID`
-
-Additional image/player configuration may use:
-
-- `SENTRY_AUTH_TOKEN`
-- `SENTRY_ORG`
-- `SENTRY_DSN_PLAYER`
-- `SENTRY_DSN_CONTROLD`
-- `SENTRY_DSN_WATCHDOG`
-- `SENTRY_DSN_SYS_MONITORD`
-- `RELAYER_API_KEY`
-- `HEARTBEAT_ENDPOINT`
-- `VMAGENT_REMOTE_URL`
-- `VMAGENT_REMOTE_BEARER_TOKEN`
-- `OPENPANEL_CLIENT_ID`
-- `OPENPANEL_CLIENT_ID_TEST`
-- `OPENPANEL_CLIENT_SECRET`
-- `OPENPANEL_CLIENT_SECRET_TEST`
-
-Common variables:
-
-- `CLOUDFLARE_R2_BUCKET_NAME`
-- `PUB_DOC_URL`
-- `RELAYER_ENDPOINT`
