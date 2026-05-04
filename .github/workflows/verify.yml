@@ -1,0 +1,25 @@
+name: Verify Repository
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - staging
+      - release
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify README and workflow configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run repo verification
+        run: ./scripts/verify.sh

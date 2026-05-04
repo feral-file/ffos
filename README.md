@@ -157,3 +157,62 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 ├── FF1-{develop|release|demo|other}-{version}.iso
 └── release_notes_{version}.md
 ```
+
+## Local Verification
+
+Run the same non-mutating repository verification path used by CI:
+
+```sh
+make verify
+```
+
+`make verify` calls `scripts/verify.sh`, which checks shell syntax, runs ShellCheck, validates GitHub workflow YAML shape, confirms the CI verification workflow calls the same script, and confirms this README lists every workflow file.
+
+Required local tools:
+
+- `bash`
+- `ruby`
+- `shellcheck`
+- `make`
+
+The verification path does not build packages, build an ISO, sign artifacts, upload to R2, or require repository secrets.
+
+## GitHub Actions Verification
+
+`.github/workflows/verify.yml` runs the same `scripts/verify.sh` path on pull requests, pushes to long-lived branches, and manual dispatch.
+
+This workflow is intended for fast repository configuration validation. Release/package/image workflows remain manual or reusable because they require privileged containers, external repositories, repository secrets, Cloudflare R2 access, and AWS KMS signing.
+
+## Workflow Inventory
+
+### Validation
+
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| `verify.yml` | `pull_request`, selected `push` branches, `workflow_dispatch` | Non-mutating repository verification shared with `make verify`. |
+
+### Full image builds
+
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| `build-image-to-cf.yml` | `workflow_dispatch` | Full FFOS image pipeline: build component packages, update the pacman repo DB, build/sign/upload the ISO, and update version metadata. |
+| `pure-build-image-to-cf.yml` | `workflow_dispatch` | Build/sign/upload an FFOS image using packages that already exist in the remote pacman repo. |
+| `build-image-from-tags.yml` | `workflow_dispatch` | Build an image from explicit `ffos`, `ffos-user`, and optional `ff-player` refs. Component/player packages are built locally for the image path instead of uploaded first. |
+
+### Manual package and repository operations
+
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| `manual-build-components.yaml` | `workflow_dispatch` | Build and upload one selected `ffos-user` component package. |
+| `manual-build-feral-player.yaml` | `workflow_dispatch` | Build and upload the `feral-player` pacman package from an `ff-player` ref. |
+| `manual-push-pacman-repo.yaml` | `workflow_dispatch` | Rebuild and upload the remote pacman repository database from packages already in R2. |
+
+### Reusable workflows
+
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| `build-components.yaml` | `workflow_call` | Package one `ffos-user` component and upload the package/signature to R2. |
+| `build-feral-player.yaml` | `workflow_call` | Build the `ff-player` static export, package it as `feral-player`, and upload package artifacts to R2. |
+| `pacman-repo.yaml` | `workflow_call` | Download packages from R2, rebuild/sign the pacman DB, and upload the DB files. |
+| `permission-check.yaml` | `workflow_call` | Restrict privileged staging/release workflow runs to repository admins. |
+| `resolve-container.yaml` | `workflow_call` | Resolve the Arch Linux container image for a requested pacman snapshot. |
