@@ -17,6 +17,44 @@ log_error() {
   echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [ERROR] id=$UNIQUE_ID message=\"$message\""
 }
 
+download_with_retry() {
+  local url="$1"
+  local output="$2"
+  local label="$3"
+  local max_attempts=5
+  local retry_delay=10
+  local attempt=1
+
+  while [[ $attempt -le $max_attempts ]]; do
+    log_info "Downloading $label, attempt $attempt/$max_attempts"
+
+    if curl \
+      --silent \
+      --show-error \
+      --fail \
+      --location \
+      --continue-at - \
+      --connect-timeout 15 \
+      --speed-time 60 \
+      --speed-limit 1024 \
+      "$url" \
+      -o "$output"; then
+      return 0
+    fi
+
+    log_info "Download attempt $attempt/$max_attempts failed for $label."
+    attempt=$((attempt + 1))
+
+    if [[ $attempt -le $max_attempts ]]; then
+      log_info "Retrying $label download in $retry_delay seconds..."
+      sleep "$retry_delay"
+    fi
+  done
+
+  log_error "Failed to download $label after $max_attempts attempts."
+  return 1
+}
+
 trap 'code=$?; log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""; exit $code' ERR
 
 if [[ $# -lt 2 || -z "${1:-}" || -z "${2:-}" ]]; then
@@ -135,7 +173,11 @@ PROGRESS_PID=""
       PERCENT=$(awk "BEGIN { printf \"%d\", (70 * $CUR_SIZE / $TOTAL_SIZE) + 10 }")
       [[ $PERCENT -gt 79 ]] && PERCENT=79
  
-      log_progress "$PERCENT" "Downloading the update... ($SPEED_MBPS MB/s)"
+      if [[ $DIFF -eq 0 ]]; then
+        log_progress "$PERCENT" "Downloading the update... waiting for network"
+      else
+        log_progress "$PERCENT" "Downloading the update... ($SPEED_MBPS MB/s)"
+      fi
 
       LAST_SIZE=$CUR_SIZE
       LAST_TIME=$CUR_TIME
@@ -144,15 +186,16 @@ PROGRESS_PID=""
 ) &
 PROGRESS_PID=$!
 
-# Actual download
-curl --silent --show-error -fL "$ENDPOINT$IMAGE_URL" -o "$ISO_FILE"
+# Actual download. Resume and retry protect setup from transient Wi-Fi drops
+# during first-run OTA.
+download_with_retry "$ENDPOINT$IMAGE_URL" "$ISO_FILE" "OTA image"
 
 kill "$PROGRESS_PID" 2>/dev/null || true
 
 # Download signature file
 log_progress "80" "Verifying download integrity..."
 
-curl --silent --show-error -fL "$ENDPOINT$IMAGE_URL.sig" -o "$ISO_FILE.sig" || {
+download_with_retry "$ENDPOINT$IMAGE_URL.sig" "$ISO_FILE.sig" "OTA signature" || {
   log_error "Error: Failed to download file $ISO_FILE.sig."
   exit 1
 }
