@@ -33,7 +33,6 @@ download_with_retry() {
       --show-error \
       --fail \
       --location \
-      --continue-at - \
       --connect-timeout 15 \
       --speed-time 60 \
       --speed-limit 1024 \
@@ -186,8 +185,8 @@ PROGRESS_PID=""
 ) &
 PROGRESS_PID=$!
 
-# Actual download. Resume and retry protect setup from transient Wi-Fi drops
-# during first-run OTA.
+# Actual download. Retry protects setup from transient Wi-Fi drops during
+# first-run OTA.
 download_with_retry "$ENDPOINT$IMAGE_URL" "$ISO_FILE" "OTA image"
 
 kill "$PROGRESS_PID" 2>/dev/null || true
