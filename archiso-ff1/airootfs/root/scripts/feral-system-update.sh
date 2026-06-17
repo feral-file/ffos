@@ -17,41 +17,35 @@ log_error() {
   echo "$(date '+%Y-%m-%dT%H:%M:%S%z') [ERROR] id=$UNIQUE_ID message=\"$message\""
 }
 
-download_with_retry() {
+download_file() {
   local url="$1"
   local output="$2"
   local label="$3"
-  local max_attempts=5
-  local retry_delay=10
-  local attempt=1
 
-  while [[ $attempt -le $max_attempts ]]; do
-    log_info "Downloading $label, attempt $attempt/$max_attempts"
+  log_info "Downloading $label"
 
-    if curl \
-      --silent \
-      --show-error \
-      --fail \
-      --location \
-      --connect-timeout 15 \
-      --speed-time 60 \
-      --speed-limit 1024 \
-      "$url" \
-      -o "$output"; then
-      return 0
-    fi
+  # Download with stall detection but no overall timeout.
+  # For large OTA images (2-4GB), download time varies widely based on network:
+  #   - Fast (100 Mbps): ~4 minutes
+  #   - Moderate (10 Mbps): ~40 minutes
+  #   - Slow (1 Mbps): ~400 minutes
+  # Stall detection (--speed-time 60 + --speed-limit 1024) ensures we abort
+  # if truly stuck, but allow slow-but-progressing downloads to complete.
+  if ! curl \
+    --silent \
+    --show-error \
+    --fail \
+    --location \
+    --connect-timeout 15 \
+    --speed-time 60 \
+    --speed-limit 1024 \
+    "$url" \
+    -o "$output"; then
+    log_error "Failed to download $label."
+    return 1
+  fi
 
-    log_info "Download attempt $attempt/$max_attempts failed for $label."
-    attempt=$((attempt + 1))
-
-    if [[ $attempt -le $max_attempts ]]; then
-      log_info "Retrying $label download in $retry_delay seconds..."
-      sleep "$retry_delay"
-    fi
-  done
-
-  log_error "Failed to download $label after $max_attempts attempts."
-  return 1
+  return 0
 }
 
 trap 'code=$?; log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""; exit $code' ERR
@@ -185,17 +179,16 @@ PROGRESS_PID=""
 ) &
 PROGRESS_PID=$!
 
-# Actual download. Retry protects setup from transient Wi-Fi drops during
-# first-run OTA.
-download_with_retry "$ENDPOINT$IMAGE_URL" "$ISO_FILE" "OTA image"
+# Download the ISO. Setupd will retry transient failures at the Rust level.
+download_file "$ENDPOINT$IMAGE_URL" "$ISO_FILE" "OTA image"
 
 kill "$PROGRESS_PID" 2>/dev/null || true
 
 # Download signature file
 log_progress "80" "Verifying download integrity..."
 
-download_with_retry "$ENDPOINT$IMAGE_URL.sig" "$ISO_FILE.sig" "OTA signature" || {
-  log_error "Error: Failed to download file $ISO_FILE.sig."
+download_file "$ENDPOINT$IMAGE_URL.sig" "$ISO_FILE.sig" "signature file" || {
+  log_error "Failed to download signature file."
   exit 1
 }
 
