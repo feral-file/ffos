@@ -185,13 +185,24 @@ mount -o compress=zstd,noatime,subvol=@snapshots/@recovery_candidate_new "$ROOT_
 log_info "Downloading recovery ISO..."
 mkdir -p "$TMP_DIR"
 
-curl --silent --show-error -fL "$ENDPOINT$RECOVERY_URL" -o "$ISO_FILE" || {
-  log_error "Failed to download recovery ISO from $ENDPOINT$RECOVERY_URL"
+# Download recovery ISO with stall detection but no overall timeout.
+# Recovery images can be large (2-4GB), so allow time for slow connections.
+# Stall detection ensures we abort if truly stuck (< 1KB/s for 60s).
+curl --silent --show-error --fail --location \
+  --connect-timeout 15 \
+  --speed-time 60 \
+  --speed-limit 1024 \
+  "$ENDPOINT$RECOVERY_URL" -o "$ISO_FILE" || {
+  log_error "Failed to download recovery ISO."
   exit 1
 }
 
 log_info "Downloading signature file..."
-curl --silent --show-error -fL "$ENDPOINT$RECOVERY_URL.sig" -o "$ISO_FILE.sig" || {
+# Signature file is tiny, can use shorter timeout
+curl --silent --show-error --fail --location \
+  --connect-timeout 15 \
+  --max-time 60 \
+  "$ENDPOINT$RECOVERY_URL.sig" -o "$ISO_FILE.sig" || {
   log_error "Failed to download signature file."
   exit 1
 }
