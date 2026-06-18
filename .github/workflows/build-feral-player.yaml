@@ -18,7 +18,7 @@ on:
         type: string
         default: 'GitHub Actions'
       environment:
-        description: 'GitHub Environment name (Development or Production)'
+        description: 'GitHub Environment name (Development, Staging, or Production)'
         required: true
         type: string
         default: 'Development'

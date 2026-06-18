@@ -50,7 +50,7 @@ ffos/
 - `component`: Component name (feral-controld, feral-setupd, etc.)
 - `version`: Package version
 - `ffos_user_ref`: ffos-user repository reference
-- `environment`: Build environment (Development/Production)
+- `environment`: Build environment and runtime configuration (Development/Staging/Production)
 
 **Process**:
 1. Checkout ffos-user repository using specified reference
@@ -139,7 +139,7 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 - `version`: ISO version number
 - `ffos_user_ref`: ffos-user repository reference
 - `soak-test`: Include soak test components
-- `environment`: Development/Production environment
+- `environment`: Development/Staging/Production environment
 - `is_development`: Include development tools
 - `install_to_emmc`: Build installation image
 
