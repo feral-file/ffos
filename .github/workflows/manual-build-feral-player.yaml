@@ -8,7 +8,15 @@ on:
         required: true
         type: string
       environment:
-        description: "Environment to build"
+        description: "Where to build"
+        required: true
+        default: "Development"
+        type: choice
+        options:
+          - Development
+          - Production
+      configuration:
+        description: "Configuration set to build the package"
         required: true
         default: "Development"
         type: choice
@@ -97,7 +105,7 @@ jobs:
 
       - name: Validate required environment variables
         env:
-          NEXT_PUBLIC_ENVIRONMENT: ${{ inputs.environment || github.event.inputs.environment }}
+          NEXT_PUBLIC_ENVIRONMENT: ${{ inputs.configuration || github.event.inputs.configuration || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
           NEXT_PUBLIC_PUB_DOC_URL: ${{ vars.PUB_DOC_URL }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN_PLAYER }}
         run: |
@@ -113,7 +121,7 @@ jobs:
       - name: Build static export
         working-directory: ff-player
         env:
-          NEXT_PUBLIC_ENVIRONMENT: ${{ inputs.environment || github.event.inputs.environment }}
+          NEXT_PUBLIC_ENVIRONMENT: ${{ inputs.configuration || github.event.inputs.configuration || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
           NEXT_PUBLIC_PUB_DOC_URL: ${{ vars.PUB_DOC_URL }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN_PLAYER }}
           NEXT_PUBLIC_DISABLE_VERSION_CHECK: 'true'

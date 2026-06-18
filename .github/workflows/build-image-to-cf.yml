@@ -16,7 +16,15 @@ on:
           - false
         default: false
       environment:
-        description: "Environment to build"
+        description: "Where to build"
+        required: true
+        default: "Development"
+        type: choice
+        options:
+          - Development
+          - Production
+      configuration:
+        description: "Configuration set to build the image"
         required: true
         default: "Development"
         type: choice
@@ -182,6 +190,7 @@ jobs:
       description: 'FF Player Static Web Application'
       maintainer: 'Feral File'
       environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+      configuration: ${{ inputs.configuration || github.event.inputs.configuration || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
       ff_player_ref: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
@@ -324,7 +333,9 @@ jobs:
         run: |
           set -e
 
-          if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
+          CONFIGURATION="${{ inputs.configuration || github.event.inputs.configuration || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}"
+
+          if [ "$CONFIGURATION" = "Production" ]; then
             DOMAIN="ffos.feralfile.com"
           else
             DOMAIN="ffosdev.feralfile.com"
@@ -348,10 +359,19 @@ jobs:
 
       - name: Add Configs and Services
         run: |
-          if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
+          CONFIGURATION="${{ inputs.configuration || github.event.inputs.configuration || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}"
+          RELAYER_ENDPOINT="wss://relayer-dev.bitmark-development.workers.dev"
+
+          if [ "$CONFIGURATION" = "Production" ]; then
             ENDPOINT="https://ffos.feralfile.com"
+            SENTRY_SAMPLE_RATE="0.1"
+            OPENPANEL_CLIENT_ID="${{ secrets.OPENPANEL_CLIENT_ID }}"
+            OPENPANEL_CLIENT_SECRET="${{ secrets.OPENPANEL_CLIENT_SECRET }}"
           else
             ENDPOINT="https://ffosdev.feralfile.com"
+            SENTRY_SAMPLE_RATE="1.0"
+            OPENPANEL_CLIENT_ID="${{ secrets.OPENPANEL_CLIENT_ID_TEST }}"
+            OPENPANEL_CLIENT_SECRET="${{ secrets.OPENPANEL_CLIENT_SECRET_TEST }}"
           fi
 
           # Add controld config
@@ -359,23 +379,30 @@ jobs:
           cat > /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json << EOF
           {
             "relayer": {
-                "endpoint": "${{ vars.RELAYER_ENDPOINT }}",
+                "endpoint": "${RELAYER_ENDPOINT}",
                 "apiKey": "${{ secrets.RELAYER_API_KEY }}"
             },
             "cdp": {
                 "endpoint": "http://127.0.0.1:9222"
             },
+            "mintPairing": {
+                "enabled": true,
+                "brokerBaseURL": "https://handoff.feralfile.com",
+                "idleTTLSeconds": 300,
+                "pollIntervalMillis": 500,
+                "approvalTimeoutSeconds": 300
+            },
             "sentry": {
                 "dsn": "${{ secrets.SENTRY_DSN_CONTROLD }}",
                 "debug": "false",
-                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+                "sample_rate": "${SENTRY_SAMPLE_RATE}",
+                "environment": "${CONFIGURATION}",
                 "release": "${{ inputs.version || github.event.inputs.version }}",
                 "repository": "${{ github.repository }}"
             },
             "openpanel": {
-              "clientId": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_ID || secrets.OPENPANEL_CLIENT_ID_TEST }}",
-              "clientSecret": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_SECRET || secrets.OPENPANEL_CLIENT_SECRET_TEST }}"
+              "clientId": "${OPENPANEL_CLIENT_ID}",
+              "clientSecret": "${OPENPANEL_CLIENT_SECRET}"
             },
             "enableHub": ${{ inputs.enable_local_hub || github.event.inputs.enable_local_hub }}
           }
@@ -391,8 +418,8 @@ jobs:
             "sentry": {
                 "dsn": "${{ secrets.SENTRY_DSN_WATCHDOG }}",
                 "debug": "false",
-                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+                "sample_rate": "${SENTRY_SAMPLE_RATE}",
+                "environment": "${CONFIGURATION}",
                 "release": "${{ inputs.version || github.event.inputs.version }}",
                 "repository": "${{ github.repository }}"
             }
@@ -406,8 +433,8 @@ jobs:
             "sentry": {
                 "dsn": "${{ secrets.SENTRY_DSN_SYS_MONITORD }}",
                 "debug": "false",
-                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
+                "sample_rate": "${SENTRY_SAMPLE_RATE}",
+                "environment": "${CONFIGURATION}",
                 "release": "${{ inputs.version || github.event.inputs.version }}",
                 "repository": "${{ github.repository }}"
             }

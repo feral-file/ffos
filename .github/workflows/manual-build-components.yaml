@@ -18,7 +18,7 @@ on:
         required: true
         type: string
       environment:
-        description: "Environment to build"
+        description: "Where to build"
         required: true
         default: "Development"
         type: choice
@@ -268,4 +268,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -rf /components 
+          rm -rf /components

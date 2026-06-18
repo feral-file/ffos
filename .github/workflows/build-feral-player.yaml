@@ -22,6 +22,11 @@ on:
         required: true
         type: string
         default: 'Development'
+      configuration:
+        description: 'Runtime configuration set (Development or Production)'
+        required: false
+        type: string
+        default: 'Development'
       ff_player_ref:
         description: 'feral-player repository reference'
         required: true
@@ -100,7 +105,7 @@ jobs:
 
       - name: Validate required environment variables
         env:
-          NEXT_PUBLIC_ENVIRONMENT: ${{ inputs.environment }}
+          NEXT_PUBLIC_ENVIRONMENT: ${{ inputs.configuration }}
           NEXT_PUBLIC_PUB_DOC_URL: ${{ vars.PUB_DOC_URL }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN_PLAYER }}
         run: |
@@ -116,7 +121,7 @@ jobs:
       - name: Build static export
         working-directory: feral-player
         env:
-          NEXT_PUBLIC_ENVIRONMENT: ${{ inputs.environment }}
+          NEXT_PUBLIC_ENVIRONMENT: ${{ inputs.configuration }}
           NEXT_PUBLIC_PUB_DOC_URL: ${{ vars.PUB_DOC_URL }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN_PLAYER }}
           NEXT_PUBLIC_DISABLE_VERSION_CHECK: 'true'

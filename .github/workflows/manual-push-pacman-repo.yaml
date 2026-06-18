@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to build"
+        description: "Where to build"
         required: true
         default: "Development"
         type: choice
@@ -143,4 +143,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -rf repo 
+          rm -rf repo
