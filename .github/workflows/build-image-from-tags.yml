@@ -51,11 +51,6 @@ on:
         required: true
         default: false
         type: boolean
-      enable_local_hub:
-        description: "Enable local hub for communication"
-        required: false
-        default: true
-        type: boolean
 permissions:
   id-token: write
   contents: read

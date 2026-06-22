@@ -48,11 +48,6 @@ on:
         required: true
         default: false
         type: boolean
-      enable_local_hub:
-        description: "Enable local hub for communication"
-        required: false
-        default: true
-        type: boolean
       update_min_version:
         description: "Update minimum runtime version (min_runtime_version)"
         required: true
@@ -418,6 +413,11 @@ jobs:
             jq --arg upgradeable "$EXISTING_UPGRADEABLE" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
             echo "Kept existing min_upgradeable_version: $EXISTING_UPGRADEABLE"
+          else
+            # First build on this branch (no existing value): default to current version
+            jq --arg upgradeable "$CURRENT_VERSION" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
+            echo "Defaulted min_upgradeable_version to $CURRENT_VERSION (first build)"
           fi
 
           # Update min_runtime_version if checkbox is checked
@@ -430,6 +430,11 @@ jobs:
             jq --arg runtime "$EXISTING_RUNTIME" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
             echo "Kept existing min_runtime_version: $EXISTING_RUNTIME"
+          else
+            # First build on this branch (no existing value): default to current version
+            jq --arg runtime "$CURRENT_VERSION" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
+            echo "Defaulted min_runtime_version to $CURRENT_VERSION (first build)"
           fi
 
           # Update recovery_version if checkbox is checked
@@ -442,6 +447,11 @@ jobs:
             jq --arg recovery "$EXISTING_RECOVERY" '.recovery_version = $recovery' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
             echo "Kept existing recovery_version: $EXISTING_RECOVERY"
+          else
+            # First build on this branch (no existing value): default to current version
+            jq --arg recovery "$CURRENT_VERSION" '.recovery_version = $recovery' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
+            echo "Defaulted recovery_version to $CURRENT_VERSION (first build)"
           fi
 
           # Display final JSON
