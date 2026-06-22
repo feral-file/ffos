@@ -35,6 +35,7 @@ on:
         type: choice
         options:
           - Development
+          - Staging
           - Production
       pacman_snapshot:
         description: "Pacman repository snapshot to use"
@@ -49,11 +50,6 @@ on:
         description: "Build development ISO"
         required: true
         default: false
-        type: boolean
-      enable_local_hub:
-        description: "Enable local hub for communication"
-        required: false
-        default: true
         type: boolean
 permissions:
   id-token: write
@@ -80,8 +76,8 @@ jobs:
       - name: Check if ffos tag supports local player
         id: check
         env:
-          FFOS_REF: ${{ inputs.ffos_ref || github.event.inputs.ffos_ref }}
-          FF_PLAYER_REF: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
+          FFOS_REF: ${{ inputs.ffos_ref }}
+          FF_PLAYER_REF: ${{ inputs.ff_player_ref }}
         run: |
           set -euo pipefail
 
@@ -116,7 +112,7 @@ jobs:
     needs: [permission-check, resolve-container, determine-local-player]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+    environment: ${{ inputs.environment }}
     container:
       image: ${{ needs.resolve-container.outputs.image }}
       options: --privileged
@@ -125,24 +121,24 @@ jobs:
       - name: Checkout ffos repository at tag/ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ffos_ref || github.event.inputs.ffos_ref }}
+          ref: ${{ inputs.ffos_ref }}
 
       - name: Checkout ffos-user Repository at tag/ref
         uses: actions/checkout@v4
         with:
           repository: feral-file/ffos-user
-          ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
+          ref: ${{ inputs.ffos_user_ref }}
           path: ffos-user
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          token: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
 
       - name: Checkout feral-player Repository at ref
         if: ${{ needs.determine-local-player.outputs.enabled == 'true' }}
         uses: actions/checkout@v4
         with:
           repository: feral-file/ff-player
-          ref: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
+          ref: ${{ inputs.ff_player_ref }}
           path: feral-player
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          token: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
 
       - name: Setup Node.js
         if: ${{ needs.determine-local-player.outputs.enabled == 'true' }}
@@ -181,7 +177,7 @@ jobs:
         if: ${{ needs.determine-local-player.outputs.enabled == 'true' }}
         working-directory: feral-player
         env:
-          NEXT_PUBLIC_ENVIRONMENT: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+          NEXT_PUBLIC_ENVIRONMENT: ${{ inputs.environment }}
           NEXT_PUBLIC_PUB_DOC_URL: ${{ vars.PUB_DOC_URL }}
           NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.SENTRY_DSN_PLAYER }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -198,7 +194,7 @@ jobs:
 
       - name: Build local FFOS packages (no R2 upload)
         env:
-          PKG_VERSION: ${{ inputs.version || github.event.inputs.version }}
+          PKG_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
 
@@ -384,7 +380,7 @@ jobs:
         run: |
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/src
           echo "Branch: ${{ github.ref_name }}" > /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
-          echo "Version: ${{ inputs.version || github.event.inputs.version }}" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
+          echo "Version: ${{ inputs.version }}" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           echo "Build Date: $(date)" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           cp -r ffos-user/components /build/archiso-ff1/airootfs/home/feralfile/src/
 
@@ -392,7 +388,9 @@ jobs:
         run: |
           set -e
 
-          if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
+          ENVIRONMENT="${{ inputs.environment }}"
+
+          if [ "$ENVIRONMENT" = "Production" ]; then
             DOMAIN="ffos.feralfile.com"
           else
             DOMAIN="ffosdev.feralfile.com"
@@ -431,89 +429,40 @@ jobs:
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
 
       - name: Add Configs and Services
+        env:
+          FERAL_CONTROLD_CONFIG_JSON: ${{ secrets.FERAL_CONTROLD_CONFIG_JSON }}
+          FERAL_FF1_CONFIG_JSON: ${{ secrets.FERAL_FF1_CONFIG_JSON }}
+          FERAL_SYS_MONITORD_CONFIG_JSON: ${{ secrets.FERAL_SYS_MONITORD_CONFIG_JSON }}
+          FERAL_WATCHDOG_CONFIG_JSON: ${{ secrets.FERAL_WATCHDOG_CONFIG_JSON }}
+          BUILD_BRANCH: ${{ github.ref_name }}
+          BUILD_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
-            ENDPOINT="https://ffos.feralfile.com"
-          else
-            ENDPOINT="https://ffosdev.feralfile.com"
-          fi
-
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.config
 
-          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json << EOF
-          {
-            "relayer": {
-                "endpoint": "${{ vars.RELAYER_ENDPOINT }}",
-                "apiKey": "${{ secrets.RELAYER_API_KEY }}"
-            },
-            "cdp": {
-                "endpoint": "http://127.0.0.1:9222"
-            },
-            "sentry": {
-                "dsn": "${{ secrets.SENTRY_DSN_CONTROLD }}",
-                "debug": "false",
-                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
-                "release": "${{ inputs.version || github.event.inputs.version }}",
-                "repository": "${{ github.repository }}"
-            },
-            "openpanel": {
-              "clientId": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_ID || secrets.OPENPANEL_CLIENT_ID_TEST }}",
-              "clientSecret": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_SECRET || secrets.OPENPANEL_CLIENT_SECRET_TEST }}"
-            },
-            "enableHub": ${{ inputs.enable_local_hub || github.event.inputs.enable_local_hub }}
-          }
-          EOF
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json
+          write_json() {
+            local target="$1"
+            local content="$2"
+            local filter="${3:-.}"
+            local name
+            name="$(basename "$target")"
 
-          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json << EOF
-          {
-            "cdp": {
-                "endpoint": "http://127.0.0.1:9222"
-            },
-            "sentry": {
-                "dsn": "${{ secrets.SENTRY_DSN_WATCHDOG }}",
-                "debug": "false",
-                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
-                "release": "${{ inputs.version || github.event.inputs.version }}",
-                "repository": "${{ github.repository }}"
-            }
-          }
-          EOF
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json
+            if [ -z "$content" ]; then
+              echo "::error::Missing ${name} JSON secret"
+              exit 1
+            fi
 
-          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json << EOF
-          {
-            "sentry": {
-                "dsn": "${{ secrets.SENTRY_DSN_SYS_MONITORD }}",
-                "debug": "false",
-                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
-                "release": "${{ inputs.version || github.event.inputs.version }}",
-                "repository": "${{ github.repository }}"
-            }
+            printf '%s' "$content" \
+              | jq --arg branch "$BUILD_BRANCH" --arg version "$BUILD_VERSION" "$filter" \
+              > "$target"
+            chmod 755 "$target"
           }
-          EOF
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json
 
-          jq -n \
-            --arg branch "${{ github.ref_name }}" \
-            --arg version "${{ inputs.version || github.event.inputs.version }}" \
-            --arg endpoint "${ENDPOINT}" \
-            --arg heartbeat "${{ secrets.HEARTBEAT_ENDPOINT }}" \
-            --arg vmagent_url "${{ secrets.VMAGENT_REMOTE_URL }}" \
-            --arg vmagent_token "${{ secrets.VMAGENT_REMOTE_BEARER_TOKEN }}" \
-            '{
-              branch: $branch,
-              version: $version,
-              endpoint: $endpoint,
-              heartbeat_endpoint: $heartbeat,
-              vmagent_remote_url: $vmagent_url,
-              vmagent_remote_bearer_token: $vmagent_token
-            }' \
-            > /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
+          # Overlay per-build values (branch/version) that change every build and
+          # therefore cannot be baked into the environment-scoped JSON secrets.
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '.sentry.release = $version'
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'
 
       - name: Configure rclone
         run: |
@@ -553,7 +502,7 @@ jobs:
             else
               IMAGE_TAG=""
             fi
-            NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
+            NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version }}.iso"
             mv "$ISO_FILE" "/build/out/$NEW_NAME"
             echo "ISO created: /build/out/$NEW_NAME"
 

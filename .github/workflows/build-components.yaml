@@ -46,7 +46,7 @@ on:
         required: false
       SENTRY_ORG:
         required: false
-      REPO_ACCESS_TOKEN:
+      FERALFILE_BOT_REPOS_READONLY_TOKEN:
         required: true
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN:
         required: true
@@ -59,7 +59,7 @@ permissions:
 
 jobs:
   build-component:
-    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+    environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     container:
       image: ${{ inputs.container_image }}
@@ -72,9 +72,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: feral-file/ffos-user
-          ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
+          ref: ${{ inputs.ffos_user_ref }}
           path: ffos-user
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          token: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
 
       - name: Setup pacman
         uses: ./.github/actions/setup-pacman
@@ -251,4 +251,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -rf /components 
+          rm -rf /components

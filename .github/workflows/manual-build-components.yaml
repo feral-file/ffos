@@ -24,6 +24,7 @@ on:
         type: choice
         options:
           - Development
+          - Staging
           - Production
       maintainer:
         description: 'Package maintainer'
@@ -67,7 +68,7 @@ jobs:
 
   build-component:
     needs: [permission-check, resolve-container]
-    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+    environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     container:
       image: ${{ needs.resolve-container.outputs.image }}
@@ -80,9 +81,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: feral-file/ffos-user
-          ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
+          ref: ${{ inputs.ffos_user_ref }}
           path: ffos-user
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          token: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
 
       - name: Setup pacman
         uses: ./.github/actions/setup-pacman
@@ -268,4 +269,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -rf /components 
+          rm -rf /components
