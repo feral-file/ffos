@@ -543,11 +543,6 @@ jobs:
             jq --arg recovery "$EXISTING_RECOVERY" '.recovery_version = $recovery' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
             echo "Kept existing recovery_version: $EXISTING_RECOVERY"
-          else
-            # First build on this branch (no existing value): default to current version
-            jq --arg recovery "$CURRENT_VERSION" '.recovery_version = $recovery' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
-            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Defaulted recovery_version to $CURRENT_VERSION (first build)"
           fi
 
           # Display final JSON
