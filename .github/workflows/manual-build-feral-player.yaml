@@ -74,7 +74,7 @@ jobs:
           repository: feral-file/ff-player
           ref: ${{ inputs.ff_player_ref }}
           path: ff-player
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          token: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

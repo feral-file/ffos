@@ -46,7 +46,7 @@ on:
         required: false
       SENTRY_ORG:
         required: false
-      REPO_ACCESS_TOKEN:
+      FERALFILE_BOT_REPOS_READONLY_TOKEN:
         required: true
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN:
         required: true
@@ -74,7 +74,7 @@ jobs:
           repository: feral-file/ffos-user
           ref: ${{ inputs.ffos_user_ref }}
           path: ffos-user
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          token: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
 
       - name: Setup pacman
         uses: ./.github/actions/setup-pacman

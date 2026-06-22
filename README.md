@@ -133,7 +133,7 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account identifier
 - `CLOUDFLARE_ACCESS_KEY_ID`: R2 access key
 - `CLOUDFLARE_SECRET_ACCESS_KEY`: R2 secret key
-- `REPO_ACCESS_TOKEN`: GitHub token for ffos-user access
+- `FERALFILE_BOT_REPOS_READONLY_TOKEN`: GitHub token for ffos-user access
 
 ### Build Parameters
 - `version`: ISO version number
