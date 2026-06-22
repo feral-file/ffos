@@ -1,3 +1,6 @@
 *.iso
 *.fd
 *.qcow2
+
+.omc/
+.omx/
