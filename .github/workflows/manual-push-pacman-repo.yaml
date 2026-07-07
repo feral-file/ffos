@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - Development
+          - Staging
           - Production
       pacman_snapshot:
         description: "Pacman repository snapshot to use"
@@ -38,7 +39,7 @@ jobs:
 
   update-repo:
     needs: [permission-check, resolve-container]
-    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+    environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     container:
       image: ${{ needs.resolve-container.outputs.image }}
@@ -143,4 +144,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -rf repo 
+          rm -rf repo

@@ -50,7 +50,7 @@ ffos/
 - `component`: Component name (feral-controld, feral-setupd, etc.)
 - `version`: Package version
 - `ffos_user_ref`: ffos-user repository reference
-- `environment`: Build environment (Development/Production)
+- `environment`: Build environment and runtime configuration (Development/Staging/Production)
 
 **Process**:
 1. Checkout ffos-user repository using specified reference
@@ -133,13 +133,13 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account identifier
 - `CLOUDFLARE_ACCESS_KEY_ID`: R2 access key
 - `CLOUDFLARE_SECRET_ACCESS_KEY`: R2 secret key
-- `REPO_ACCESS_TOKEN`: GitHub token for ffos-user access
+- `FERALFILE_BOT_REPOS_READONLY_TOKEN`: GitHub token for ffos-user access
 
 ### Build Parameters
 - `version`: ISO version number
 - `ffos_user_ref`: ffos-user repository reference
 - `soak-test`: Include soak test components
-- `environment`: Development/Production environment
+- `environment`: Development/Staging/Production environment
 - `is_development`: Include development tools
 - `install_to_emmc`: Build installation image
 

@@ -22,6 +22,7 @@ on:
         type: choice
         options:
           - Development
+          - Staging
           - Production
       pacman_snapshot:
         description: "Pacman repository snapshot to use"
@@ -46,11 +47,6 @@ on:
         description: "Build development ISO"
         required: true
         default: false
-        type: boolean
-      enable_local_hub:
-        description: "Enable local hub for communication"
-        required: false
-        default: true
         type: boolean
       update_min_version:
         description: "Update minimum runtime version (min_runtime_version)"
@@ -91,17 +87,17 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
-      REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+      FERALFILE_BOT_REPOS_READONLY_TOKEN: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       SENTRY_DSN_PLAYER: ${{ secrets.SENTRY_DSN_PLAYER }}
     with:
-      version: ${{ inputs.version || github.event.inputs.version }}
+      version: ${{ inputs.version }}
       description: 'FF Player Static Web Application'
       maintainer: 'Feral File'
-      environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
-      ff_player_ref: ${{ inputs.ff_player_ref || github.event.inputs.ff_player_ref }}
+      environment: ${{ inputs.environment }}
+      ff_player_ref: ${{ inputs.ff_player_ref }}
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
@@ -110,7 +106,7 @@ jobs:
     if: always() && !failure() && !cancelled()
     name: Generate FFOS iso
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+    environment: ${{ inputs.environment }}
 
     container:
       image: ${{ needs.resolve-container.outputs.image }}
@@ -124,9 +120,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: feral-file/ffos-user
-          ref: ${{ inputs.ffos_user_ref || github.event.inputs.ffos_user_ref }}
+          ref: ${{ inputs.ffos_user_ref }}
           path: ffos-user
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          token: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
 
       - name: Setup pacman
         uses: ./.github/actions/setup-pacman
@@ -218,7 +214,7 @@ jobs:
 
           # Create a file with repository information
           echo "Branch: ${{ github.ref_name }}" > /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
-          echo "Version: ${{ inputs.version || github.event.inputs.version }}" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
+          echo "Version: ${{ inputs.version }}" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
           echo "Build Date: $(date)" >> /build/archiso-ff1/airootfs/home/feralfile/src/repo-info.txt
 
           # Copy components directory with current checkout
@@ -228,7 +224,9 @@ jobs:
         run: |
           set -e
 
-          if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
+          ENVIRONMENT="${{ inputs.environment }}"
+
+          if [ "$ENVIRONMENT" = "Production" ]; then
             DOMAIN="ffos.feralfile.com"
           else
             DOMAIN="ffosdev.feralfile.com"
@@ -251,91 +249,40 @@ jobs:
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
 
       - name: Add Configs and Services
+        env:
+          FERAL_CONTROLD_CONFIG_JSON: ${{ secrets.FERAL_CONTROLD_CONFIG_JSON }}
+          FERAL_FF1_CONFIG_JSON: ${{ secrets.FERAL_FF1_CONFIG_JSON }}
+          FERAL_SYS_MONITORD_CONFIG_JSON: ${{ secrets.FERAL_SYS_MONITORD_CONFIG_JSON }}
+          FERAL_WATCHDOG_CONFIG_JSON: ${{ secrets.FERAL_WATCHDOG_CONFIG_JSON }}
+          BUILD_BRANCH: ${{ github.ref_name }}
+          BUILD_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}" = "Production" ]; then
-            ENDPOINT="https://ffos.feralfile.com"
-          else
-            ENDPOINT="https://ffosdev.feralfile.com"
-          fi
-
-          # Add controld config
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.config
-          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json << EOF
-          {
-            "relayer": {
-                "endpoint": "${{ vars.RELAYER_ENDPOINT }}",
-                "apiKey": "${{ secrets.RELAYER_API_KEY }}"
-            },
-            "cdp": {
-                "endpoint": "http://127.0.0.1:9222"
-            },
-            "sentry": {
-                "dsn": "${{ secrets.SENTRY_DSN_CONTROLD }}",
-                "debug": "false",
-                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
-                "release": "${{ inputs.version || github.event.inputs.version }}",
-                "repository": "${{ github.repository }}"
-            },
-            "openpanel": {
-              "clientId": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_ID || secrets.OPENPANEL_CLIENT_ID_TEST }}",
-              "clientSecret": "${{ github.event.inputs.environment == 'Production' && secrets.OPENPANEL_CLIENT_SECRET || secrets.OPENPANEL_CLIENT_SECRET_TEST }}"
-            },
-            "enableHub": ${{ inputs.enable_local_hub || github.event.inputs.enable_local_hub }}
-          }
-          EOF
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/controld.json
 
-          # Add watchdog config
-          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json << EOF
-          {
-            "cdp": {
-                "endpoint": "http://127.0.0.1:9222"
-            },
-            "sentry": {
-                "dsn": "${{ secrets.SENTRY_DSN_WATCHDOG }}",
-                "debug": "false",
-                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
-                "release": "${{ inputs.version || github.event.inputs.version }}",
-                "repository": "${{ github.repository }}"
-            }
-          }
-          EOF
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json
+          write_json() {
+            local target="$1"
+            local content="$2"
+            local filter="${3:-.}"
+            local name
+            name="$(basename "$target")"
 
-          # Add sys-monitord config
-          cat > /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json << EOF
-          {
-            "sentry": {
-                "dsn": "${{ secrets.SENTRY_DSN_SYS_MONITORD }}",
-                "debug": "false",
-                "sample_rate": "${{ (github.event.inputs.environment == 'Production' || github.ref == 'refs/heads/main') && '0.1' || '1.0' }}",
-                "environment": "${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}",
-                "release": "${{ inputs.version || github.event.inputs.version }}",
-                "repository": "${{ github.repository }}"
-            }
-          }
-          EOF
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json
+            if [ -z "$content" ]; then
+              echo "::error::Missing ${name} JSON secret"
+              exit 1
+            fi
 
-          jq -n \
-            --arg branch "${{ github.ref_name }}" \
-            --arg version "${{ inputs.version || github.event.inputs.version }}" \
-            --arg endpoint "${ENDPOINT}" \
-            --arg heartbeat "${{ secrets.HEARTBEAT_ENDPOINT }}" \
-            --arg vmagent_url "${{ secrets.VMAGENT_REMOTE_URL }}" \
-            --arg vmagent_token "${{ secrets.VMAGENT_REMOTE_BEARER_TOKEN }}" \
-            '{
-              branch: $branch,
-              version: $version,
-              endpoint: $endpoint,
-              heartbeat_endpoint: $heartbeat,
-              vmagent_remote_url: $vmagent_url,
-              vmagent_remote_bearer_token: $vmagent_token,
-            }' \
-            > /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
-          chmod 755 /build/archiso-ff1/airootfs/home/feralfile/ff1-config.json
+            printf '%s' "$content" \
+              | jq --arg branch "$BUILD_BRANCH" --arg version "$BUILD_VERSION" "$filter" \
+              > "$target"
+            chmod 755 "$target"
+          }
+
+          # Overlay per-build values (branch/version) that change every build and
+          # therefore cannot be baked into the environment-scoped JSON secrets.
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '.sentry.release = $version'
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'
 
       - name: Configure rclone
         run: |
@@ -375,7 +322,7 @@ jobs:
             else
               IMAGE_TAG=""
             fi
-            NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version || github.event.inputs.version }}.iso"
+            NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version }}.iso"
             mv "$ISO_FILE" "/build/out/$NEW_NAME"
             echo "ISO created: /build/out/$NEW_NAME"
 
@@ -424,10 +371,10 @@ jobs:
 
           VERSION_INFO_PATH="${{ github.ref_name }}/version-info.json"
           VERSION_INFO_FILE="/tmp/version-info.json"
-          CURRENT_VERSION="${{ inputs.version || github.event.inputs.version }}"
-          UPDATE_MIN_VERSION="${{ inputs.update_min_version || github.event.inputs.update_min_version }}"
-          UPDATE_REQUIRED_VERSION="${{ inputs.update_required_version || github.event.inputs.update_required_version }}"
-          UPDATE_RECOVERY_VERSION="${{ inputs.update_recovery_version || github.event.inputs.update_recovery_version }}"
+          CURRENT_VERSION="${{ inputs.version }}"
+          UPDATE_MIN_VERSION="${{ inputs.update_min_version }}"
+          UPDATE_REQUIRED_VERSION="${{ inputs.update_required_version }}"
+          UPDATE_RECOVERY_VERSION="${{ inputs.update_recovery_version }}"
 
           # Try to download existing version info JSON
           if rclone copyto "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${VERSION_INFO_PATH}" "$VERSION_INFO_FILE" 2>/dev/null; then
@@ -466,6 +413,11 @@ jobs:
             jq --arg upgradeable "$EXISTING_UPGRADEABLE" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
             echo "Kept existing min_upgradeable_version: $EXISTING_UPGRADEABLE"
+          else
+            # First build on this branch (no existing value): default to current version
+            jq --arg upgradeable "$CURRENT_VERSION" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
+            echo "Defaulted min_upgradeable_version to $CURRENT_VERSION (first build)"
           fi
 
           # Update min_runtime_version if checkbox is checked
@@ -478,6 +430,11 @@ jobs:
             jq --arg runtime "$EXISTING_RUNTIME" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
             mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
             echo "Kept existing min_runtime_version: $EXISTING_RUNTIME"
+          else
+            # First build on this branch (no existing value): default to current version
+            jq --arg runtime "$CURRENT_VERSION" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
+            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
+            echo "Defaulted min_runtime_version to $CURRENT_VERSION (first build)"
           fi
 
           # Update recovery_version if checkbox is checked
