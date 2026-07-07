@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   update-repo:
-    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'Production' || 'Development') }}
+    environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     container:
       image: ${{ inputs.container_image }}
