@@ -1,26 +1,23 @@
 # System
 base
 sudo
-git
-vim
 nano
-wget
 curl
 parted
 dosfstools
 rsync
 openssl
 openssh
-dialog
 reflector
 linux
-linux-firmware
+# Firmware trimmed for FF1 hardware only (AMD Ryzen 7 7735U SoC + Realtek Wi-Fi/BT)
+linux-firmware-amdgpu
+linux-firmware-realtek
 mkinitcpio
 mkinitcpio-archiso
 arch-install-scripts
 polkit
 jq
-unzip
 p7zip
 btrfs-progs
 dmidecode
@@ -32,8 +29,9 @@ ethtool
 ddcutil
 
 # Boot support
-intel-ucode
-efibootmgr
+# amd-ucode.img is also copied to intel-ucode.img at build time for legacy
+# OTA filename compatibility (see airootfs/etc/pacman.d/hooks)
+amd-ucode
 
 # Networking core
 networkmanager
@@ -43,7 +41,6 @@ wayland
 cage
 wlroots0.18
 xorg-xwayland
-xdg-utils
 chromium
 wlr-randr
 seatd
@@ -56,7 +53,6 @@ adwaita-icon-theme
 
 # Audio and Bluetooth
 bluez
-bluez-utils
 pulseaudio
 pulseaudio-bluetooth
 pamixer
