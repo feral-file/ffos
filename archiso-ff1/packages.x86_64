@@ -22,8 +22,9 @@ p7zip
 btrfs-progs
 dmidecode
 tpm2-tools
+# mesa provides libva-mesa-driver (radeonsi VAAPI) for Chromium hardware video
+# decode on the AMD iGPU; no separate VA driver package is needed
 mesa
-intel-media-driver
 vulkan-radeon
 ethtool
 ddcutil
@@ -58,7 +59,6 @@ pulseaudio-bluetooth
 pamixer
 
 # Debug / Monitoring
-intel-gpu-tools
 lm_sensors
 earlyoom
 
