@@ -9,7 +9,11 @@ rsync
 openssl
 openssh
 reflector
-linux
+# LTS kernel (6.18 series); boot artifacts keep the legacy vmlinuz-linux /
+# initramfs-linux.img names required by fleet OTA scripts and ESP boot entries
+# (see etc/pacman.d/hooks/60-linux-lts-kernel-compat.hook and
+# etc/mkinitcpio.d/linux-lts.preset)
+linux-lts
 # Firmware trimmed for FF1 hardware only (AMD Ryzen 7 7735U SoC + Realtek Wi-Fi/BT)
 linux-firmware-amdgpu
 linux-firmware-realtek
