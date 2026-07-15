@@ -257,7 +257,7 @@ if [ -z "$MAC_ADDRESS" ]; then
 else
   # Convert MAC to raw bytes and hash
   MAC_HEX=$(echo "$MAC_ADDRESS" | tr -d ':')
-  MD5_DIGEST=$(echo -n "$MAC_HEX" | xxd -r -p | md5sum | awk '{print $1}')
+  MD5_DIGEST=$(printf '%b' "$(sed 's/../\\x&/g' <<< "$MAC_HEX")" | md5sum | awk '{print $1}')
 
   # Encode first 8 bytes of hash into a human-friendly charset
   RESULT_STRING=""
