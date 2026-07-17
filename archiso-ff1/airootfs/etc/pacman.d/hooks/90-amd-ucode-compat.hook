@@ -1,0 +1,14 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = amd-ucode
+
+[Action]
+# Legacy fleet OTA scripts and boot entries reference intel-ucode.img by name.
+# The kernel's early microcode loader matches CPU vendor by initrd content, not
+# filename, so shipping the AMD microcode under the legacy name keeps every
+# deployed updater working. Remove once the fleet no longer hardcodes it.
+Description = Copying amd-ucode.img to intel-ucode.img (legacy OTA filename compatibility)
+When = PostTransaction
+Exec = /usr/bin/cp -f /boot/amd-ucode.img /boot/intel-ucode.img

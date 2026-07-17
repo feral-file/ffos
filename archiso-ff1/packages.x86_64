@@ -1,39 +1,42 @@
 # System
 base
 sudo
-git
-vim
 nano
-wget
 curl
 parted
 dosfstools
 rsync
 openssl
 openssh
-dialog
 reflector
-linux
-linux-firmware
+# LTS kernel (6.18 series); boot artifacts keep the legacy vmlinuz-linux /
+# initramfs-linux.img names required by fleet OTA scripts and ESP boot entries
+# (see etc/pacman.d/hooks/60-linux-lts-kernel-compat.hook and
+# etc/mkinitcpio.d/linux-lts.preset)
+linux-lts
+# Firmware trimmed for FF1 hardware only (AMD Ryzen 7 7735U SoC + Realtek Wi-Fi/BT)
+linux-firmware-amdgpu
+linux-firmware-realtek
 mkinitcpio
 mkinitcpio-archiso
 arch-install-scripts
 polkit
 jq
-unzip
 p7zip
 btrfs-progs
 dmidecode
 tpm2-tools
+# mesa provides libva-mesa-driver (radeonsi VAAPI) for Chromium hardware video
+# decode on the AMD iGPU; no separate VA driver package is needed
 mesa
-intel-media-driver
 vulkan-radeon
 ethtool
 ddcutil
 
 # Boot support
-intel-ucode
-efibootmgr
+# amd-ucode.img is also copied to intel-ucode.img at build time for legacy
+# OTA filename compatibility (see airootfs/etc/pacman.d/hooks)
+amd-ucode
 
 # Networking core
 networkmanager
@@ -43,7 +46,6 @@ wayland
 cage
 wlroots0.18
 xorg-xwayland
-xdg-utils
 chromium
 wlr-randr
 seatd
@@ -56,13 +58,11 @@ adwaita-icon-theme
 
 # Audio and Bluetooth
 bluez
-bluez-utils
 pulseaudio
 pulseaudio-bluetooth
 pamixer
 
 # Debug / Monitoring
-intel-gpu-tools
 lm_sensors
 earlyoom
 

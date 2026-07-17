@@ -1,0 +1,13 @@
+# mkinitcpio preset file for the 'linux-lts' package on archiso
+#
+# Output paths keep the legacy 'linux' names: fleet OTA scripts, ESP boot
+# entries, and the ISO layout all hardcode vmlinuz-linux/initramfs-linux.img
+# (see 60-linux-lts-kernel-compat.hook). ALL_kver relies on that hook having
+# copied the kernel to /boot/vmlinuz-linux before mkinitcpio runs.
+
+PRESETS=('archiso')
+
+ALL_kver='/boot/vmlinuz-linux'
+ALL_config='/etc/mkinitcpio.conf'
+
+archiso_image="/boot/initramfs-linux.img"
