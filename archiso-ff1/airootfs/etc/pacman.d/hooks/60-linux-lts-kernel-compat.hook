@@ -1,0 +1,15 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/lib/modules/*/vmlinuz
+
+[Action]
+# Legacy fleet OTA scripts, ESP boot entries, and the ISO layout reference
+# vmlinuz-linux by name. mkinitcpio's install hook (90-mkinitcpio-install)
+# would install the linux-lts kernel as /boot/vmlinuz-linux-lts, so copy it
+# to the legacy name first — linux-lts.preset points ALL_kver here, and this
+# hook sorts before 90-*. Remove once the fleet no longer hardcodes it.
+Description = Copying linux-lts kernel to vmlinuz-linux (legacy OTA filename compatibility)
+When = PostTransaction
+Exec = /bin/sh -c 'install -Dm644 "$(ls /usr/lib/modules/*/vmlinuz | head -n1)" /boot/vmlinuz-linux'

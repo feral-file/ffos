@@ -1,0 +1,14 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/lib/modules/*/vmlinuz
+
+[Action]
+# 90-mkinitcpio-install unconditionally installs the kernel as
+# /boot/vmlinuz-linux-lts alongside the legacy-named copy made by
+# 60-linux-lts-kernel-compat. Nothing references the -lts name (the preset
+# and all boot entries use vmlinuz-linux), so drop it to keep the ISO slim.
+Description = Removing redundant vmlinuz-linux-lts (legacy name is authoritative)
+When = PostTransaction
+Exec = /usr/bin/rm -f /boot/vmlinuz-linux-lts

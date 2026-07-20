@@ -101,7 +101,10 @@ mount -o compress=zstd,noatime,subvol=@log       "$ROOT_PART" /mnt/var/log
 mount -o compress=zstd,noatime,subvol=@pkg       "$ROOT_PART" /mnt/var/cache/pacman/pkg
 mount -o compress=zstd,noatime,subvol=@snapshots "$ROOT_PART" /mnt/.snapshots
 
-mount "$BOOT_PART" /mnt/boot
+# umask=0077 keeps the ESP root-only; vfat has no POSIX permissions, so this
+# is the only way to make /boot/loader/random-seed non-world-readable
+# (silences the bootctl "security hole" warning).
+mount -o umask=0077 "$BOOT_PART" /mnt/boot
 
 # ─── Copy root filesystem ──────────────────────────────────────────────
 echo
@@ -139,7 +142,7 @@ UUID=$ROOT_PART_UUID     /                       btrfs     compress=zstd,noatime
 UUID=$ROOT_PART_UUID     /.snapshots             btrfs     compress=zstd,noatime,subvol=@snapshots        0      0
 UUID=$ROOT_PART_UUID     /var/log                btrfs     compress=zstd,noatime,subvol=@log              0      0
 UUID=$ROOT_PART_UUID     /var/cache/pacman/pkg   btrfs     compress=zstd,noatime,subvol=@pkg              0      0
-UUID=$BOOT_PART_UUID     /boot                   vfat      defaults                                      0      2
+UUID=$BOOT_PART_UUID     /boot                   vfat      defaults,umask=0077                           0      2
 EOF
 
 # ─── Setup bootloader ──────────────────────────────────────────────────
@@ -206,10 +209,6 @@ sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap bt
 echo "Generating initramfs..."
 mkinitcpio -P
 
-chmod 755 /boot
-chmod 700 /boot/loader
-chmod 600 /boot/loader/random-seed 2>/dev/null || true
-
 echo "Installing systemd-boot to disk..."
 bootctl install
 
@@ -257,7 +256,7 @@ if [ -z "$MAC_ADDRESS" ]; then
 else
   # Convert MAC to raw bytes and hash
   MAC_HEX=$(echo "$MAC_ADDRESS" | tr -d ':')
-  MD5_DIGEST=$(echo -n "$MAC_HEX" | xxd -r -p | md5sum | awk '{print $1}')
+  MD5_DIGEST=$(printf '%b' "$(sed 's/../\\x&/g' <<< "$MAC_HEX")" | md5sum | awk '{print $1}')
 
   # Encode first 8 bytes of hash into a human-friendly charset
   RESULT_STRING=""
