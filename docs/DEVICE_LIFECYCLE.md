@@ -10,6 +10,7 @@ flowchart TD
     Provision --> HasInternet{Has Internet}
 
     HasInternet --> |No, wired link active| WiredSuppress(Keep retrying;<br/>AP suppressed)
+    WiredSuppress --> |Recheck| HasInternet
     HasInternet --> |No, no wired link,<br/>unprovisioned| SoftAP(Raise SoftAP + captive portal)
     HasInternet --> |No, no wired link,<br/>provisioned| OfflineWindow(Arm 5-min<br/>sustained-offline window)
     OfflineWindow --> |Still offline<br/>at expiry| SoftAP
