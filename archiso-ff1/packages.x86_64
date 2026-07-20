@@ -40,6 +40,10 @@ amd-ucode
 
 # Networking core
 networkmanager
+# dnsmasq backs NetworkManager's shared ("hotspot") mode: NM spawns its own
+# dnsmasq instance to serve DHCP/DNS for the SoftAP provisioning network that
+# feral-controld brings up. Without it, `nmcli`/NM shared-mode activation fails.
+dnsmasq
 
 # Wayland & Kiosk mode
 wayland
@@ -57,6 +61,9 @@ noto-fonts-cjk
 adwaita-icon-theme
 
 # Audio and Bluetooth
+# bluez and pulseaudio-bluetooth are intentionally KEPT after the SoftAP/setupd
+# merge removed BLE provisioning: they now serve Bluetooth AUDIO only. Auditing
+# whether the BT stack can be trimmed further is a separate follow-up ticket.
 bluez
 pulseaudio
 pulseaudio-bluetooth
@@ -67,8 +74,9 @@ lm_sensors
 earlyoom
 
 # Feralfile
+# feral-setupd (the Rust BLE provisioning daemon) is removed: feral-controld now
+# absorbs provisioning via a NetworkManager SoftAP hotspot + captive portal.
 feral-controld
-feral-setupd
 feral-sys-monitord
 feral-watchdog
 feral-player

@@ -42,7 +42,10 @@ on:
       ff_player_ref:
         description: "feral-player repository reference to build static export"
         required: true
-        default: "main"
+        # Pinned to the SoftAP/setup-display feature branch: the kiosk now serves
+        # ff-player (from this ref) at http://127.0.0.1:8080/ instead of the old
+        # launcher-ui static page. Revert to "main" once that branch is merged.
+        default: "feat/setup-display"
         type: string
       dev_iso:
         description: "Build development ISO"
@@ -243,8 +246,9 @@ jobs:
 
       - name: Copy UI files
         run: |
-          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/launcher
-          cp -r ffos-user/components/launcher-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/launcher/
+          # launcher-ui is retired: the kiosk now serves ff-player (feral-player
+          # package) at http://127.0.0.1:8080/, so /opt/feral/ui/launcher is no
+          # longer provisioned into the image.
           mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
           cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs

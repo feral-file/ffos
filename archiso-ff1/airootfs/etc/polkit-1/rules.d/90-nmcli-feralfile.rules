@@ -1,4 +1,13 @@
-// Allow user “feralfile” to do any NetworkManager action without a password
+// Allow user "feralfile" to do any NetworkManager action without a password.
+//
+// This wildcard already covers the actions the SoftAP/setupd merge needs from
+// feral-controld's daemon context (no active login session):
+//   - org.freedesktop.NetworkManager.settings.modify.system
+//   - org.freedesktop.NetworkManager.wifi.share  (shared-mode / hotspot)
+// so no additional rule is required for the provisioning hotspot. This grant
+// ships proactively: the P0.2 service-context spike could not run
+// pre-implementation, so the rule is reviewed during the hardware pass
+// (see docs/softap-spike-results.md in the ffos-user repo).
 polkit.addRule(function (action, subject) {
     if (action.id.startsWith("org.freedesktop.NetworkManager.") &&
         subject.user == "feralfile") {
