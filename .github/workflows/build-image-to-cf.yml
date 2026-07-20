@@ -49,6 +49,21 @@ on:
         required: true
         default: false
         type: boolean
+      enable_offline_cache:
+        description: "Enable feral-controld offline artwork cache (offlineCache.enabled)"
+        required: false
+        default: true
+        type: boolean
+      offline_cache_max_disk_bytes:
+        description: "Offline cache disk budget in bytes (offlineCache.maxDiskBytes; 0 = unlimited)"
+        required: false
+        default: 107374182400
+        type: number
+      offline_cache_capture_window_ms:
+        description: "Offline cache network observation window per item in ms (offlineCache.captureWindowMs; 0 = capturer default 20s)"
+        required: false
+        default: 20000
+        type: number
       update_min_version:
         description: "Update minimum runtime version (min_runtime_version)"
         required: true
@@ -353,6 +368,9 @@ jobs:
           FERAL_WATCHDOG_CONFIG_JSON: ${{ secrets.FERAL_WATCHDOG_CONFIG_JSON }}
           BUILD_BRANCH: ${{ github.ref_name }}
           BUILD_VERSION: ${{ inputs.version }}
+          ENABLE_OFFLINE_CACHE: ${{ inputs.enable_offline_cache }}
+          OFFLINE_CACHE_MAX_DISK_BYTES: ${{ inputs.offline_cache_max_disk_bytes }}
+          OFFLINE_CACHE_CAPTURE_WINDOW_MS: ${{ inputs.offline_cache_capture_window_ms }}
         run: |
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.config
 
@@ -369,14 +387,28 @@ jobs:
             fi
 
             printf '%s' "$content" \
-              | jq --arg branch "$BUILD_BRANCH" --arg version "$BUILD_VERSION" "$filter" \
+              | jq --arg branch "$BUILD_BRANCH" --arg version "$BUILD_VERSION" --arg enable_offline_cache "$ENABLE_OFFLINE_CACHE" --arg max_disk_bytes "$OFFLINE_CACHE_MAX_DISK_BYTES" --arg capture_window_ms "$OFFLINE_CACHE_CAPTURE_WINDOW_MS" "$filter" \
               > "$target"
             chmod 755 "$target"
           }
 
           # Overlay per-build values (branch/version) that change every build and
           # therefore cannot be baked into the environment-scoped JSON secrets.
-          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '.sentry.release = $version'
+          # offlineCache defaults mirror offlinecache/bootstrap.go and capture.go in ffos-user.
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
+            .sentry.release = $version
+            | .offlineCache = {
+                enabled: ($enable_offline_cache == "true"),
+                rootDir: "/home/feralfile/.cache/offline-artworks",
+                maxDiskBytes: ($max_disk_bytes | tonumber),
+                captureWindowMs: ($capture_window_ms | tonumber),
+                headlessBinaryPath: "/usr/bin/chromium",
+                headlessUserDataDir: "/home/feralfile/.cache/offline-artworks-headless-profile",
+                headlessDebugPort: 9223,
+                headlessIdleTeardownSeconds: 30,
+                staticServerAddr: "127.0.0.1:8082",
+                missPolicy: "fail_closed"
+              }'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'
