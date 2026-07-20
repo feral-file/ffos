@@ -9,7 +9,11 @@ flowchart TD
     FF1Start[FF1 Start] --> Provision(feral-controld: provisioning)
     Provision --> HasInternet{Has Internet}
 
-    HasInternet --> |No| SoftAP(Raise SoftAP + captive portal)
+    HasInternet --> |No, wired link active| WiredSuppress(Keep retrying;<br/>AP suppressed)
+    HasInternet --> |No, no wired link,<br/>unprovisioned| SoftAP(Raise SoftAP + captive portal)
+    HasInternet --> |No, no wired link,<br/>provisioned| OfflineWindow(Arm 5-min<br/>sustained-offline window)
+    OfflineWindow --> |Still offline<br/>at expiry| SoftAP
+    OfflineWindow --> |Back online| HasInternet
     HasInternet --> |Yes| UpToDate1{Up to date}
 
     UpToDate1 --> |No| Update(Update to latest version)
