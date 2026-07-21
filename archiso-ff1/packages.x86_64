@@ -44,6 +44,10 @@ networkmanager
 # dnsmasq instance to serve DHCP/DNS for the SoftAP provisioning network that
 # feral-controld brings up. Without it, `nmcli`/NM shared-mode activation fails.
 dnsmasq
+# nftables carries the captive-portal DNAT (/etc/nftables.conf): hotspot DNS
+# answers 192.0.2.1 (Samsung rejects private-IP probe answers) and this
+# redirects 192.0.2.1:80/443 back to the local portal.
+nftables
 
 # Wayland & Kiosk mode
 wayland
