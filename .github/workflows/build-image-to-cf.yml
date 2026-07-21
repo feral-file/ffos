@@ -42,12 +42,7 @@ on:
       ff_player_ref:
         description: "feral-player repository reference to build static export"
         required: true
-        # Pinned to a commit SHA on ff-player's feat/setup-display branch: the
-        # kiosk now serves ff-player (from this ref) at http://127.0.0.1:8080/
-        # instead of the old launcher-ui static page. A SHA (not the branch
-        # name) keeps image builds reproducible and immune to later pushes on
-        # that branch. Revert to "main" once feat/setup-display is merged.
-        default: "926db6ad0620ba27007ef3395d447f461e224ef8"
+        default: "main"
         type: string
       dev_iso:
         description: "Build development ISO"
