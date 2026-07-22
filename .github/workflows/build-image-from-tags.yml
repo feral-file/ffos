@@ -58,7 +58,7 @@ on:
         default: true
         type: boolean
       offline_cache_max_disk_bytes:
-        description: "Offline cache disk budget in bytes (offlineCache.maxDiskBytes; 0 = unlimited)"
+        description: "Offline cache disk budget in bytes (offlineCache.maxDiskBytes). ffos-user treats 0/omitted as 10 GiB (DefaultMaxDiskBytes); workflow default is 100 GiB."
         required: false
         default: 107374182400
         type: number
@@ -478,7 +478,9 @@ jobs:
 
           # Overlay per-build values (branch/version) that change every build and
           # therefore cannot be baked into the environment-scoped JSON secrets.
-          # offlineCache defaults mirror offlinecache/bootstrap.go and capture.go in ffos-user.
+          # offlineCache paths/ports mirror offlinecache/bootstrap.go; maxDiskBytes
+          # and captureWindowMs are explicit image-build overrides (code defaults:
+          # DefaultMaxDiskBytes=10 GiB, captureWindowDefault=20s).
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
             .sentry.release = $version
             | .offlineCache = {
