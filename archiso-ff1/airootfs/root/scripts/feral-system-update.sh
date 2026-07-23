@@ -260,8 +260,8 @@ PROGRESS_PID=""
 ) &
 PROGRESS_PID=$!
 
-# Download the ISO with slow-speed reconnect mitigation.
-# Setupd will retry transient failures at the Rust level.
+# Download the ISO with slow-speed reconnect mitigation; transient failures
+# are retried by download_file_with_slow_retry itself.
 download_file_with_slow_retry "$ENDPOINT$IMAGE_URL" "$ISO_FILE" "OTA image"
 
 kill "$PROGRESS_PID" 2>/dev/null || true
