@@ -6,25 +6,28 @@
 
 ```mermaid
 flowchart TD
-    FF1Start[FF1 Start] --> Bluetooth(Start Bluetooth)
-    Bluetooth --> HasInternet(Has Internet)
+    FF1Start[FF1 Start] --> Provision(feral-controld: provisioning)
+    Provision --> HasInternet{Has Internet}
 
-    HasInternet --> |No| QRCode1(Display QRCode)
+    HasInternet --> |No| HasLink{Has link:<br/>ethernet or<br/>Wi-Fi association}
+    HasLink --> |Yes| LinkSuppress(Keep retrying;<br/>AP suppressed)
+    LinkSuppress --> |Recheck| HasInternet
+    HasLink --> |No,<br/>unprovisioned| SoftAP(Raise SoftAP + captive portal)
+    HasLink --> |No,<br/>provisioned| OfflineWindow(Arm 5-min<br/>sustained-offline window)
+    OfflineWindow --> |Still offline + no link<br/>at expiry| SoftAP
+    OfflineWindow --> |Back online| HasInternet
     HasInternet --> |Yes| UpToDate1{Up to date}
 
     UpToDate1 --> |No| Update(Update to latest version)
-    UpToDate1 --> |Yes| Paired{Has paired<br/>with mobile app}
+    UpToDate1 --> |Yes| Paired{Has been claimed}
     Update --> |Restart| FF1Start
-    Paired --> |No| QRCode2(Display QRCode)
+    Paired --> |No| ClaimQR(Display claim QR)
     Paired --> |Yes| Artwork(Artwork Playback)
-    QRCode2 --> |Connect bluetooth<br/>Command: keep_wifi| Relayer1(Get relayer credential<br/>Return keep_wifi)
-    Relayer1 --> Artwork
+    ClaimQR --> |Phone binds topic via cloud| Artwork
 
-    QRCode1 --> |Internet<br/>Detected| HasInternet
-    QRCode1 --> |Connect bluetooth<br/>Command: connect_wifi| UpToDate2{Up to date}
-    UpToDate2 --> |No| Update
-    UpToDate2 --> |Yes| Relayer2(Get relayer credential<br/>Return connect_wifi)
-    Relayer2 --> Artwork
+    SoftAP --> |Phone joins AP,<br/>submits Wi-Fi in portal| Join(Join network, tear down AP)
+    Join --> |Success| HasInternet
+    Join --> |Failure| SoftAP
 ```
 
 ### App update
@@ -106,17 +109,21 @@ All the events should only consider network connected scenario otherwise it can'
 | `Status` | String | **(Calculated)** "✅ Online" or "❌ Offline". Derived in the spreadsheet, not sent by device. |
 | `Public Key` | String | The device's public key for signature verification. |
 | `Signature` | String | The payload's cryptographic signature for data integrity. |
-| `Page` | String | The setupd page state. |
-| `Page Uptime` | String | The duration the setupd has been staying under this state page, in "D H:M:S" format. |
+| `Page` | String | The on-screen setup state. Owned by `feral-controld` since the setupd merge (the `setupui` narration state; the coarse provisioning state is also exposed as `setup_state` on the LAN hub's `GET /api/status`). |
+| `Page Uptime` | String | The duration the device has stayed in the current setup state, in "D H:M:S" format. |
 
-### Setupd pages
+### Setup states
 
-| Name | Notes |
+Since the setupd merge, the on-screen setup state is owned by `feral-controld`. These states replace the former setupd page names:
+
+| State | Notes |
 | :- | :- |
-| `QRCode` | QR code displayed for pairing setup. Network already connected. |
-| `FactoryReset` | Device initiated rollback to factory version. |
-| `SystemUpgrade` | Force firmware update initiated |
-| `WebApp` | Artwork playback has begun. |
+| `softap_qr` | SoftAP provisioning QR: join `FF1-<device_id>` and open the captive portal (offline, unprovisioned). |
+| `joining` / `join_failed` | Joining the chosen Wi-Fi network / join failed, AP re-raised for retry. |
+| `updating` | Firmware update in progress (replaces `SystemUpgrade`). |
+| `claim_qr` | Pairing/claim QR shown; network connected and up to date (replaces the pairing `QRCode`). |
+| `ready` / `hidden` | Claimed; artwork playback (replaces `WebApp`). |
+| `factory_reset` | Device initiated rollback to factory version (replaces `FactoryReset`). |
 
 ## Version control
 

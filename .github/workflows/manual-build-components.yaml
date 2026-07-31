@@ -9,10 +9,8 @@ on:
         type: choice
         options:
           - feral-controld
-          - feral-setupd
           - feral-sys-monitord
           - feral-watchdog
-          - launcher-ui
       version:
         description: 'Package version'
         required: true
