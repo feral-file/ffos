@@ -357,7 +357,21 @@ jobs:
 
           # Overlay per-build values (branch/version) that change every build and
           # therefore cannot be baked into the environment-scoped JSON secrets.
-          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '.sentry.release = $version'
+          # offlineCache values mirror offlinecache/bootstrap.go defaults
+          # (DefaultMaxDiskBytes=10 GiB; captureWindowMs omitted/0 uses 20s).
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
+            .sentry.release = $version
+            | .offlineCache = {
+                enabled: true,
+                rootDir: "/home/feralfile/.cache/offline-artworks",
+                maxDiskBytes: 10737418240,
+                headlessBinaryPath: "/usr/bin/chromium",
+                headlessUserDataDir: "/home/feralfile/.cache/offline-artworks-headless-profile",
+                headlessDebugPort: 9223,
+                headlessIdleTeardownSeconds: 30,
+                staticServerAddr: "127.0.0.1:8082",
+                missPolicy: "fail_closed"
+              }'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'
