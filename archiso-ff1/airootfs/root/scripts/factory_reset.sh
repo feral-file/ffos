@@ -95,6 +95,12 @@ options rootflags=subvol=@snapshots/@factory_reset_new root=PARTUUID=$PARTUUID r
 EOF
 
 chmod 644 /boot/loader/entries/arch-candidate.conf
+# Same F-05 window as the promotion script's ESP overwrite: the candidate
+# staging above grew /boot/candidate cluster by cluster, rewriting FAT sectors
+# that also describe arch.conf and factory_reset.conf, and nothing flushes
+# until the sync just before reboot. Flush now so a power cut during the rest
+# of this flow cannot corrupt the ESP that carries the rescue entry.
+sync
 log_msg "Candidate boot entry created. Btrfs default unchanged."
 
 bootctl set-oneshot arch-candidate.conf

@@ -57,7 +57,30 @@ case "$CURRENT_SUBVOL" in
     fi
 
     if [[ -n "$BOOT_STAGED" ]]; then
+        # The ESP is FAT32 with no journal, mounted without sync/flush: dirty
+        # metadata from this rsync is not guaranteed to be flushed before the
+        # final sync at the end of this script, so a power cut anywhere across
+        # the subvolume rotation below can corrupt the filesystem that also
+        # carries the factory-reset rescue entry (F-05). Bracket the overwrite
+        # with syncs so the vulnerable window is only the rsync itself, not
+        # the entire promotion. Trade-offs accepted: the pre-sync is nearly
+        # free (the sync at the top of this script already flushed; it exists
+        # so a future edit adding ESP writes above cannot silently reopen the
+        # gap); the post-sync serializes ESP writeback into this early-boot
+        # path, adding seconds to the promotion boot's black screen; and the
+        # window is narrowed, NOT removed — removal needs staging to
+        # /boot/new/ plus rename + `bootctl set-default` (deferred). Plain
+        # `sync` (not `sync -f /boot`) is deliberate: syncfs() can fail with
+        # EIO and, under set -e, would abort AFTER the ESP is overwritten but
+        # BEFORE the rotation below — stranding a new kernel over the old
+        # rootfs — while argless sync cannot fail and also triggers the
+        # device-level cache flush syncfs lacks.
+        # Keep --delete: dropping it does not protect the fallback kernel
+        # (same-name files are overwritten in place regardless) and would
+        # accumulate stale loader entries.
+        sync
         rsync -a --delete "$BOOT_STAGED"/ /boot/
+        sync
         log_msg "Boot files deployed from $BOOT_STAGED to /boot."
     else
         log_msg "Warning: No staged boot files found. Skipping boot file deployment."
