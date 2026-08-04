@@ -40,8 +40,9 @@ flowchart TD
 
 ### AP session policy and network escape cadence
 
-Since the network-recovery work (ffos-user `docs/network-recovery-ux.md`), a
-raised setup AP carries a session policy latched from its raise reason, and
+Since the network-recovery work (canonical rules in ffos-user
+`docs/setup-flow.md`; API surface in its `docs/api-design.md`), a raised
+setup AP carries a session policy latched from its raise reason, and
 "link alive but useless" states have their own escape:
 
 | Raise reason | Session |
