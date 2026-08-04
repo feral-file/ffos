@@ -50,13 +50,16 @@ setup AP carries a session policy latched from its raise reason, and
 | `unprovisioned` (out-of-box) | Unbounded, no recheck — nothing saved to reactivate. |
 | `sustained-offline` / `relocated` | Unbounded cycles: AP up 30 min, then a brief station "recheck blink" that force-reactivates saved in-range profiles; a recovered network is noticed within one cycle. |
 | `setup-incomplete` (unclaimed, live Wi-Fi link, no internet, no ethernet) | Bounded episode: 5-min window, 5-min AP sessions, escalating 5/10/20-min station phases; after 4 cycles the device settles in station mode where LAN pairing/`startWifiSetup` still work. Claimed devices never auto-raise on a live link. |
-| `user-requested` (app `startWifiSetup`) | 30 min, then teardown and normal state handling — the abandonment net. |
+| `user-requested` (app `startWifiSetup`) | 30 min, then teardown and normal state handling — the abandonment net. Wired devices reject the command with `wired_link_active` instead of raising. |
 
 Session teardowns defer while the captive portal saw a human action within
-2 min (+15-min ceiling) and are capped at 2 h per bounded session. Wired
-devices never auto-raise, and a wired-link sighting lowers any raised AP. The
-app-visible mirror of all this is the additive `network` health object on
-`getDeviceStatus` and the LAN hub status routes.
+2 min (+15-min ceiling); bounded sessions additionally carry a 2-hour
+absolute cap across portal rescan re-arms. Wired devices never auto-raise,
+and a wired-link sighting lowers any raised AP except the out-of-box
+`unprovisioned` session (nothing is saved to fall back to, and claiming
+works over the cable with the AP still up). The app-visible mirror of all
+this is the additive `network` health object on `getDeviceStatus` and the
+LAN hub status routes.
 
 ### App update
 
