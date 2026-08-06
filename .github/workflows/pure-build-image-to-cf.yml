@@ -281,14 +281,23 @@ jobs:
 
           # Overlay per-build values (branch/version) that change every build and
           # therefore cannot be baked into the environment-scoped JSON secrets.
-          # offlineCache values mirror offlinecache/bootstrap.go defaults
-          # (DefaultMaxDiskBytes=10 GiB; captureWindowMs omitted/0 uses 20s).
+          # offlineCache mirrors offlinecache/bootstrap.go defaults with ONE
+          # deliberate exception: maxDiskBytes. The code default is 10 GiB
+          # (DefaultMaxDiskBytes); the image ships 100 GiB. Do not "restore
+          # parity" by dropping it back — removing the override silently
+          # reverts fielded images to a 10 GiB cache.
+          # Hazard: 100 GiB is most of an FF1's ~119 GiB disk, so this budget
+          # no longer doubles as the disk-fill guard bootstrap.go describes. It
+          # also scales two derived limits: store.WriteBlob's per-resource abort
+          # and reclaimDiskForCapture's maxDiskBytes/8 free-space floor (12.5
+          # GiB). A device with a smaller disk needs this tightened.
+          # captureWindowMs omitted/0 uses 20s.
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
             .sentry.release = $version
             | .offlineCache = {
                 enabled: true,
                 rootDir: "/home/feralfile/.cache/offline-artworks",
-                maxDiskBytes: 10737418240,
+                maxDiskBytes: 107374182400,
                 headlessBinaryPath: "/usr/bin/chromium",
                 headlessUserDataDir: "/home/feralfile/.cache/offline-artworks-headless-profile",
                 headlessDebugPort: 9223,
