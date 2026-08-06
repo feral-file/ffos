@@ -462,27 +462,36 @@ jobs:
           # therefore cannot be baked into the environment-scoped JSON secrets.
           # offlineCache mirrors offlinecache/bootstrap.go defaults with ONE
           # deliberate exception: maxDiskBytes. The code default is 10 GiB
-          # (DefaultMaxDiskBytes); the image ships 100 GB — decimal 10^11, NOT
-          # 100 GiB. The unit break from the code's binary convention is the
+          # (DefaultMaxDiskBytes); the image ships 80 GB in DECIMAL units (10^9),
+          # not GiB. The unit break from the code's binary convention is the
           # point: this budget is surfaced to users by ff-app, whose
           # Ff1StorageUsage.formatBytes divides by 10^9 and labels the result
-          # "GB", so a binary 100 GiB renders as "107.4 GB" on the device
-          # storage screen. Do not "tidy" this to 107374182400, and do not drop
-          # it back to the code default — either silently changes what a
-          # fielded device reports to its owner.
-          # Hazard: 100 GB (93 GiB) is most of an FF1's ~119 GiB disk, so this
-          # budget no longer doubles as the disk-fill guard bootstrap.go
-          # describes. It also scales two derived limits: store.WriteBlob's
-          # per-resource abort and reclaimDiskForCapture's maxDiskBytes/8
-          # free-space floor (12.5 GB). A device with a smaller disk needs this
-          # tightened.
+          # "GB" — so a binary 80 GiB would render as "85.9 GB" on the device
+          # storage screen. Do not "tidy" this into a round binary number, and
+          # do not drop it back to the code default: either silently changes
+          # what a fielded device reports to its owner.
+          #
+          # Why 80 and not more, on an FF1's 127.5 GB disk: this value is the
+          # ONLY guard between the cache and the OS. offlinecache never calls
+          # statfs — reclaimDiskForCapture's maxDiskBytes/8 floor (10 GB here)
+          # reserves headroom INSIDE the budget, not on the disk — and neither
+          # feral-system-update.sh nor feral-recovery-update.sh checks free
+          # space before downloading. An over-large budget therefore does not
+          # merely stop the cache growing; it makes the OTA die on ENOSPC and
+          # strands the device on its old version, losing remote fixability.
+          # The 47.5 GB left over covers the worst case with ~19 GB spare:
+          # OS + user state 4.7, Chromium's uncapped disk cache ~3,
+          # @factory_reset once diverged 3.4, a resident @recovery_candidate
+          # 3.4, the OTA transient (1.06 ISO + 3.4 @ota_new + 0.1 staging) 4.6,
+          # log growth 1, btrfs metadata/global reserve 2, and a 5% btrfs
+          # free-space floor 6.4 — about 28.5 GB total.
           # captureWindowMs omitted/0 uses 20s.
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
             .sentry.release = $version
             | .offlineCache = {
                 enabled: true,
                 rootDir: "/home/feralfile/.cache/offline-artworks",
-                maxDiskBytes: 100000000000,
+                maxDiskBytes: 80000000000,
                 headlessBinaryPath: "/usr/bin/chromium",
                 headlessUserDataDir: "/home/feralfile/.cache/offline-artworks-headless-profile",
                 headlessDebugPort: 9223,
