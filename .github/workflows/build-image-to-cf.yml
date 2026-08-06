@@ -101,26 +101,6 @@ jobs:
       ffos_user_ref: ${{ inputs.ffos_user_ref }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
-  build-feral-setupd:
-    needs: [permission-check, resolve-container]
-    name: Build Feral Setupd
-    uses: ./.github/workflows/build-components.yaml
-    secrets:
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
-      CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
-      FERALFILE_BOT_REPOS_READONLY_TOKEN: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
-      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
-      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
-    with:
-      component: feral-setupd
-      version: ${{ inputs.version }}
-      description: 'Feral File Setup Service'
-      maintainer: 'Feral File'
-      environment: ${{ inputs.environment }}
-      ffos_user_ref: ${{ inputs.ffos_user_ref }}
-      container_image: ${{ needs.resolve-container.outputs.image }}
-
   build-feral-sys-monitord:
     needs: [permission-check, resolve-container]
     name: Build Feral System Monitord
@@ -185,7 +165,7 @@ jobs:
 
   build-feralfile-pacman-repo:
     name: Build Feralfile pacman repo
-    needs: [permission-check, resolve-container, build-feral-controld, build-feral-setupd, build-feral-sys-monitord, build-feral-watchdog, build-feral-player]
+    needs: [permission-check, resolve-container, build-feral-controld, build-feral-sys-monitord, build-feral-watchdog, build-feral-player]
     uses: ./.github/workflows/pacman-repo.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -339,8 +319,9 @@ jobs:
 
       - name: Copy UI files
         run: |
-          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/launcher
-          cp -r ffos-user/components/launcher-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/launcher/
+          # launcher-ui is retired: the kiosk now serves ff-player (feral-player
+          # package) at http://127.0.0.1:8080/, so /opt/feral/ui/launcher is no
+          # longer provisioned into the image.
           mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
           cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
@@ -376,7 +357,45 @@ jobs:
 
           # Overlay per-build values (branch/version) that change every build and
           # therefore cannot be baked into the environment-scoped JSON secrets.
-          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '.sentry.release = $version'
+          # offlineCache mirrors offlinecache/bootstrap.go defaults with ONE
+          # deliberate exception: maxDiskBytes. The code default is 10 GiB
+          # (DefaultMaxDiskBytes); the image ships 80 GB in DECIMAL units (10^9),
+          # not GiB. The unit break from the code's binary convention is the
+          # point: this budget is surfaced to users by ff-app, whose
+          # Ff1StorageUsage.formatBytes divides by 10^9 and labels the result
+          # "GB" — so a binary 80 GiB would render as "85.9 GB" on the device
+          # storage screen. Do not "tidy" this into a round binary number, and
+          # do not drop it back to the code default: either silently changes
+          # what a fielded device reports to its owner.
+          #
+          # Why 80 and not more, on an FF1's 127.5 GB disk: this value is the
+          # ONLY guard between the cache and the OS. offlinecache never calls
+          # statfs — reclaimDiskForCapture's maxDiskBytes/8 floor (10 GB here)
+          # reserves headroom INSIDE the budget, not on the disk — and neither
+          # feral-system-update.sh nor feral-recovery-update.sh checks free
+          # space before downloading. An over-large budget therefore does not
+          # merely stop the cache growing; it makes the OTA die on ENOSPC and
+          # strands the device on its old version, losing remote fixability.
+          # The 47.5 GB left over covers the worst case with ~19 GB spare:
+          # OS + user state 4.7, Chromium's uncapped disk cache ~3,
+          # @factory_reset once diverged 3.4, a resident @recovery_candidate
+          # 3.4, the OTA transient (1.06 ISO + 3.4 @ota_new + 0.1 staging) 4.6,
+          # log growth 1, btrfs metadata/global reserve 2, and a 5% btrfs
+          # free-space floor 6.4 — about 28.5 GB total.
+          # captureWindowMs omitted/0 uses 20s.
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
+            .sentry.release = $version
+            | .offlineCache = {
+                enabled: true,
+                rootDir: "/home/feralfile/.cache/offline-artworks",
+                maxDiskBytes: 80000000000,
+                headlessBinaryPath: "/usr/bin/chromium",
+                headlessUserDataDir: "/home/feralfile/.cache/offline-artworks-headless-profile",
+                headlessDebugPort: 9223,
+                headlessIdleTeardownSeconds: 30,
+                staticServerAddr: "127.0.0.1:8082",
+                missPolicy: "fail_closed"
+              }'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'
