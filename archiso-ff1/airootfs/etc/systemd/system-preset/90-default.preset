@@ -9,3 +9,20 @@ enable systemd-timesyncd.service
 # Loads /etc/nftables.conf: the captive-portal DNAT that pairs with the
 # 192.0.2.1 DNS answer in NetworkManager/dnsmasq-shared.d/captive.conf.
 enable nftables.service
+# Update/recovery timers (F-03): every full-image OTA rsyncs with --delete and
+# wipes /etc/systemd/system/timers.target.wants/ (the exclude list does not
+# cover it and airootfs ships no .wants symlinks), so the nightly self-heal
+# timers survived only as long as .start-services.sh kept re-enabling them —
+# a rail that dies with any earlier service failure. post-extraction.sh runs
+# `systemctl preset-all --preset-mode=enable-only` in the chroot after every
+# extraction, so presets are the rail that restores them unconditionally.
+# Syntax notes that MUST hold:
+#  - Template instances are space-separated after the template unit name:
+#    `enable feral-updater@.timer 03:00`. The one-token form
+#    `enable feral-updater@03:00.timer` does NOT instantiate (preset-all
+#    matches unit files on disk, and only `feral-updater@.timer` exists).
+#  - Instance spellings must match .start-services.sh exactly (`03:00` and
+#    `5:30`): a different spelling (e.g. `05:30`) enables a SECOND distinct
+#    instance instead of the one the boot script manages.
+enable feral-updater@.timer 03:00
+enable feral-recovery-update@.timer 5:30

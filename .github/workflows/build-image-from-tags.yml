@@ -460,7 +460,36 @@ jobs:
 
           # Overlay per-build values (branch/version) that change every build and
           # therefore cannot be baked into the environment-scoped JSON secrets.
-          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '.sentry.release = $version'
+          # offlineCache mirrors offlinecache/bootstrap.go defaults with ONE
+          # deliberate exception: maxDiskBytes. The code default is 10 GiB
+          # (DefaultMaxDiskBytes); the image ships 100 GB — decimal 10^11, NOT
+          # 100 GiB. The unit break from the code's binary convention is the
+          # point: this budget is surfaced to users by ff-app, whose
+          # Ff1StorageUsage.formatBytes divides by 10^9 and labels the result
+          # "GB", so a binary 100 GiB renders as "107.4 GB" on the device
+          # storage screen. Do not "tidy" this to 107374182400, and do not drop
+          # it back to the code default — either silently changes what a
+          # fielded device reports to its owner.
+          # Hazard: 100 GB (93 GiB) is most of an FF1's ~119 GiB disk, so this
+          # budget no longer doubles as the disk-fill guard bootstrap.go
+          # describes. It also scales two derived limits: store.WriteBlob's
+          # per-resource abort and reclaimDiskForCapture's maxDiskBytes/8
+          # free-space floor (12.5 GB). A device with a smaller disk needs this
+          # tightened.
+          # captureWindowMs omitted/0 uses 20s.
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
+            .sentry.release = $version
+            | .offlineCache = {
+                enabled: true,
+                rootDir: "/home/feralfile/.cache/offline-artworks",
+                maxDiskBytes: 100000000000,
+                headlessBinaryPath: "/usr/bin/chromium",
+                headlessUserDataDir: "/home/feralfile/.cache/offline-artworks-headless-profile",
+                headlessDebugPort: 9223,
+                headlessIdleTeardownSeconds: 30,
+                staticServerAddr: "127.0.0.1:8082",
+                missPolicy: "fail_closed"
+              }'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'

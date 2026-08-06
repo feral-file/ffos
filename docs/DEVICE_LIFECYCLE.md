@@ -10,8 +10,12 @@ flowchart TD
     Provision --> HasInternet{Has Internet}
 
     HasInternet --> |No| HasLink{Has link:<br/>ethernet or<br/>Wi-Fi association}
-    HasLink --> |Yes| LinkSuppress(Keep retrying;<br/>AP suppressed)
+    HasLink --> |Yes, claimed| LinkSuppress(Keep retrying;<br/>AP suppressed)
     LinkSuppress --> |Recheck| HasInternet
+    HasLink --> |Yes, unclaimed,<br/>Wi-Fi, no wire| Episode(Setup-incomplete episode:<br/>5-min window, then bounded AP<br/>sessions + 5/10/20-min station ladder)
+    Episode --> |WAN returns, or<br/>claimed over LAN| HasInternet
+    Episode --> |4 AP cycles,<br/>no progress| Settled(Settled in station mode;<br/>LAN pairing still works)
+    Settled --> |Link lost| OfflineWindow
     HasLink --> |No,<br/>unprovisioned| SoftAP(Raise SoftAP + captive portal)
     HasLink --> |No,<br/>provisioned| OfflineWindow(Arm 5-min<br/>sustained-offline window)
     OfflineWindow --> |Still offline + no link<br/>at expiry| SoftAP
@@ -25,10 +29,37 @@ flowchart TD
     Paired --> |Yes| Artwork(Artwork Playback)
     ClaimQR --> |Phone binds topic via cloud| Artwork
 
+    App[App command:<br/>startWifiSetup] --> |30-min bounded session| SoftAP
     SoftAP --> |Phone joins AP,<br/>submits Wi-Fi in portal| Join(Join network, tear down AP)
+    SoftAP --> |Every 30 min on<br/>sustained-offline raises| Recheck(Station blink: forced<br/>reactivation of saved profiles)
+    Recheck --> |Reassociated| HasInternet
+    Recheck --> |Still gone| SoftAP
     Join --> |Success| HasInternet
     Join --> |Failure| SoftAP
 ```
+
+### AP session policy and network escape cadence
+
+Since the network-recovery work (canonical rules in ffos-user
+`docs/setup-flow.md`; API surface in its `docs/api-design.md`), a raised
+setup AP carries a session policy latched from its raise reason, and
+"link alive but useless" states have their own escape:
+
+| Raise reason | Session |
+| :- | :- |
+| `unprovisioned` (out-of-box) | Unbounded, no recheck — nothing saved to reactivate. |
+| `sustained-offline` / `relocated` | Unbounded cycles: AP up 30 min, then a brief station "recheck blink" that force-reactivates saved in-range profiles; a recovered network is noticed within one cycle. |
+| `setup-incomplete` (unclaimed, live Wi-Fi link, no internet, no ethernet) | Bounded episode: 5-min window, 5-min AP sessions, escalating 5/10/20-min station phases; after 4 cycles the device settles in station mode where LAN pairing/`startWifiSetup` still work. Claimed devices never auto-raise on a live link. |
+| `user-requested` (app `startWifiSetup`) | 30 min, then teardown and normal state handling — the abandonment net. Wired devices reject the command with `wired_link_active` instead of raising. |
+
+Session teardowns defer while the captive portal saw a human action within
+2 min (+15-min ceiling); bounded sessions additionally carry a 2-hour
+absolute cap across portal rescan re-arms. Wired devices never auto-raise,
+and a wired-link sighting lowers any raised AP except the out-of-box
+`unprovisioned` session (nothing is saved to fall back to, and claiming
+works over the cable with the AP still up). The app-visible mirror of all
+this is the additive `network` health object on `getDeviceStatus` and the
+LAN hub status routes.
 
 ### App update
 
@@ -66,7 +97,7 @@ flowchart TD
     CmdType --> |Device Command| DeviceCmd[Command Handler<br/>Execute Device Commands]
     CmdType --> |Web Command| WebCmd[Chrome DevTools Protocol]
     
-    DeviceCmd --> |Available Commands| Commands[Device Commands:<br/>• connect<br/>• showPairingQRCode<br/>• deviceMetrics<br/>• sendKeyboardEvent<br/>• dragGesture<br/>• tapGesture<br/>• rotate<br/>• shutdown<br/>• getDeviceStatus<br/>• updateToLatestVersion]
+    DeviceCmd --> |Available Commands| Commands[Device Commands:<br/>• connect<br/>• showPairingQRCode<br/>• deviceMetrics<br/>• sendKeyboardEvent<br/>• dragGesture<br/>• tapGesture<br/>• rotate<br/>• shutdown<br/>• getDeviceStatus<br/>• updateToLatestVersion<br/>• startWifiSetup]
     
     WebCmd --> |Forward to Browser| Browser[Chromium Browser]
     Browser --> |Execute JavaScript| WebApp[Web Application]
@@ -118,8 +149,10 @@ Since the setupd merge, the on-screen setup state is owned by `feral-controld`. 
 
 | State | Notes |
 | :- | :- |
-| `softap_qr` | SoftAP provisioning QR: join `FF1-<device_id>` and open the captive portal (offline, unprovisioned). |
+| `softap_qr` | SoftAP provisioning QR: join `FF1-<device_id>` and open the captive portal (offline unprovisioned, escape-policy raises, or app-triggered `startWifiSetup`). |
 | `joining` / `join_failed` | Joining the chosen Wi-Fi network / join failed, AP re-raised for retry. |
+| `connecting` | Neutral provisioned-device connectivity narration (boot hedge, offline retry, recheck blink). Extension state: controld downgrades it for players that predate it. |
+| `setup_error` | Persistent provisioning failure (setup AP repeatedly failing to start or release); retries continue underneath. Extension state with the same downgrade behavior. |
 | `updating` | Firmware update in progress (replaces `SystemUpgrade`). |
 | `claim_qr` | Pairing/claim QR shown; network connected and up to date (replaces the pairing `QRCode`). |
 | `ready` / `hidden` | Claimed; artwork playback (replaces `WebApp`). |
