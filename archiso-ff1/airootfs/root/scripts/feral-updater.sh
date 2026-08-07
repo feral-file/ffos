@@ -30,7 +30,6 @@ fi
 # Release lock and clean up on any exit (success, error, or signal)
 cleanup() {
   flock -u 9 2>/dev/null || true
-  rm -f "$LOCKFILE" 2>/dev/null || true
 }
 trap 'code=$?; log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""; exit $code' ERR
 trap cleanup EXIT
