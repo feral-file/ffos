@@ -120,7 +120,6 @@ fi
 # Ensure lock is released on any exit (overridden later by full cleanup trap)
 release_lock() {
   flock -u 8 2>/dev/null || true
-  rm -f "$LOCKFILE" 2>/dev/null || true
 }
 trap release_lock EXIT
 
@@ -187,7 +186,6 @@ cleanup() {
 
   # Release lock
   flock -u 8 2>/dev/null || true
-  rm -f "$LOCKFILE" 2>/dev/null || true
 }
 trap cleanup EXIT
 

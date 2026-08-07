@@ -304,9 +304,39 @@ mount -t squashfs -o loop "$SFS_PATH" "$SFS_MOUNT"
 log_progress "85" "Installing update to new snapshot..."
 
 # --- Step 6: Rsync selective update to NEW snapshot ---------------------------
+# /home/feralfile/.cache is protected as a WHOLE directory so feral-controld's
+# offline artwork blob store (offlineCache.rootDir, budgeted at 80 GB) outlives
+# a full-image update. Rebuilding it is expensive: every item re-downloads and
+# software artworks re-capture through headless Chromium. It was previously
+# destroyed on every OTA by accident — the source SquashFS ships no .cache, so
+# --delete removed it, and only the promotion of @ota_new made that permanent.
+#
+# Excluding the parent rather than .cache/offline-artworks is deliberate. rsync
+# protects an excluded path from --delete, but a child-only rule leaves .cache
+# itself unprotected and absent from the source, so rsync attempts to delete it,
+# hits the protected subtree, and logs "cannot delete non-empty directory" on
+# every update. That warning is non-fatal today, so a child-only rule would
+# work — it would just rest on undocumented behaviour and add permanent log
+# noise. Protecting the parent keeps this on rsync's documented contract.
+#
+# Trade-off, and the amendment hazard to know about: this protects the WHOLE
+# XDG cache directory, not only the blob store. Everything under ~/.cache —
+# mesa's shader cache, fontconfig, whatever a future package writes there —
+# now outlives an OTA by default. Safe for today's contents (mesa keys entries
+# by driver build-id and fontconfig by version+mtime, so both self-invalidate),
+# but it inverts the default. post-extraction.sh's delete list is therefore an
+# ALLOWLIST-BY-EXCEPTION, not an exhaustive account of what persists: anything
+# new under ~/.cache that must not survive an update has to be added there.
+#
+# Must stay true: offlineCache.rootDir (set in the ffos image-build workflows,
+# defaulted in ffos-user's offlinecache/bootstrap.go) has to live UNDER
+# /home/feralfile/.cache. Moving it elsewhere restores the wipe, and the symptom
+# is silence — so scripts/verify.sh pins both halves of that invariant in CI.
+# Factory reset still clears the cache as intended — factory_reset.sh restores
+# from @factory_reset / @recovery_candidate, neither of which ever holds it.
 log_info "Syncing filesystem into '@snapshots/@ota_new' snapshot..."
 rsync -aAX --delete --info=progress2 \
-  --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed","/home/feralfile/.config/chromium","/home/feralfile/.logs","/home/feralfile/.state"} \
+  --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed","/home/feralfile/.cache","/home/feralfile/.config/chromium","/home/feralfile/.logs","/home/feralfile/.state"} \
   "$SFS_MOUNT"/ "$NEW_ROOT"/
 
 log_progress "90" "Preparing boot files..."
