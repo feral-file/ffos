@@ -27,6 +27,23 @@ rm -f /root/.bash_profile
 rm -rf /home/soaktest
 rm -f /usr/local/bin/websocat
 
+# feral-system-update.sh protects /home/feralfile/.cache wholesale so the
+# offline artwork blob store survives a full-image update. That inverts the
+# default for the entire XDG cache directory: everything under ~/.cache now
+# outlives an OTA unless it is deleted right here.
+#
+# This list is an ALLOWLIST-BY-EXCEPTION, not an exhaustive account of what
+# persists. Add to it whenever a package starts writing cache state that must
+# not survive an update.
+#
+# The two below are regenerable Chromium state that the OTA rsync used to clear
+# as a side effect; carrying a browser profile across a Chromium version bump is
+# the specific hazard being avoided.
+# No-op on the recovery path, whose tree comes from the cache-free
+# @factory_reset snapshot, and on a device that has never cached anything.
+rm -rf /home/feralfile/.cache/offline-artworks-headless-profile
+rm -rf /home/feralfile/.cache/chromium
+
 cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf <<'EOF'
 [Service]
 ExecStart=

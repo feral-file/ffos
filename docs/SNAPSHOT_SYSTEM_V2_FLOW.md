@@ -63,7 +63,7 @@ OTA is implemented in `feral-system-update.sh`. High-level sequence:
 2. Remove any existing `@snapshots/@ota_new`.
 3. Create a writable snapshot: `@snapshots/@` → `@snapshots/@ota_new`.
 4. Download the release ISO and verify its signature.
-5. Mount the ISO and its SquashFS; rsync the filesystem into `@ota_new` (with standard exclusions).
+5. Mount the ISO and its SquashFS; rsync the filesystem into `@ota_new` (with standard exclusions — see [What survives an OTA](#what-survives-an-ota)).
 6. **Stage boot files** into `@ota_new/var/lib/ota_boot_staging` (vmlinuz, initramfs, ucode, loader, EFI). The live `/boot` is not modified yet.
 7. Bind-mount that staging directory as `/boot` inside `@ota_new` and run **`post-extraction.sh`** in chroot (boot entries, mkinitcpio, pacman keys, etc.).
 8. Copy the staged kernel and initrd into **`/boot/candidate/`** on the live ESP, so the current known-good kernel remains at `/boot/` and the new one sits alongside.
@@ -74,6 +74,62 @@ OTA is implemented in `feral-system-update.sh`. High-level sequence:
 The btrfs default subvolume remains `@snapshots/@` throughout. Only after a successful boot from `@ota_new` does the subvolume manager promote it (see Post-boot promotion).
 
 **V1 difference** — In v1, OTA wrote boot files directly to `/boot`, updated mkinitcpio in chroot, and set the btrfs default to `@ota_new` before rebooting. v2 defers writing to `/boot` until after a successful candidate boot and uses a one-shot entry so a bad update does not change the default.
+
+### What survives an OTA
+
+Step 5's rsync runs with `--delete`, so anything in the running system that the
+release ISO does not also ship is removed from `@ota_new` — and once promotion
+deletes the old `@`, that removal is permanent. Device state therefore survives
+**only** if it is named in the exclusion list:
+
+| Preserved | Why |
+|---|---|
+| `/etc/fstab`, `/etc/machine-id`, `/etc/hostname`, `/etc/ssh/ssh_host_*` | Per-device identity; a reissued host key or machine-id breaks existing trust. |
+| `/etc/NetworkManager/system-connections/*` | Saved Wi-Fi profiles; losing them strands the device offline. |
+| `/var/lib/systemd/random-seed` | Per-device entropy seed. |
+| `/home/feralfile/.cache` | Protected for feral-controld's offline artwork blob store at `offlineCache.rootDir` (itself bounded by `maxDiskBytes`, 80 GB). Expensive to rebuild — every item re-downloads and software artworks re-capture through headless Chromium. The whole XDG cache directory inherits this protection; see below. |
+| `/home/feralfile/.config/chromium` | Kiosk browser profile. |
+| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version`. |
+
+`/home/feralfile/.cache` is excluded as a whole directory rather than as
+`.cache/offline-artworks`, because rsync only protects paths it is told to
+exclude: a child-only rule leaves the parent unprotected and absent from the
+ISO, so every update would log `cannot delete non-empty directory`.
+
+The consequence is that the **entire XDG cache directory now persists by
+default** — mesa's shader cache, fontconfig, and anything else a package writes
+under `~/.cache`, not just the blob store. That is safe for today's contents
+(mesa keys entries by driver build-id and fontconfig by version+mtime, so both
+self-invalidate), but it inverts the default. `post-extraction.sh` explicitly
+deletes `.cache/offline-artworks-headless-profile` and `.cache/chromium`, and
+that list is an **allowlist-by-exception**: anything new written under
+`~/.cache` that must not outlive an update has to be added to it.
+
+**Constraint:** `offlineCache.rootDir` (written by the image-build workflows,
+defaulted in ffos-user's `offlinecache/bootstrap.go`) must stay under
+`/home/feralfile/.cache`. Relocating it outside that directory reinstates the
+wipe, and the symptom is silence rather than a failure — which is why
+`scripts/verify.sh` pins both halves of the invariant (the exclusion entry, and
+`rootDir`'s prefix in every workflow that configures `offlineCache`) and fails
+the build if they drift apart.
+
+Factory reset and recovery deliberately do **not** preserve the blob store:
+both restore from `@factory_reset` / `@recovery_candidate`, which are built from
+the pristine ISO and have never contained it.
+
+**Fielded-device note:** the exclusion list comes from the script on the
+*running* system, so the first OTA that ships this change still clears the
+cache; every OTA after it preserves.
+
+**There is no implicit cache expiry any more.** `offlinecache` has no TTL and no
+revalidation — `capturedAt` is recorded on every item record but is only ever
+read to pick the oldest entry for disk-budget eviction, never to expire one. A
+full-image OTA used to be a guaranteed periodic flush of the whole cache; it no
+longer is. A stale record (an artwork republished at the same source URL) or a
+subtly bad capture that would previously have self-healed at the next update now
+persists until the controller issues `clearPlaylistItemCache` /
+`clearPlaylistCache` or the disk budget evicts it. This is the accepted cost of
+the change, not an oversight.
 
 ---
 
