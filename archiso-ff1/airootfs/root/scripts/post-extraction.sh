@@ -76,10 +76,16 @@ fi
 
 echo "Writing boot loader configuration (PARTUUID: $PARTUUID)..."
 
+# random-seed-mode off: the power-cycle reset gesture (issue #122) invites
+# users to cut power in early boot — exactly when systemd-boot would rewrite
+# the ESP random-seed file, a FAT32 write window of the same corruption class
+# as F-05. With it off, normal boots leave the ESP read-only; x86 RDRAND
+# covers early-boot entropy.
 cat > /boot/loader/loader.conf <<EOF
 default arch.conf
 timeout 0
 editor no
+random-seed-mode off
 EOF
 
 # Clean up old entries if they exist

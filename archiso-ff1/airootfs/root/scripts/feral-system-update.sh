@@ -169,7 +169,7 @@ cleanup() {
 }
 trap cleanup EXIT
  
-log_info "=== OTA Update: Snapshot-based Update with Boot Counting ==="
+log_info "=== OTA Update: Snapshot-based Update with One-Shot Candidate Boot ==="
  
 # --- Step 1: Load local config ------------------------------------------------
 log_progress "0" "Getting device information..."
@@ -393,7 +393,7 @@ rsync -a "$BOOT_STAGING"/intel-ucode.img /boot/candidate/
 sync
 
 # Write candidate boot entry
-log_info "Creating candidate boot entry with boot counting..."
+log_info "Creating one-shot candidate boot entry..."
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
 
 cat > /boot/loader/entries/arch-candidate.conf <<EOF

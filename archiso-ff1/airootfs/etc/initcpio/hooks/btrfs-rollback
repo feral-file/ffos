@@ -1,7 +1,150 @@
+# --- Power-cycle factory-reset gesture (issue #122) --------------------------
+#
+# Keyboard-free recovery: 5 consecutive UNCLEAN power cuts, each inter-boot
+# gap <= GESTURE_MAX_GAP seconds, arm a one-shot boot of factory_reset.conf
+# with an on-screen countdown. Waiting out the countdown runs the existing
+# rollback=factory path below; pulling power during the countdown cancels,
+# because systemd-boot consumes both one-shot EFI variables the moment the
+# menu is shown — the next boot is a completely normal default boot.
+#
+# Why this lives in the initramfs: the trigger must work no matter how broken
+# the root filesystem's userspace is (a bad OTA promotes before any health
+# check runs and deletes its own rollback snapshot — see issue #122).
+# Boundary: a broken kernel/initramfs takes this hatch down with it.
+#
+# Why @snapshots/.recovery: the state must survive every subvolume rotation
+# (OTA promotion, factory reset) and be reachable both from here (top-level
+# mount) and from the running system (/.snapshots). clean_shutdown is written
+# by clean-shutdown-marker.service on every orderly shutdown, so app/watchdog
+# `systemctl reboot`s never count — only physical power pulls accumulate.
+#
+# Every failure path here MUST fall through to a normal boot: this runs on
+# every boot of every device, and a defect that blocks boot is strictly worse
+# than a missing recovery gesture.
+
+GESTURE_STAMPS_NEEDED=6   # 6 chained boot stamps = 5 unclean cuts between them
+GESTURE_MAX_GAP=120       # max seconds between consecutive chained boot stamps
+GESTURE_COUNTDOWN=60      # systemd-boot menu countdown, seconds
+GESTURE_CLOCK_FLOOR=1735689600  # 2025-01-01; see the dead-RTC guard below
+
+run_gesture_check() {
+  local mnt="/run/pcycle"
+  local root_partuuid="" param now prev ts gap chain count
+
+  # BIOS-booted systems have no loader EFI variables to arm.
+  [[ -d /sys/firmware/efi ]] || return 0
+
+  for param in $(cat /proc/cmdline); do
+    case "$param" in
+      root_partuuid=*) root_partuuid="${param#root_partuuid=}" ;;
+    esac
+  done
+  [[ -n "$root_partuuid" ]] || return 0
+
+  local root_dev="/dev/disk/by-partuuid/$root_partuuid"
+  [[ -b "$root_dev" ]] || return 0
+
+  # Dead-RTC guard: with a dead CMOS battery the clock resets to the same
+  # epoch on every power-on, so stamps from outages weeks apart would look
+  # seconds apart and chain into a false trigger (an unattended wipe). If the
+  # clock is obviously before this feature shipped, disable the gesture
+  # entirely — losing the hatch on a broken-RTC unit is the safer failure.
+  now=$(date +%s)
+  [[ "$now" -ge "$GESTURE_CLOCK_FLOOR" ]] || return 0
+
+  mkdir -p "$mnt"
+  mount -o subvolid=0 "$root_dev" "$mnt" 2>>"$LOG" || return 0
+
+  local rdir="$mnt/@snapshots/.recovery"
+  local stamps="$rdir/boot_stamps"
+  if ! mkdir -p "$rdir"; then
+    umount "$mnt"
+    return 0
+  fi
+
+  # An orderly shutdown breaks the chain: only consecutive unclean cuts count.
+  if [[ -f "$rdir/clean_shutdown" ]]; then
+    rm -f "$rdir/clean_shutdown" "$stamps"
+  fi
+
+  # Rebuild the chain of consecutive boot stamps ending at this boot.
+  # Non-numeric lines (a write torn by the very power cut being counted) and
+  # backward clock jumps break the chain rather than corrupting the count —
+  # any anomaly self-heals to a chain of one.
+  chain=""
+  count=0
+  prev=""
+  if [[ -f "$stamps" ]]; then
+    while read -r ts; do
+      case "$ts" in
+        ''|*[!0-9]*) continue ;;
+      esac
+      gap=0
+      [[ -n "$prev" ]] && gap=$((ts - prev))
+      if [[ -n "$prev" ]] && [[ "$gap" -ge 0 ]] && [[ "$gap" -le "$GESTURE_MAX_GAP" ]]; then
+        count=$((count + 1))
+        chain="${chain}${ts}
+"
+      else
+        count=1
+        chain="${ts}
+"
+      fi
+      prev="$ts"
+    done < "$stamps"
+  fi
+
+  gap=0
+  [[ -n "$prev" ]] && gap=$((now - prev))
+  if [[ -n "$prev" ]] && [[ "$gap" -ge 0 ]] && [[ "$gap" -le "$GESTURE_MAX_GAP" ]]; then
+    count=$((count + 1))
+    chain="${chain}${now}
+"
+  else
+    count=1
+    chain="${now}
+"
+  fi
+
+  if [[ "$count" -lt "$GESTURE_STAMPS_NEEDED" ]]; then
+    printf '%s' "$chain" | tail -n "$GESTURE_STAMPS_NEEDED" > "$stamps"
+    sync
+    umount "$mnt"
+    return 0
+  fi
+
+  echo "[btrfs-rollback] Power-cycle gesture detected ($count chained unclean boots). Arming factory-reset countdown." >> "$LOG"
+
+  # Clear the stamps BEFORE arming: whichever way arming goes, the next boot
+  # must start a fresh chain — persistent trigger state would re-arm (or
+  # re-fail) on every subsequent boot.
+  rm -f "$stamps"
+
+  grep -q efivarfs /proc/mounts || \
+    mount -t efivarfs efivarfs /sys/firmware/efi/efivars 2>>"$LOG"
+
+  if bootctl set-oneshot factory_reset.conf >>"$LOG" 2>&1 && \
+     bootctl set-timeout-oneshot "$GESTURE_COUNTDOWN" >>"$LOG" 2>&1; then
+    # Debug breadcrumb for support: when the gesture last armed.
+    date +%s > "$rdir/last_trigger"
+    sync
+    umount "$mnt"
+    echo "[btrfs-rollback] Rebooting into factory-reset countdown." >> "$LOG"
+    reboot -f
+    exit 0
+  fi
+
+  # Fail open: without an armed menu this must remain a normal boot.
+  echo "[btrfs-rollback] ERROR: failed to arm one-shot loader variables; continuing normal boot." >> "$LOG"
+  sync
+  umount "$mnt"
+  return 0
+}
+
 run_hook() {
   mkdir -p /run
   LOG="/run/btrfs-rollback.log"
-  local mode="" 
+  local mode=""
 
   for param in $(cat /proc/cmdline); do
     case "$param" in
@@ -10,6 +153,9 @@ run_hook() {
   done
 
   if [[ -z "$mode" ]]; then
+    # Normal boot: run the power-cycle gesture bookkeeping. The factory-reset
+    # boot itself is excluded — it must neither count as a cut nor re-trigger.
+    run_gesture_check
     return 0
   fi
 

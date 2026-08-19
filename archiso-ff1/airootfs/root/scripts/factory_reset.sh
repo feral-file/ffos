@@ -66,7 +66,7 @@ if [[ "$SOURCE_SNAP" == "@snapshots/@recovery_candidate" ]]; then
     log_msg "Marked factory_reset_new as sourced from recovery candidate."
 fi
 
-# Step 5: Stage boot files to /boot/candidate/ for boot counting
+# Step 5: Stage boot files to /boot/candidate/ for the one-shot candidate boot
 log_msg "Staging boot files for candidate boot entry..."
 SOURCE_BOOT="$BTRFS_TOP/$SOURCE_SNAP/var/lib/factory_reset_boot"
 
@@ -83,7 +83,7 @@ else
 fi
 
 # Step 6: Write candidate boot entry
-log_msg "Creating candidate boot entry with boot counting..."
+log_msg "Creating one-shot candidate boot entry..."
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
 
 cat > /boot/loader/entries/arch-candidate.conf <<EOF
