@@ -88,9 +88,14 @@ The device ships without a keyboard and the boot menu is hidden
 (`timeout 0`, `editor no`), so the `btrfs-rollback` initramfs hook implements
 a recovery gesture that needs only the power cord:
 
-1. **Trigger**: cut power (unplug) when the boot screen appears, then plug
-   back in. Repeat until **5 consecutive unclean cuts** have accumulated, with
-   each boot-to-boot gap at most **120 seconds**.
+1. **Trigger**: plug the device in, wait until it has **booted into the
+   system (the app is on screen), or at least 15 seconds** after power-on,
+   then cut power (unplug). Repeat until **5 consecutive unclean cuts** have
+   accumulated, with each boot-to-boot gap at most **120 seconds**.
+   Do **not** cut power earlier: the boot stamp is written by the initramfs
+   hook, which runs several seconds after the firmware logo/loader, so a cut
+   during firmware POST or the boot loader is not counted at all (and, right
+   after a clean shutdown, does not even clear the clean-shutdown flag).
 2. On the next boot the hook arms a one-shot boot of `factory_reset.conf`
    plus a one-shot menu timeout and reboots: systemd-boot shows the menu with
    **FF1 - Factory Reset** selected and a **60-second countdown** on screen.
