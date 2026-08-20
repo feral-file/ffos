@@ -1,0 +1,31 @@
+[Unit]
+Description=Mark orderly shutdowns for the power-cycle factory-reset gesture
+# The btrfs-rollback initramfs hook treats a boot without this flag as an
+# unclean power cut (issue #122); five chained cuts arm the factory-reset
+# countdown. This unit's ONLY job is to write the flag on every orderly
+# shutdown so app/watchdog `systemctl reboot`s and normal poweroffs never
+# count toward the gesture.
+#
+# The flag lives under /.snapshots (the @snapshots subvolume) because that
+# path survives every subvolume rotation and is visible both to the running
+# system and to the initramfs top-level mount (@snapshots/.recovery).
+#
+# RequiresMountsFor orders us after the mount at boot and — reversed at
+# shutdown — runs ExecStop while /.snapshots is still mounted. The condition
+# keeps the unit silently skipped on live/ISO environments where /.snapshots
+# is not a mountpoint.
+RequiresMountsFor=/.snapshots
+ConditionPathIsMountPoint=/.snapshots
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/true
+# mkdir is a belt for first boots where the initramfs hook has not created the
+# directory yet; argless sync (not sync -f) for the same reason as in
+# btrfs-subvolume-manager.sh — it cannot fail and still flushes device caches.
+ExecStop=/bin/sh -c 'mkdir -p /.snapshots/.recovery && : > /.snapshots/.recovery/clean_shutdown && sync'
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

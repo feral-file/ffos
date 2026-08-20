@@ -212,7 +212,27 @@ Rough sequence:
 
 ## Boot-Time Rollback (initcpio hook)
 
-The `btrfs-rollback` initcpio hook runs when the kernel command line contains **`rollback=factory`** (typically from the factory reset boot menu entry). It restores the root filesystem from the factory reset snapshot and restores `/boot` from the snapshot’s backup.
+The `btrfs-rollback` initcpio hook runs on **every** boot and has two jobs:
+
+1. **Power-cycle factory-reset gesture** (normal boots): it appends a boot
+   timestamp to `@snapshots/.recovery/boot_stamps` on the btrfs top level and
+   evaluates the chain. Five consecutive *unclean* power cuts (no
+   `clean_shutdown` flag from `clean-shutdown-marker.service`, every
+   boot-to-boot gap ≤ 120 s) arm `LoaderEntryOneShot=factory_reset.conf` and
+   `LoaderConfigTimeoutOneShot=60`, then reboot into the systemd-boot menu:
+   a 60-second on-screen countdown into factory reset that a power pull
+   cancels (the one-shot EFI variables are consumed when the menu is shown).
+   The gesture state lives outside every rotated subvolume, self-heals on
+   corruption, is skipped when the RTC is obviously wrong (dead CMOS
+   battery), and fails open into a normal boot on any error. See
+   DEVICE_LIFECYCLE.md "Power-cycle factory reset" and issue #122.
+
+2. **Factory rollback** when the kernel command line contains
+   **`rollback=factory`** (from the factory reset boot menu entry, whether
+   selected by the gesture above or staged by `factory_reset.sh`). It
+   restores the root filesystem from the factory reset snapshot and restores
+   `/boot` from the snapshot's backup. The rollback boot itself is excluded
+   from gesture counting.
 
 Sequence:
 
