@@ -6,8 +6,11 @@ build() {
     # loader menu from the initramfs: bootctl writes LoaderEntryOneShot /
     # LoaderConfigTimeoutOneShot, which needs efivarfs mounted. add_binary
     # resolves bootctl's shared-library deps; add_module is a no-op when
-    # efivarfs is built into the kernel.
+    # efivarfs is built into the kernel. `date` is NOT part of mkinitcpio's
+    # busybox — without this add_binary the gesture's clock reads fail and
+    # the hook (deliberately) degrades to never triggering.
     add_binary bootctl
+    add_binary date
     add_module efivarfs
 }
 
