@@ -67,17 +67,68 @@ LAN hub status routes.
 flowchart TD
     Current[Current Version] --> Trouble{Having<br/>trouble}
 
-    Trouble --> |Yes| Rollback{Choose version<br/>to rollback}
+    Trouble --> |Yes| Reset[Factory Reset]
     Trouble --> |No| Update[Update at 3am]
 
     Update --> |Restart| Latest
 
-    Rollback --> |Fresh| FactoryVersion(Factory Version)
-    Rollback --> LastVersion(Last Version)
-
+    Reset --> FactoryVersion(Factory Version)
     FactoryVersion --> |Force Update| Latest
-    LastVersion --> |Force Update| Latest
 ```
+
+There is **no last-version rollback**: OTA promotion deletes the previous
+root subvolume in early boot, before any userspace health signal exists
+(issue #122, accepted trade-off). The only recovery from a bad-but-bootable
+version is a factory reset — via the app command when `feral-controld` is
+reachable, or via the keyboard-free power-cycle gesture below when it is not.
+
+### Power-cycle factory reset (keyboard-free recovery)
+
+The device ships without a keyboard and the boot menu is hidden
+(`timeout 0`, `editor no`), so the `btrfs-rollback` initramfs hook implements
+a recovery gesture that needs only the power cord:
+
+1. **Trigger**: plug the device in, wait until it has **booted into the
+   system (the app is on screen), or at least 15 seconds** after power-on,
+   then cut power (unplug). Repeat until **5 consecutive unclean cuts** have
+   accumulated, with each boot-to-boot gap at most **120 seconds**.
+   Do **not** cut power earlier: the boot stamp is written by the initramfs
+   hook, which runs several seconds after the firmware logo/loader, so a cut
+   during firmware POST or the boot loader is not counted at all (and, right
+   after a clean shutdown, does not even clear the clean-shutdown flag).
+2. On the next boot the hook arms a one-shot boot of `factory_reset.conf`
+   plus a one-shot menu timeout and reboots: systemd-boot shows the menu with
+   **FF1 - Factory Reset** selected and a **60-second countdown** on screen.
+3. **Waiting out the countdown** runs the factory reset (the existing
+   `rollback=factory` initramfs path). **Pulling power during the countdown
+   cancels**: systemd-boot consumes both one-shot EFI variables the moment
+   the menu is shown, so the next boot is a completely normal boot.
+
+Counting rules (all state lives in `@snapshots/.recovery/` on the btrfs
+top level, which survives every subvolume rotation):
+
+- Only **unclean** cuts count. `clean-shutdown-marker.service` writes a flag
+  on every orderly shutdown, so app- or watchdog-initiated
+  `systemctl reboot`s and normal poweroffs break the chain.
+- A boot-to-boot gap over 120 seconds breaks the chain, so isolated real
+  power outages never accumulate.
+- The gesture is disabled when the RTC is obviously wrong (clock before
+  2025): a dead CMOS battery would otherwise make outages weeks apart look
+  seconds apart.
+
+Accepted residual risks (decided in issue #122):
+
+- **Unattended trigger**: an extreme power event matching the exact pattern
+  (5 cuts, each boot living just long enough to stamp, tight cadence) resets
+  an unattended device after the uncancelled countdown. Judged rare after
+  excluding clean reboots and utility-recloser timing.
+- **No claim protection**: after any factory reset the device can be claimed
+  by anyone. A server-side protection can be added later without a firmware
+  change.
+- **Recovery is a wipe**: setup, claim, and the offline artwork cache are
+  lost and must be rebuilt.
+- A broken kernel or initramfs takes the gesture down with it; that failure
+  class has no self-service recovery (unchanged from before).
 
 ### Command Processing Flow
 

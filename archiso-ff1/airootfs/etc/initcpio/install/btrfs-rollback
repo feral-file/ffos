@@ -2,10 +2,22 @@
 
 build() {
     add_runscript
+    # The power-cycle factory-reset gesture (issue #122) arms the one-shot
+    # loader menu from the initramfs: bootctl writes LoaderEntryOneShot /
+    # LoaderConfigTimeoutOneShot, which needs efivarfs mounted. add_binary
+    # resolves bootctl's shared-library deps; add_module is a no-op when
+    # efivarfs is built into the kernel. `date` is NOT part of mkinitcpio's
+    # busybox — without this add_binary the gesture's clock reads fail and
+    # the hook (deliberately) degrades to never triggering.
+    add_binary bootctl
+    add_binary date
+    add_module efivarfs
 }
 
 help() {
     cat <<HELPEOF
-This hook allows rollback via btrfs subvolumes.
+This hook allows rollback via btrfs subvolumes, and implements the
+power-cycle factory-reset gesture (5 unclean power cuts -> one-shot
+factory_reset.conf boot with an on-screen countdown).
 HELPEOF
 }

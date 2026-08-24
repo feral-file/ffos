@@ -26,3 +26,8 @@ enable nftables.service
 #    instance instead of the one the boot script manages.
 enable feral-updater@.timer 03:00
 enable feral-recovery-update@.timer 5:30
+# Power-cycle factory-reset gesture (issue #122): without this unit's
+# clean-shutdown flag every orderly reboot would count as an unclean power
+# cut. Preset (not .start-services.sh) for the same F-03 reason as the timers
+# above: the full-image OTA rsync must not be able to strip it.
+enable clean-shutdown-marker.service
