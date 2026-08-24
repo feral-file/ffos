@@ -5,12 +5,21 @@ set -euo pipefail
 # Unified Btrfs Subvolume Manager
 #
 # Handles post-boot promotion for ALL transition types (OTA, factory reset).
-# Uses a single mechanism: boot counting in systemd-boot provides automatic
-# fallback to @ if the candidate subvolume fails to boot (3 attempts).
+# The candidate is booted exactly ONCE via `bootctl set-oneshot` (see
+# feral-system-update.sh / factory_reset.sh). If the candidate KERNEL fails to
+# boot, the next power cycle lands back on @ automatically: the one-shot entry
+# is already consumed and the btrfs default subvolume was never changed. There
+# is NO systemd-boot boot counting and NO retry — one attempt only — and NO
+# userspace health gating before promotion: reaching this script on a
+# candidate subvolume is the only success signal, so a release that boots the
+# kernel but breaks userspace is promoted anyway and the old @ is deleted.
+# That trade-off is accepted (issue #122); the recovery path for it is the
+# power-cycle factory-reset gesture in the btrfs-rollback initramfs hook.
 #
 # Two cases:
 #   1. Booted from a candidate (@ota_new or @factory_reset_new):
-#      → Deploy staged boot files, rotate candidate → @, reboot
+#      → Deploy staged boot files, rotate candidate → @ (no reboot — the
+#        running system already IS the promoted version)
 #   2. Booted from @ (normal boot or fallback after failed candidate):
 #      → Clean up any orphaned candidates and stale boot entries
 
@@ -180,7 +189,7 @@ case "$CURRENT_SUBVOL" in
     mkdir -p "$BTRFS_TOP"
     mount -o subvolid=0 "$ROOT_DEV" "$BTRFS_TOP"
 
-    # Clean up orphaned candidate subvolumes (from failed boot counting or interrupted updates)
+    # Clean up orphaned candidate subvolumes (from a failed one-shot candidate boot or interrupted updates)
     for orphan in @snapshots/@ota_new @snapshots/@factory_reset_new; do
         if [[ -d "$BTRFS_TOP/$orphan" ]]; then
             log_msg "Found orphaned $orphan, cleaning up..."
