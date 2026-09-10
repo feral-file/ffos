@@ -1,0 +1,165 @@
+# Maintainer: Feral File <dev@feralfile.com>
+#
+# amdgpu.ko for the image's exact linux-lts, rebuilt with one table change:
+# the VCN 3.1.1 (Yellow Carp, Radeon 680M) H.264 decode entry advertises
+# 4096x4080 instead of 4096x4096. The firmware returns an unwritten surface
+# (solid green on screen, no error) for any H.264 frame of 65,536
+# macroblocks; 65,280 decodes. Mesa forwards the kernel table verbatim to
+# libva and Chromium, so lowering the claim here is what makes Chromium
+# route 4096x4096 H.264 to its software decoder. Measured on FF1-8EVTK3RE,
+# 2026-09-10; analysis in ffos-user#302, raw probe output and tooling in
+# ./verify/.
+#
+# Why a module package and not a patched linux-lts: only one object changes,
+# a full kernel rebuild is 2-3 h of CI per snapshot bump, and this builds in
+# minutes. The module is installed under updates/, which
+# /usr/lib/depmod.d/search.conf ("search updates extramodules built-in")
+# ranks above the in-tree copy, so depmod resolves amdgpu here and the stock
+# module stays on disk as the rollback. amdgpu is not in the FF1 initramfs
+# (HOOKS have no kms and MODULES does not list it), so no initramfs
+# regeneration is involved.
+#
+# What must stay true:
+#   - _kver/_krel MUST equal the linux-lts that the pinned pacman snapshot
+#     installs. depends= pins it exactly, so a snapshot bump without a
+#     matching bump here fails the image build at dependency resolution
+#     instead of shipping a stale module. Re-basing = update _kver/_krel,
+#     re-vendor 0001-0003 + config from the Arch linux-lts tag, refresh the
+#     sha256sums, check 0004 still applies.
+#   - The three Arch patches and the Arch config are vendored from the
+#     linux-lts packaging repo at tag ${_kver}-${_krel} (two of them touch
+#     amdgpu), so the object is built from the same source and config as the
+#     kernel it loads into. check() enforces the vermagic.
+#   - The module carries no BTF section: module BTF needs vmlinux, which an
+#     M= build never produces. The kernel tolerates that (it only skips the
+#     module's BTF). The stock module has one; this one does not.
+#   - The module is unsigned (Arch's build-time signing key is ephemeral).
+#     The kernel has CONFIG_MODULE_SIG without _FORCE, Secure Boot is off on
+#     FF1, so it loads with the out-of-tree and unsigned taint flags. If
+#     Secure Boot or lockdown is ever enabled, this package stops working.
+#   - Drop this package as soon as the fix is in the pinned kernel
+#     (upstream amd-gfx submission tracks ffos-user#302).
+
+pkgname=amdgpu-vcn-h264-cap
+_kver=6.18.38
+_krel=2
+_kfull="${_kver}-${_krel}-lts"
+pkgver="${_kver}.${_krel}"
+pkgrel=1
+pkgdesc="amdgpu.ko for linux-lts ${_kfull} with VCN 3.1.1 H.264 decode capped at 4096x4080 (ffos-user#302)"
+arch=(x86_64)
+url="https://github.com/feral-file/ffos-user/issues/302"
+license=(GPL-2.0-only)
+depends=("linux-lts=${_kver}-${_krel}")
+makedepends=("linux-lts-headers=${_kver}-${_krel}" bc cpio libelf perl python zstd kmod binutils)
+# !strip: the artifact is .ko.zst, which makepkg cannot strip; package()
+# strips the ELF itself before compressing. !debug: no split debug package.
+options=(!strip !debug)
+source=(
+  "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${_kver}.tar.xz"
+  0001-ZEN-Add-sysctl-and-CONFIG-to-disallow-unprivileged-C.patch
+  0002-drm-amdgpu-avoid-memory-allocation-in-the-critical-code-path-v3.patch
+  0003-drm-amdgpu-use-GFP_ATOMIC-instead-of-NOWAIT-in-the-critical-path.patch
+  config
+  0004-drm-amdgpu-cap-vcn311-h264-decode-4096x4080.patch
+)
+sha256sums=(
+  'ac26e508abd56e9f8b89872b6e10c49fc823bcc70d8068a5d8504c1a7c4ff045'
+  'e5bda61fa4405571a0267cd8812329bb8a432a37efb50459461628d371849906'
+  'c31b8c0ace123f5c1a0012a1254272eea9ac9cdd0d3e5d538ca6b11830dd01b0'
+  '0f482368b62c3cece941e2d3ba497bf322db59315df5c2f72500fc1318e4768e'
+  '8e999959fc6aa7f94831ab2975ced805cb3eafce09d4685d02c4487b1a80690c'
+  '47cc1acd02b26dbbb4f47d465aa7c93f1d22e61c5311b3ad44408816524f3938'
+)
+
+_moddir="drivers/gpu/drm/amd/amdgpu"
+
+prepare() {
+  cd "linux-${_kver}"
+
+  # Same localversion files as the Arch PKGBUILD, so kernelrelease (and the
+  # module's vermagic) comes out as 6.18.38-2-lts.
+  echo "-${_krel}" > localversion.10-pkgrel
+  echo "-lts" > localversion.20-pkgname
+
+  local src
+  for src in "${source[@]}"; do
+    src="${src%%::*}"
+    src="${src##*/}"
+    [[ $src = *.patch ]] || continue
+    echo "Applying patch $src..."
+    patch -Np1 < "../$src"
+  done
+
+  grep -q 'AMDGPU_INFO_VIDEO_CAPS_CODEC_IDX_MPEG4_AVC, 4096, 4080, 52' "${_moddir}/nv.c" \
+    || { echo "cap patch did not land in nv.c" >&2; return 1; }
+
+  cp ../config .config
+  make -s olddefconfig
+  # olddefconfig rewrites the config to what the local toolchain supports,
+  # and vermagic cannot see that (no MODVERSIONS, no RANDSTRUCT). A gcc that
+  # silently drops an ABI-relevant option would still produce a module that
+  # loads. So the resulting config must equal the vendored one, with two
+  # documented exceptions:
+  #   - toolchain version strings (CC/AS/LD/PAHOLE *_VERSION*);
+  #   - the Rust family. Arch builds the kernel with CONFIG_RUST=y, but
+  #     Kconfig only accepts the exact rustc the kernel release supports
+  #     (6.18.38 was built with rustc 1.96.1; the same snapshot already
+  #     ships 1.97.0, which Kconfig rejects), so CONFIG_RUST cannot be
+  #     reproduced from the snapshot and olddefconfig drops it together with
+  #     the Rust-only drivers gated on it. None of that touches C code or
+  #     struct layouts, and amdgpu has no Rust in it, so the module is
+  #     unaffected. A future re-base that surfaces a new Rust-only key
+  #     fails here with the diff printed; extend the filter deliberately.
+  local _cfg_ignore='^(# )?CONFIG_((CC|AS|LD|LLD|CLANG|GCC|PAHOLE)_?VERSION|CC_VERSION_TEXT|RUST|BINDGEN|BLK_DEV_RUST_NULL|NOVA_CORE|DRM_NOVA|DRM_PANIC_SCREEN_QR_CODE|ANDROID_BINDER_IPC_RUST|ANDROID_BINDER_DEVICES|FIND_BIT_BENCHMARK_RUST)'
+  local drift
+  drift="$(diff <(grep -vE "$_cfg_ignore" ../config) <(grep -vE "$_cfg_ignore" .config) || true)"
+  if [[ -n "$drift" ]]; then
+    echo "olddefconfig changed the vendored config beyond the documented exceptions; this toolchain does not match the kernel's:" >&2
+    echo "$drift" >&2
+    return 1
+  fi
+  local rel
+  rel="$(make -s kernelrelease)"
+  if [[ "$rel" != "${_kfull}" ]]; then
+    echo "kernelrelease is $rel, expected ${_kfull}: config or localversion drift" >&2
+    return 1
+  fi
+}
+
+build() {
+  cd "linux-${_kver}"
+  # makepkg.conf's default MAKEFLAGS is single-threaded; amdgpu is ~1500
+  # translation units, so pass the core count explicitly.
+  make -s -j"$(nproc)" modules_prepare
+  # modpost needs the symbol table of the kernel this module loads into; the
+  # headers package ships it. Without it every drm/ttm import reads as
+  # undefined and the build fails at the very end.
+  cp "/usr/lib/modules/${_kfull}/build/Module.symvers" Module.symvers
+  make -s -j"$(nproc)" M="${_moddir}" modules
+}
+
+check() {
+  cd "linux-${_kver}"
+  local vermagic
+  vermagic="$(modinfo -F vermagic "${_moddir}/amdgpu.ko")"
+  if [[ "$vermagic" != "${_kfull} "* ]]; then
+    echo "vermagic '$vermagic' does not match ${_kfull}" >&2
+    return 1
+  fi
+  local deps
+  deps="$(modinfo -F depends "${_moddir}/amdgpu.ko")"
+  [[ "$deps" == *drm_display_helper* && "$deps" == *ttm* ]] \
+    || { echo "unexpected depends list: $deps" >&2; return 1; }
+}
+
+package() {
+  cd "linux-${_kver}"
+  local out="${pkgdir}/usr/lib/modules/${_kfull}/updates"
+  install -dm755 "$out"
+  # Same treatment the kernel package gives its modules: strip debug info
+  # (652 MB -> 28 MB) and zstd-compress (-> ~4 MB).
+  strip --strip-debug "${_moddir}/amdgpu.ko"
+  zstd -19 -T0 -q "${_moddir}/amdgpu.ko" -o "${out}/amdgpu.ko.zst"
+  chmod 644 "${out}/amdgpu.ko.zst"
+}

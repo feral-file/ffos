@@ -1,0 +1,1912 @@
+[
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_8k60P_bilibili_1.mp4",
+    "outcome": "frame",
+    "width": 7680,
+    "height": 4320,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 10,
+        "avg": [
+          19,
+          35,
+          41
+        ],
+        "spread": 249
+      },
+      {
+        "t": 1.31,
+        "frames": 43,
+        "avg": [
+          20,
+          36,
+          43
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-bt709-sample-1",
+    "mediaCapabilitiesCodec": "hev1.1.6.L180.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_8k60P_bilibili_2.mp4",
+    "outcome": "frame",
+    "width": 7680,
+    "height": 4320,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 9,
+        "avg": [
+          86,
+          103,
+          109
+        ],
+        "spread": 236
+      },
+      {
+        "t": 1.28,
+        "frames": 40,
+        "avg": [
+          86,
+          105,
+          110
+        ],
+        "spread": 235
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-bt709-sample-2",
+    "mediaCapabilitiesCodec": "hev1.1.6.L180.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_8k60P_bilibili_3.mp4",
+    "outcome": "frame",
+    "width": 7680,
+    "height": 4320,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 7,
+        "avg": [
+          55,
+          66,
+          45
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.21,
+        "frames": 42,
+        "avg": [
+          62,
+          58,
+          50
+        ],
+        "spread": 249
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-bt709-sample-3",
+    "mediaCapabilitiesCodec": "hev1.1.6.L180.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_8k30P_slice.mp4",
+    "outcome": "frame",
+    "width": 7680,
+    "height": 4320,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          40,
+          57,
+          22
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.17,
+        "frames": 36,
+        "avg": [
+          51,
+          38,
+          24
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-bt709-sample-4",
+    "mediaCapabilitiesCodec": "hev1.1.6.L180.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_8k10P_slice.mp4",
+    "outcome": "frame",
+    "width": 7680,
+    "height": 4320,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 2,
+        "avg": [
+          30,
+          42,
+          92
+        ],
+        "spread": 242
+      },
+      {
+        "t": 1.08,
+        "frames": 13,
+        "avg": [
+          32,
+          45,
+          100
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-bt709-sample-5",
+    "mediaCapabilitiesCodec": "hev1.1.6.L180.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_5.7k60P_slice.mp4",
+    "outcome": "frame",
+    "width": 5760,
+    "height": 3600,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 1,
+        "avg": [
+          50,
+          57,
+          33
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.04,
+        "frames": 69,
+        "avg": [
+          60,
+          47,
+          36
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-bt709-sample-6",
+    "mediaCapabilitiesCodec": "hev1.1.6.L183.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k60P_main_dji_mavic3.mov",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 7,
+        "avg": [
+          35,
+          94,
+          36
+        ],
+        "spread": 253
+      },
+      {
+        "t": 1.07,
+        "frames": 70,
+        "avg": [
+          103,
+          103,
+          93
+        ],
+        "spread": 251
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-bt709-sample-7",
+    "mediaCapabilitiesCodec": "hvc1.1.6.L180.80"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k30P_main_2.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          86,
+          91,
+          84
+        ],
+        "spread": 244
+      },
+      {
+        "t": 1.18,
+        "frames": 35,
+        "avg": [
+          84,
+          90,
+          83
+        ],
+        "spread": 244
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-bt709-sample-8",
+    "mediaCapabilitiesCodec": "hvc1.1.6.L0.0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k30P_main_3.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          104,
+          89,
+          53
+        ],
+        "spread": 212
+      },
+      {
+        "t": 1.17,
+        "frames": 31,
+        "avg": [
+          104,
+          88,
+          53
+        ],
+        "spread": 208
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-bt709-sample-9",
+    "mediaCapabilitiesCodec": "hvc1.1.6.L0.0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main_1.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          123,
+          164,
+          147
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.08,
+        "frames": 32,
+        "avg": [
+          124,
+          165,
+          148
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-bt709-sample-10",
+    "mediaCapabilitiesCodec": "hvc1.1.6.L150.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main_2.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          76,
+          84,
+          67
+        ],
+        "spread": 222
+      },
+      {
+        "t": 1.07,
+        "frames": 27,
+        "avg": [
+          75,
+          83,
+          66
+        ],
+        "spread": 230
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-bt709-sample-11",
+    "mediaCapabilitiesCodec": "hvc1.1.6.L150.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_with_alpha_layer.mp4",
+    "outcome": "frame",
+    "width": 1280,
+    "height": 720,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 3,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 6,
+        "avg": [
+          52,
+          54,
+          56
+        ],
+        "spread": 253
+      },
+      {
+        "t": 1.03,
+        "frames": 60,
+        "avg": [
+          53,
+          55,
+          57
+        ],
+        "spread": 254
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-alpha-sample-1",
+    "mediaCapabilitiesCodec": "hvc1.1.6.L93.B0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_with_alpha_layer_2.mp4",
+    "outcome": "frame",
+    "width": 496,
+    "height": 438,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 4,
+        "avg": [
+          93,
+          81,
+          63
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.01,
+        "frames": 18,
+        "avg": [
+          93,
+          81,
+          61
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-alpha-sample-2",
+    "mediaCapabilitiesCodec": "hvc1.1.6.L62.B0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main_multiview_1.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          0,
+          0,
+          0
+        ],
+        "spread": 0
+      },
+      {
+        "t": 1.24,
+        "frames": 25,
+        "avg": [
+          211,
+          240,
+          254
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main-mv-sample-1",
+    "mediaCapabilitiesCodec": "hvc1.2.4.L153.B0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k60P_main10_10bit_420_eos_r5c_1.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 4,
+        "avg": [
+          0,
+          77,
+          0
+        ],
+        "spread": 0
+      },
+      {
+        "t": 1.04,
+        "frames": 64,
+        "avg": [
+          81,
+          79,
+          76
+        ],
+        "spread": 235
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-bt709-sample-1",
+    "mediaCapabilitiesCodec": "hvc1.2.4.H153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_1.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 4,
+        "avg": [
+          79,
+          35,
+          40
+        ],
+        "spread": 238
+      },
+      {
+        "t": 1,
+        "frames": 70,
+        "avg": [
+          34,
+          22,
+          21
+        ],
+        "spread": 230
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-bt709-sample-2",
+    "mediaCapabilitiesCodec": "hev1.2.4.L153.B0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_2.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 6,
+        "avg": [
+          1,
+          1,
+          1
+        ],
+        "spread": 183
+      },
+      {
+        "t": 2.04,
+        "frames": 25,
+        "avg": [
+          7,
+          7,
+          5
+        ],
+        "spread": 250
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-bt709-sample-3",
+    "mediaCapabilitiesCodec": "hev1.2.4.L150.B0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_3.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 6,
+        "avg": [
+          2,
+          2,
+          3
+        ],
+        "spread": 232
+      },
+      {
+        "t": 2.05,
+        "frames": 30,
+        "avg": [
+          7,
+          6,
+          4
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-bt709-sample-4",
+    "mediaCapabilitiesCodec": "hev1.2.4.L150.B0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_main10.mp4",
+    "outcome": "frame",
+    "width": 1920,
+    "height": 1080,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 4,
+        "avg": [
+          0,
+          0,
+          0
+        ],
+        "spread": 0
+      },
+      {
+        "t": 1.01,
+        "frames": 27,
+        "avg": [
+          221,
+          229,
+          235
+        ],
+        "spread": 197
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-bt709-sample-5",
+    "mediaCapabilitiesCodec": "hvc1.2.4.L150.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_2k24P_main10.mp4",
+    "outcome": "frame",
+    "width": 1934,
+    "height": 1088,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 4,
+        "avg": [
+          0,
+          0,
+          0
+        ],
+        "spread": 0
+      },
+      {
+        "t": 1.01,
+        "frames": 28,
+        "avg": [
+          0,
+          0,
+          0
+        ],
+        "spread": 0
+      }
+    ],
+    "flat": true,
+    "zeroYuvGreen": false,
+    "clip": "main10-bt709-sample-6",
+    "mediaCapabilitiesCodec": "hev1.2.4.L120.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_bilibili_pq_1.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 6,
+        "avg": [
+          10,
+          23,
+          29
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.06,
+        "frames": 65,
+        "avg": [
+          11,
+          24,
+          31
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hdr10-sample-1",
+    "mediaCapabilitiesCodec": "hev1.2.4.L153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_bilibili_pq_2.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          78,
+          96,
+          101
+        ],
+        "spread": 242
+      },
+      {
+        "t": 1.04,
+        "frames": 65,
+        "avg": [
+          78,
+          97,
+          102
+        ],
+        "spread": 242
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hdr10-sample-2",
+    "mediaCapabilitiesCodec": "hev1.2.4.L153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_bilibili_pq_4.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          7,
+          6,
+          5
+        ],
+        "spread": 245
+      },
+      {
+        "t": 1.06,
+        "frames": 67,
+        "avg": [
+          7,
+          6,
+          7
+        ],
+        "spread": 246
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hdr10-sample-3",
+    "mediaCapabilitiesCodec": "hev1.2.4.L153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_bilibili_pq_5.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          10,
+          31,
+          91
+        ],
+        "spread": 252
+      },
+      {
+        "t": 1.04,
+        "frames": 55,
+        "avg": [
+          10,
+          32,
+          91
+        ],
+        "spread": 252
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hdr10-sample-4",
+    "mediaCapabilitiesCodec": "hev1.2.4.L153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k30P_main10_1.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 6,
+        "avg": [
+          116,
+          117,
+          116
+        ],
+        "spread": 228
+      },
+      {
+        "t": 1.08,
+        "frames": 31,
+        "avg": [
+          116,
+          117,
+          116
+        ],
+        "spread": 228
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hdr10-sample-5",
+    "mediaCapabilitiesCodec": "hvc1.2.4.H150.B0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_hdr10_2.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 2,
+        "avg": [
+          6,
+          2,
+          4
+        ],
+        "spread": 244
+      },
+      {
+        "t": 2.04,
+        "frames": 33,
+        "avg": [
+          6,
+          3,
+          4
+        ],
+        "spread": 225
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hdr10-sample-6",
+    "mediaCapabilitiesCodec": "hev1.2.4.H153.B0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_hdr10_3.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 1,
+        "avg": [
+          3,
+          4,
+          7
+        ],
+        "spread": 243
+      },
+      {
+        "t": 0.95,
+        "frames": 29,
+        "avg": [
+          4,
+          5,
+          7
+        ],
+        "spread": 101
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hdr10-sample-7",
+    "mediaCapabilitiesCodec": "hev1.2.4.L150.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_hdr10_4.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 2,
+        "avg": [
+          55,
+          92,
+          118
+        ],
+        "spread": 188
+      },
+      {
+        "t": 1.05,
+        "frames": 32,
+        "avg": [
+          55,
+          91,
+          117
+        ],
+        "spread": 185
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hdr10-sample-8",
+    "mediaCapabilitiesCodec": "hev1.2.4.H153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k60P_main10_pq10.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 3,
+    "error": null,
+    "decodedFrames": 4,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0.02,
+        "frames": 4,
+        "avg": [
+          89,
+          88,
+          75
+        ],
+        "spread": 188
+      },
+      {
+        "t": 1.06,
+        "frames": 67,
+        "avg": [
+          89,
+          88,
+          75
+        ],
+        "spread": 193
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-pq10-sample-1",
+    "mediaCapabilitiesCodec": "hvc1.2.4.H153.B0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_bilibili_hlg_1.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 3,
+    "error": null,
+    "decodedFrames": 4,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0.04,
+        "frames": 4,
+        "avg": [
+          67,
+          64,
+          53
+        ],
+        "spread": 247
+      },
+      {
+        "t": 1.09,
+        "frames": 37,
+        "avg": [
+          67,
+          63,
+          53
+        ],
+        "spread": 246
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hlg-sample-1",
+    "mediaCapabilitiesCodec": "hvc1.2.4.L150.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_1.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 3,
+    "error": null,
+    "decodedFrames": 4,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0.02,
+        "frames": 4,
+        "avg": [
+          73,
+          47,
+          25
+        ],
+        "spread": 254
+      },
+      {
+        "t": 1.05,
+        "frames": 30,
+        "avg": [
+          72,
+          46,
+          25
+        ],
+        "spread": 254
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hlg-sample-2",
+    "mediaCapabilitiesCodec": "hvc1.2.4.H153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_2.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 4,
+    "error": null,
+    "decodedFrames": 4,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0.01,
+        "frames": 4,
+        "avg": [
+          56,
+          58,
+          39
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.04,
+        "frames": 30,
+        "avg": [
+          67,
+          49,
+          44
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hlg-sample-3",
+    "mediaCapabilitiesCodec": "hvc1.2.4.H153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_3.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 4,
+    "error": null,
+    "decodedFrames": 4,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0.01,
+        "frames": 4,
+        "avg": [
+          57,
+          57,
+          55
+        ],
+        "spread": 227
+      },
+      {
+        "t": 1.05,
+        "frames": 34,
+        "avg": [
+          57,
+          56,
+          54
+        ],
+        "spread": 229
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hlg-sample-4",
+    "mediaCapabilitiesCodec": "hvc1.2.4.H153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_4.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 4,
+    "error": null,
+    "decodedFrames": 4,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0.03,
+        "frames": 5,
+        "avg": [
+          63,
+          60,
+          61
+        ],
+        "spread": 224
+      },
+      {
+        "t": 1.07,
+        "frames": 29,
+        "avg": [
+          64,
+          61,
+          62
+        ],
+        "spread": 220
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hlg-sample-5",
+    "mediaCapabilitiesCodec": "hvc1.2.4.H153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_5.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 4,
+    "error": null,
+    "decodedFrames": 4,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0.04,
+        "frames": 5,
+        "avg": [
+          67,
+          69,
+          63
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.08,
+        "frames": 32,
+        "avg": [
+          73,
+          67,
+          68
+        ],
+        "spread": 237
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hlg-sample-6",
+    "mediaCapabilitiesCodec": "hvc1.2.4.H153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_6.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 3,
+    "error": null,
+    "decodedFrames": 4,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0.05,
+        "frames": 4,
+        "avg": [
+          74,
+          68,
+          57
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.09,
+        "frames": 32,
+        "avg": [
+          77,
+          71,
+          62
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-hlg-sample-7",
+    "mediaCapabilitiesCodec": "hvc1.2.4.H153.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_dolby_vision_profile5_1.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": false,
+      "smooth": false,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          0,
+          0,
+          0
+        ],
+        "spread": 0
+      },
+      {
+        "t": 1.14,
+        "frames": 69,
+        "avg": [
+          0,
+          0,
+          0
+        ],
+        "spread": 0
+      }
+    ],
+    "flat": true,
+    "zeroYuvGreen": false,
+    "clip": "main10-dv-p5-sample-1",
+    "mediaCapabilitiesCodec": "dvh1.05.09"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K30P_dolby_vision_profile5_1.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": false,
+      "smooth": false,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          103,
+          112,
+          106
+        ],
+        "spread": 170
+      },
+      {
+        "t": 1.07,
+        "frames": 39,
+        "avg": [
+          103,
+          112,
+          105
+        ],
+        "spread": 170
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "main10-dv-p5-sample-2",
+    "mediaCapabilitiesCodec": "dvh1.05.07"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_dolby_vision_profile8_1.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 3,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": false,
+      "smooth": false,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          0,
+          0,
+          0
+        ],
+        "spread": 0
+      },
+      {
+        "t": 1.15,
+        "frames": 70,
+        "avg": [
+          0,
+          0,
+          0
+        ],
+        "spread": 0
+      }
+    ],
+    "flat": true,
+    "zeroYuvGreen": false,
+    "clip": "main10-dv-p8-1-sample-1",
+    "mediaCapabilitiesCodec": "dvhe.08.07"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_msp.mp4",
+    "outcome": "frame",
+    "width": 1920,
+    "height": 1080,
+    "readyState": 4,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": true
+    },
+    "samples": [
+      {
+        "t": 0.04,
+        "frames": 1,
+        "avg": [
+          52,
+          60,
+          147
+        ],
+        "spread": 255
+      },
+      {
+        "t": 0.04,
+        "frames": 1,
+        "avg": [
+          52,
+          60,
+          147
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "msp-bt709-sample-1",
+    "mediaCapabilitiesCodec": "hev1.3.E.L120.0"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k60P_rext_10bit_422_eos_r5c_1.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-1",
+    "mediaCapabilitiesCodec": "hvc1.4.10.H153.9D.08"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k50P.mp4",
+    "outcome": "timeout",
+    "width": 0,
+    "height": 0,
+    "readyState": 4,
+    "error": null,
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-2",
+    "mediaCapabilitiesCodec": "hvc1.4.10.H156.9D.08"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_all_i.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-3",
+    "mediaCapabilitiesCodec": "hev1.4.10.L150.9F.A8"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K24P_rext_12bit_444_yuv444p12le_1.mp4",
+    "outcome": "timeout",
+    "width": 0,
+    "height": 0,
+    "readyState": 4,
+    "error": null,
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-4",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L180.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_2K24P_rext_10bit_444_yuv444p10le_1.mp4",
+    "outcome": "timeout",
+    "width": 0,
+    "height": 0,
+    "readyState": 4,
+    "error": null,
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-5",
+    "mediaCapabilitiesCodec": "hvc1.4.10.H120.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_2K24P_rext_10bit_444_yuv444p10le_3.mp4",
+    "outcome": "timeout",
+    "width": 0,
+    "height": 0,
+    "readyState": 4,
+    "error": null,
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-6",
+    "mediaCapabilitiesCodec": "hvc1.4.10.H120.90"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-8bit-400-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-7",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.9F.C8"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-8bit-420-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-8",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.9F.A8"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-8bit-422-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-9",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.9D.08"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-8bit-444-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-10",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.9E.08"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-10bit-400-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-11",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.9D.C8"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-10bit-420-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-12",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.9D.A8"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-10bit-422-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-13",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.9D.08"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-10bit-444-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-14",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.9C.08"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-12bit-400-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-15",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.99.C8"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-12bit-420-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-16",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.99.88"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-12bit-422-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-17",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.99.08"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-12bit-444-no-audio.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-bt709-sample-18",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.98.08"
+  },
+  {
+    "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_rext_12bit_444_pq.mp4",
+    "outcome": "timeout",
+    "width": 0,
+    "height": 0,
+    "readyState": 4,
+    "error": null,
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "rext-hdr10-sample-1",
+    "mediaCapabilitiesCodec": "hvc1.4.10.L93.98.08"
+  }
+]

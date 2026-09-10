@@ -317,6 +317,39 @@ jobs:
           cd /build/local-repo/x86_64
           repo-add feralfile-local.db.tar.gz ./*.pkg.tar.zst
 
+      - name: Build local kernel-module package (no R2 upload)
+        run: |
+          set -euo pipefail
+          # Same PKGBUILD the R2 rail builds via build-pkgbuild.yaml; here it
+          # joins the local repo so tag builds carry the amdgpu cap too.
+          PKGDIR="$GITHUB_WORKSPACE/packages/amdgpu-vcn-h264-cap"
+          useradd -m builder || true
+          chown -R builder:builder "$PKGDIR"
+          SRCINFO="$(su builder -c "cd \"$PKGDIR\" && makepkg --printsrcinfo")"
+          mapfile -t MAKEDEPENDS < <(printf '%s\n' "$SRCINFO" | awk -F' = ' '/^\tmakedepends = /{print $2}')
+          mapfile -t DEPENDS < <(printf '%s\n' "$SRCINFO" | awk -F' = ' '/^\tdepends = /{print $2}')
+          (( ${#MAKEDEPENDS[@]} )) || { echo "::error::no makedepends parsed from .SRCINFO"; exit 1; }
+          (( ${#DEPENDS[@]} )) || { echo "::error::no depends parsed from .SRCINFO"; exit 1; }
+          # Same guard as build-pkgbuild.yaml: a kernel pin the snapshot cannot
+          # satisfy must fail here with the reason, not later inside makepkg or
+          # mkarchiso with a generic message.
+          for dep in "${DEPENDS[@]}"; do
+            name="${dep%%[<>=]*}"; want="${dep#"$name"}"
+            have="$(pacman -Si "$name" | awk -F': *' '/^Version/{print $2; exit}')"
+            if [[ "$want" == =* && "$have" != "${want#=}" ]]; then
+              echo "::error::packages/amdgpu-vcn-h264-cap pins $dep but the pacman snapshot ships $name $have. Re-base the package (see its README) or pin the matching snapshot."
+              exit 1
+            fi
+          done
+          pacman -S --noconfirm --needed base-devel "${MAKEDEPENDS[@]}"
+          su builder -c "cd \"$PKGDIR\" && makepkg -f -d --noconfirm"
+          cp "$PKGDIR"/amdgpu-vcn-h264-cap-*.pkg.tar.zst /build/local-repo/x86_64/
+          # The extracted kernel tree plus unstripped objects is several GB;
+          # this job goes on to build a squashfs and an ISO on the same disk.
+          rm -rf "$PKGDIR/src" "$PKGDIR/pkg"
+          cd /build/local-repo/x86_64
+          repo-add feralfile-local.db.tar.gz ./amdgpu-vcn-h264-cap-*.pkg.tar.zst
+
       - name: Apply version-specific patches
         run: |
           if [ "${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}" = "2025/05/31" ]; then
