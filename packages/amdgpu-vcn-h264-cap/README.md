@@ -79,6 +79,22 @@ silently. To re-base:
 so a stale config or missing localversion file cannot produce a loadable but
 wrong module.
 
+## Build reuse in CI
+
+The module is a pure function of this directory and the pacman snapshot, so
+both CI rails cache the built package under a key made of those inputs
+(`actions/cache`, key `pkgbuild-amdgpu-vcn-h264-cap-<snapshot>-<hash>`, where
+the hash covers every file directly in this directory, `verify/` excluded).
+On a hit the R2 rail skips the compile and only signs and uploads; the tag
+rail skips the compile and copies the package into its local repo. Any edit
+to a file here (this README included), a `pkgrel` bump, or a snapshot change
+produces a new key and a fresh build, so a module cannot be reused across
+different inputs. A snapshot that moves the kernel under an unchanged key
+(only possible with `pacman_snapshot: latest`) is still caught by the
+`depends=` pre-check, which runs on every build. Caches are branch-scoped
+with fallback to `develop`, and ones unused for seven days are evicted;
+either case just rebuilds.
+
 ## Building locally
 
 ```

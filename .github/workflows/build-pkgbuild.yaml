@@ -58,15 +58,33 @@ jobs:
         with:
           pacman_snapshot: ${{ inputs.pacman_snapshot }}
 
+      # The artifact is a pure function of the package directory and the
+      # pacman snapshot (same sources, same config, same toolchain), so a
+      # previous build with identical inputs is reused instead of spending
+      # ~8 min recompiling amdgpu. Any edit to PKGBUILD, a patch or config, or
+      # a snapshot bump, changes the key and forces a rebuild; bumping pkgrel
+      # does too. Signing and upload still run on a hit so R2 stays complete
+      # for a branch whose repo has not carried the package yet.
+      - name: Restore previously built package
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: packages/${{ inputs.package }}/*.pkg.tar.zst
+          # Every file in the package directory (not subdirectories such as
+          # verify/): a hand-listed set would silently miss a source file added
+          # by a future re-base, and hashFiles ignores patterns that match nothing.
+          key: pkgbuild-${{ inputs.package }}-${{ inputs.pacman_snapshot }}-${{ hashFiles(format('packages/{0}/*', inputs.package)) }}
+
       - name: Install build tooling
         run: |
           pacman -S --noconfirm --needed base-devel shadow
+          useradd -m builder
 
       - name: Install makedepends
+        if: steps.cache.outputs.cache-hit != 'true'
         working-directory: packages/${{ inputs.package }}
         run: |
           set -euo pipefail
-          useradd -m builder
           chown -R builder:builder .
           # Only makedepends are installed here. depends= may name the exact
           # kernel (see amdgpu-vcn-h264-cap), and installing a kernel into
@@ -84,6 +102,7 @@ jobs:
         working-directory: packages/${{ inputs.package }}
         run: |
           set -euo pipefail
+          chown -R builder:builder .
           # A version-pinned depends= (e.g. linux-lts=6.18.38-2) that the
           # snapshot cannot satisfy would only fail later, inside mkarchiso,
           # with a generic dependency error. Fail here with the reason.
@@ -104,12 +123,23 @@ jobs:
           done
 
       - name: Build package
+        if: steps.cache.outputs.cache-hit != 'true'
         working-directory: packages/${{ inputs.package }}
         run: |
           set -euo pipefail
           # -d: dependency presence was handled above; depends= is deliberately
           # not installed in the container.
           su builder -c "makepkg -f -d --noconfirm"
+
+      - name: Show package
+        working-directory: packages/${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.cache.outputs.cache-hit }}" = "true" ]; then
+            echo "reusing package built earlier for identical inputs (cache hit)"
+          else
+            echo "package built in this run"
+          fi
           ls -la ./*.pkg.tar.zst
           bsdtar -tf ./*.pkg.tar.zst
 

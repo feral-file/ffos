@@ -317,6 +317,15 @@ jobs:
           cd /build/local-repo/x86_64
           repo-add feralfile-local.db.tar.gz ./*.pkg.tar.zst
 
+      # Same reuse rule as build-pkgbuild.yaml: identical package inputs and
+      # snapshot mean an identical module, so skip the ~8 min rebuild.
+      - name: Restore previously built kernel-module package
+        id: module-cache
+        uses: actions/cache@v4
+        with:
+          path: packages/amdgpu-vcn-h264-cap/*.pkg.tar.zst
+          key: pkgbuild-amdgpu-vcn-h264-cap-${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}-${{ hashFiles('packages/amdgpu-vcn-h264-cap/*') }}
+
       - name: Build local kernel-module package (no R2 upload)
         run: |
           set -euo pipefail
@@ -341,8 +350,13 @@ jobs:
               exit 1
             fi
           done
-          pacman -S --noconfirm --needed base-devel "${MAKEDEPENDS[@]}"
-          su builder -c "cd \"$PKGDIR\" && makepkg -f -d --noconfirm"
+          if [ "${{ steps.module-cache.outputs.cache-hit }}" = "true" ]; then
+            echo "reusing kernel-module package built earlier for identical inputs (cache hit)"
+          else
+            pacman -S --noconfirm --needed base-devel "${MAKEDEPENDS[@]}"
+            su builder -c "cd \"$PKGDIR\" && makepkg -f -d --noconfirm"
+          fi
+          ls -la "$PKGDIR"/amdgpu-vcn-h264-cap-*.pkg.tar.zst
           cp "$PKGDIR"/amdgpu-vcn-h264-cap-*.pkg.tar.zst /build/local-repo/x86_64/
           # The extracted kernel tree plus unstripped objects is several GB;
           # this job goes on to build a squashfs and an ISO on the same disk.
