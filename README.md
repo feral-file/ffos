@@ -146,6 +146,17 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 - `is_development`: Include development tools
 - `install_to_emmc`: Build installation image
 
+### Dispatch Policy (agents)
+Every `workflow_dispatch` workflow here except `verify.yml` publishes under the
+dispatch branch's R2 prefix (the image builds upload the ISO; the manual
+component, player, and pacman-repo workflows write the package repo), so a
+dispatch on `release` (or with `environment=Production`) deploys straight to
+fielded devices. Coding agents must never trigger that dispatch, and may
+dispatch a `staging` build only after explicit user confirmation of the exact
+parameters. `scripts/agent-iso-build-guard.sh` enforces this as a pre-shell hook
+for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; the rule itself is in
+`AGENTS.md`, "Release guardrail: ISO image builds".
+
 ## R2 Storage Structure
 
 ```
