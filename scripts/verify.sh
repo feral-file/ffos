@@ -24,10 +24,10 @@ require_tool shellcheck
 mapfile -t package_shell_files < <(find packages -type f -name '*.sh' | sort)
 
 log "Checking shell syntax"
-bash -n scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+bash -n scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
 log "Running shellcheck"
-shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
 log "Validating GitHub workflow YAML"
 ruby <<'RUBY'
@@ -141,6 +141,12 @@ for doc in AGENTS.md CLAUDE.md GEMINI.md .cursor/rules/release-iso-build-policy.
     exit 1
   }
 done
+
+log "Checking agent branch flow guard"
+# AGENTS.md "Branch flow guardrail": agents target develop only. The test
+# pins the decisions and that the ISO guard still chains into this guard,
+# which is its only wiring.
+./scripts/test-agent-branch-flow-guard.sh
 
 log "Checking README workflow inventory"
 while IFS= read -r workflow; do
