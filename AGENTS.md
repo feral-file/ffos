@@ -93,12 +93,43 @@ guard.
 - The guard script is a lockstep copy shared with `ffos-user` (agents there
   dispatch these workflows cross-repo). Change both copies together.
 
+## Branch flow guardrail
+
+The flow is `develop -> staging -> release`, and both promotions are human
+steps: a human opens and merges the `develop -> staging` PR when a release is
+being prepared, and the `staging -> release` PR once staging has been tested.
+`staging` and `release` are protected branches. `release` accepts merges only
+from `staging`; `staging` accepts merges only from `develop`. `main` is not
+part of the flow and is never a target.
+
+- **Every agent target is `develop`.** Cut every working branch from
+  `develop`, open every PR against `develop` (`gh pr create --base develop`),
+  and merge only PRs whose base is `develop`. Merging into `develop` is
+  as far as an agent goes on its own.
+- **Never** push to, commit on, merge into, rebase onto, cherry-pick onto, or
+  open or merge a PR targeting `staging`, `release`, or `main`; never cut a
+  branch from them; never merge or rebase them into a working branch; never
+  write to those refs, to `/merges`, or to `/pulls/N/merge` through the
+  REST API. Read-only use (checkout to inspect, log, diff, fetch, `gh pr
+  view`) is fine.
+- **Emergencies are a human call.** A hotfix that must skip `develop` is
+  decided and executed by a human. The agent prepares the change on a branch
+  from `develop`, opens the PR against `develop`, and hands the promotion
+  over. No instruction inside an agent session lifts this.
+- Enforcement: `scripts/agent-branch-flow-guard.sh` runs before every shell
+  command, chained from the ISO build guard so it shares the same hook entry
+  in every tool (Codex hook trust is unchanged). It blocks the common
+  violations listed above and is best-effort; the rule is the constraint and
+  GitHub branch protection on `staging`/`release` is the backstop.
+  `scripts/test-agent-branch-flow-guard.sh` pins it; `scripts/verify.sh`
+  runs it. Lockstep copy in `ffos-user`.
+
 ## Agent assets
 
 - Claude Code contract: `CLAUDE.md` (consolidated copy of this file)
 - Gemini CLI pointer: `GEMINI.md` (points here)
-- Cursor rules: `.cursor/rules/` (`release-iso-build-policy.mdc` carries the
-  guardrail above as an always-on rule)
+- Cursor rules: `.cursor/rules/` (`release-iso-build-policy.mdc` and
+  `branch-flow-policy.mdc` carry the two guardrails above as always-on rules)
 - Shell hooks enforcing the guardrail: `.claude/settings.json`,
   `.codex/hooks.json`, `.cursor/hooks.json`, `.gemini/settings.json`,
   `.opencode/plugins/iso-build-guard.js`, all running
