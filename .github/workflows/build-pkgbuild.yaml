@@ -1,0 +1,197 @@
+name: 🔒 Build PKGBUILD Package
+
+# Builds one directory under packages/ (a hand-written PKGBUILD, as opposed
+# to the generated Go/Rust PKGBUILDs in build-components.yaml), signs the
+# result with the release key and uploads it to the branch's R2 pacman repo.
+# pacman-repo.yaml picks it up when it regenerates the database.
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: 'Directory name under packages/'
+        required: true
+        type: string
+      environment:
+        description: 'Environment (selects secrets and R2 bucket)'
+        required: true
+        type: string
+        default: 'Development'
+      pacman_snapshot:
+        description: 'Pacman repository snapshot to use'
+        required: false
+        type: string
+        default: 'latest'
+      container_image:
+        description: 'Container image to use for the build'
+        required: true
+        type: string
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+      CLOUDFLARE_ACCESS_KEY_ID:
+        required: true
+      CLOUDFLARE_SECRET_ACCESS_KEY:
+        required: true
+      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN:
+        required: true
+      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID:
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-package:
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.container_image }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup pacman
+        uses: ./.github/actions/setup-pacman
+        with:
+          pacman_snapshot: ${{ inputs.pacman_snapshot }}
+
+      # The artifact is a pure function of the package directory and the
+      # pacman snapshot (same sources, same config, same toolchain), so a
+      # previous build with identical inputs is reused instead of spending
+      # ~8 min recompiling amdgpu. Any edit to PKGBUILD, a patch or config, or
+      # a snapshot bump, changes the key and forces a rebuild; bumping pkgrel
+      # does too. Signing and upload still run on a hit so R2 stays complete
+      # for a branch whose repo has not carried the package yet.
+      - name: Restore previously built package
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: packages/${{ inputs.package }}/*.pkg.tar.zst
+          # Every file in the package directory (not subdirectories such as
+          # verify/): a hand-listed set would silently miss a source file added
+          # by a future re-base, and hashFiles ignores patterns that match nothing.
+          key: pkgbuild-${{ inputs.package }}-${{ inputs.pacman_snapshot }}-${{ hashFiles(format('packages/{0}/*', inputs.package)) }}
+
+      - name: Install build tooling
+        run: |
+          pacman -S --noconfirm --needed base-devel shadow
+          useradd -m builder
+
+      - name: Install makedepends
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: packages/${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          chown -R builder:builder .
+          # Only makedepends are installed here. depends= may name the exact
+          # kernel (see amdgpu-vcn-h264-cap), and installing a kernel into
+          # the build container would run initramfs hooks for no benefit;
+          # the image build resolves depends= against the same snapshot.
+          mapfile -t MAKEDEPENDS < <(su builder -c "makepkg --printsrcinfo" \
+            | awk -F' = ' '/^\tmakedepends = /{print $2}')
+          # mapfile inside a process substitution cannot fail the step, so an
+          # unparsed .SRCINFO would silently install nothing. Refuse that.
+          (( ${#MAKEDEPENDS[@]} )) || { echo "::error::no makedepends parsed from .SRCINFO"; exit 1; }
+          echo "makedepends: ${MAKEDEPENDS[*]}"
+          pacman -S --noconfirm --needed "${MAKEDEPENDS[@]}"
+
+      - name: Check depends= resolve in this snapshot
+        working-directory: packages/${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          chown -R builder:builder .
+          # A version-pinned depends= (e.g. linux-lts=6.18.38-2) that the
+          # snapshot cannot satisfy would only fail later, inside mkarchiso,
+          # with a generic dependency error. Fail here with the reason.
+          mapfile -t DEPENDS < <(su builder -c "makepkg --printsrcinfo" \
+            | awk -F' = ' '/^\tdepends = /{print $2}')
+          # Same reason as above: an empty array would turn this guard into a
+          # silent no-op.
+          (( ${#DEPENDS[@]} )) || { echo "::error::no depends parsed from .SRCINFO"; exit 1; }
+          for dep in "${DEPENDS[@]}"; do
+            name="${dep%%[<>=]*}"
+            want="${dep#"$name"}"
+            have="$(pacman -Si "$name" | awk -F': *' '/^Version/{print $2; exit}')"
+            echo "$name: snapshot has $have, package wants ${want:-any}"
+            if [[ "$want" == =* && "$have" != "${want#=}" ]]; then
+              echo "::error::packages/${{ inputs.package }} pins $dep but the pacman snapshot ships $name $have. Re-base the package (see its README) or pin the snapshot that matches."
+              exit 1
+            fi
+          done
+
+      - name: Build package
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: packages/${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          # -d: dependency presence was handled above; depends= is deliberately
+          # not installed in the container.
+          su builder -c "makepkg -f -d --noconfirm"
+
+      - name: Show package
+        working-directory: packages/${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.cache.outputs.cache-hit }}" = "true" ]; then
+            echo "reusing package built earlier for identical inputs (cache hit)"
+          else
+            echo "package built in this run"
+          fi
+          ls -la ./*.pkg.tar.zst
+          bsdtar -tf ./*.pkg.tar.zst
+
+      - name: Configure AWS credentials (OIDC for KMS)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
+          aws-region: 'ap-northeast-1'
+
+      - name: Install kmspgp
+        run: |
+          curl -sL -o /usr/local/bin/kmspgp \
+            https://github.com/hf/kmspgp/releases/download/v1.1.0/kmspgp-v1.1.0-linux-amd64
+          chmod +x /usr/local/bin/kmspgp
+
+      - name: Sign packages with AWS KMS (OpenPGP)
+        working-directory: packages/${{ inputs.package }}
+        env:
+          KMS_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
+        run: |
+          set -euo pipefail
+          for p in *.pkg.tar.zst; do
+            kmspgp sign "$KMS_KEY_ID" < "$p" > "$p.sig"
+          done
+
+      - name: Rclone to r2
+        working-directory: packages/${{ inputs.package }}
+        run: |
+          pacman -S --noconfirm --needed rclone
+
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf << EOF
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+          secret_access_key = ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+          endpoint = https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          acl = private
+          no_check_bucket = true
+          EOF
+
+          rclone copy . \
+            "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/os/x86_64/" \
+            --include="*.pkg.tar.zst" \
+            --include="*.pkg.tar.zst.sig" \
+            --s3-upload-cutoff=100M \
+            --s3-chunk-size=100M \
+            --transfers=7 \
+            --verbose \
+            --stats=1s
+
+      - name: Package Info
+        run: |
+          echo "packages/${{ inputs.package }} built, signed and uploaded to R2"

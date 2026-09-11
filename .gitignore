@@ -4,3 +4,11 @@
 
 .omc/
 .omx/
+
+# makepkg output under packages/*/ (see build-pkgbuild.yaml)
+packages/*/src/
+packages/*/pkg/
+packages/*/*.pkg.tar.zst
+packages/*/*.pkg.tar.zst.sig
+packages/*/*.tar.xz
+packages/*/*.tar.xz.sign
