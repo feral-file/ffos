@@ -122,6 +122,11 @@ bsdtar -tf amdgpu-vcn-h264-cap-*.pkg.tar.zst
   (`bracket-results.json`), with hardware decode disabled
   (`sw-only-results.json`, `noflag-results.json`), the HEVC set
   (`hevc-demo-results.json`) and after the fix (`patched-module-results.json`).
+- `results-2026-09-11/`: the same device reinstalled from the CI-built image
+  that carries this package: bracket (`new-image-results.json`) and the HEVC
+  set (`hevc-demo-new-image.json`), identical to the day before. Clips that
+  open on a black frame (multiview, Dolby Vision, one 1080p Main10) show
+  content when sampled with `--sample-gap 4`; only HEVC RExt fails.
 
 With the package installed and the device rebooted:
 

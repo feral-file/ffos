@@ -64,7 +64,7 @@ WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 # Kept as a Python format string so the clip URL/timeout are substituted as
 # JSON literals; the function body is otherwise plain browser JS.
 PROBE_JS = r"""
-(async (url, timeoutMs, codec) => {
+(async (url, timeoutMs, codec, gapMs) => {
   const out = { url };
   const v = document.createElement('video');
   v.muted = true;
@@ -149,7 +149,7 @@ PROBE_JS = r"""
       samples.push(sample());
       // A legitimate clip can open on a flat frame; a second sample a
       // second later separates "flat title card" from "decoder wrote nothing".
-      await new Promise((r) => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, gapMs));
       samples.push(sample());
     } catch (e) {
       out.sampleError = String(e);
@@ -166,7 +166,7 @@ PROBE_JS = r"""
   v.removeAttribute('src');
   v.load();
   return out;
-})(%s, %d, %s)
+})(%s, %d, %s, %d)
 """
 
 
@@ -385,8 +385,8 @@ def codec_for_clip(name: str, fallback: str) -> str | None:
     return fallback or None
 
 
-def probe_clip(session: CDPSession, url: str, timeout_ms: int, codec: str | None) -> dict:
-    expression = PROBE_JS % (json.dumps(url), timeout_ms, json.dumps(codec))
+def probe_clip(session: CDPSession, url: str, timeout_ms: int, codec: str | None, gap_ms: int = 1000) -> dict:
+    expression = PROBE_JS % (json.dumps(url), timeout_ms, json.dumps(codec), gap_ms)
     result = session.call(
         "Runtime.evaluate",
         {"expression": expression, "awaitPromise": True, "returnByValue": True},
@@ -483,6 +483,12 @@ def main() -> int:
         ),
     )
     parser.add_argument("--only", default="", help="substring filter on clip labels")
+    parser.add_argument(
+        "--sample-gap",
+        type=float,
+        default=1.0,
+        help="seconds between the two frame samples (raise it to tell a long black lead-in from a dead decode)",
+    )
     parser.add_argument("--json", type=Path, help="also write raw results to this file")
     args = parser.parse_args()
 
@@ -510,13 +516,37 @@ def main() -> int:
             print(f"--only {args.only!r} matched none of the {total} clips", file=sys.stderr)
             return 2
 
-    target = find_player_target(args.devtools, args.page_prefix)
-    print(f"probing {len(entries)} clips via page target {target.get('url')}", flush=True)
-    session = CDPSession(target["webSocketDebuggerUrl"], timeout=args.timeout + 10)
+    def connect() -> CDPSession:
+        target = find_player_target(args.devtools, args.page_prefix)
+        print(f"connected to page target {target.get('url')}", flush=True)
+        return CDPSession(target["webSocketDebuggerUrl"], timeout=args.timeout + 10)
+
+    print(f"probing {len(entries)} clips", flush=True)
+    session = connect()
     results = []
     try:
         for entry in entries:
-            row = probe_clip(session, entry["url"], int(args.timeout * 1000), entry["codec"])
+            # The kiosk page is live: the player navigates on playlist changes,
+            # reloads, and controld recovery. DevTools then answers "Inspected
+            # target navigated or closed" for the old session. Reconnect to the
+            # current page target and retry the clip once instead of aborting
+            # a run that may be an hour into a long manifest.
+            for attempt in (1, 2):
+                try:
+                    row = probe_clip(
+                        session, entry["url"], int(args.timeout * 1000), entry["codec"],
+                        gap_ms=int(args.sample_gap * 1000),
+                    )
+                    break
+                except (RuntimeError, ConnectionError) as exc:
+                    if attempt == 2:
+                        raise
+                    print(f"{entry['label']:40s} page went away ({exc}); reconnecting", flush=True)
+                    try:
+                        session.close()
+                    except OSError:
+                        pass
+                    session = connect()
             row["clip"] = entry["label"]
             row["mediaCapabilitiesCodec"] = entry["codec"]
             results.append(row)
