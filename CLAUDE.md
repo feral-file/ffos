@@ -82,9 +82,22 @@ guard.
   release/Production dispatches everywhere. It prompts the user on
   staging/Staging where the tool has an "ask" decision (Claude Code, Cursor);
   Codex, Gemini, and OpenCode have none, so there staging is denied too and
-  the human dispatches it after the agent has shown the parameters. `gh run
-  rerun` is escalated the same way because a rerun cannot be attributed to a
-  branch. `scripts/test-agent-iso-build-guard.sh` pins the decisions in every
+  the human dispatches it after the agent has shown the parameters. The guard
+  fails closed: reruns (`gh run rerun` and the REST rerun endpoints) are
+  denied outright because a rerun restarts whatever the original run was, and
+  so is any dispatch it cannot classify (a numeric workflow ID, a workflow
+  name or ref or input hidden behind a shell variable or substitution, a
+  payload from `--input`/`--json`/`@file`, a REST dispatch without a literal
+  ref, an `environment` value that is not one of the three choices). Rewrite
+  such a command with literal values or hand it to the human.
+  `scripts/verify-agent-hooks-e2e.sh` drives each installed client with a
+  harmless probe and proves the hook fired and the deny held; run it after
+  touching any hook config or upgrading a client. **Codex runs a project hook
+  only after it is trusted in `~/.codex/config.toml` and skips it silently
+  otherwise**, so every Codex user must run `scripts/codex-hook-trust.sh
+  --apply` once per clone, and again after any edit to `.codex/hooks.json`.
+  Gemini and OpenCode run the project hook/plugin without a trust step.
+  `scripts/test-agent-iso-build-guard.sh` pins the decisions in every
   dialect and that each config still points at the guard; `scripts/verify.sh`
   runs it. Any tool not listed here (or the GitHub web UI driven by browser
   automation) has no hook: for it this section is the enforcement, and a
