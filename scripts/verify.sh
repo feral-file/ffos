@@ -24,10 +24,10 @@ require_tool shellcheck
 mapfile -t package_shell_files < <(find packages -type f -name '*.sh' | sort)
 
 log "Checking shell syntax"
-bash -n scripts/verify.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+bash -n scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
 log "Running shellcheck"
-shellcheck scripts/verify.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
 log "Validating GitHub workflow YAML"
 ruby <<'RUBY'
@@ -93,6 +93,47 @@ while IFS= read -r workflow; do
     exit 1
   }
 done <<< "$offline_cache_workflows"
+
+log "Checking agent ISO build guard"
+# AGENTS.md "Release guardrail: ISO image builds": the pre-shell hook that
+# blocks release/Production ISO dispatches and escalates staging, wired for
+# Claude Code, Codex, Cursor, Gemini CLI, and OpenCode. The test pins its
+# decisions and that every tool's config still points at it, since a dropped
+# hook entry would fail open with no error anywhere. The doc check pins that
+# the rule the hooks enforce is still stated where agents read it.
+./scripts/test-agent-iso-build-guard.sh
+for cfg in .claude/settings.json .codex/hooks.json .cursor/hooks.json .gemini/settings.json; do
+  ruby -rjson -e 'JSON.parse(File.read(ARGV[0]))' "$cfg" || {
+    printf '%s is not valid JSON\n' "$cfg" >&2
+    exit 1
+  }
+done
+# Every workflow_dispatch workflow in this repo publishes to R2 under the
+# dispatch branch's prefix, so every one of them must be named in the guard's
+# workflow regex. Discovered, not hardcoded, so a new dispatchable workflow
+# cannot land unguarded: adding one means adding it to the guard (both repos)
+# and its tests in the same change. verify.yml is the one dispatchable
+# workflow that publishes nothing.
+guard_regex_line="$(grep -E "^guarded_workflow_re=" scripts/agent-iso-build-guard.sh)"
+[[ -n "$guard_regex_line" ]] || {
+  printf 'scripts/agent-iso-build-guard.sh no longer defines guarded_workflow_re\n' >&2
+  exit 1
+}
+while IFS= read -r workflow; do
+  stem="$(basename "$workflow")"
+  stem="${stem%.yml}"; stem="${stem%.yaml}"
+  [[ "$stem" == "verify" ]] && continue
+  printf '%s' "$guard_regex_line" | grep -Fq "$stem" || {
+    printf '%s is workflow_dispatch-triggered but not listed in guarded_workflow_re in scripts/agent-iso-build-guard.sh (and its ffos-user lockstep copy)\n' "$workflow" >&2
+    exit 1
+  }
+done < <(grep -lE '^[[:space:]]+workflow_dispatch:' .github/workflows/*.yml .github/workflows/*.yaml | sort)
+for doc in AGENTS.md CLAUDE.md GEMINI.md .cursor/rules/release-iso-build-policy.mdc; do
+  grep -q 'Release guardrail: ISO image builds' "$doc" || {
+    printf '%s lost the "Release guardrail: ISO image builds" section\n' "$doc" >&2
+    exit 1
+  }
+done
 
 log "Checking README workflow inventory"
 while IFS= read -r workflow; do
