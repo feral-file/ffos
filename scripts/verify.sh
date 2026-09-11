@@ -24,10 +24,10 @@ require_tool shellcheck
 mapfile -t package_shell_files < <(find packages -type f -name '*.sh' | sort)
 
 log "Checking shell syntax"
-bash -n scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+bash -n scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
 log "Running shellcheck"
-shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
 log "Validating GitHub workflow YAML"
 ruby <<'RUBY'
@@ -128,6 +128,13 @@ while IFS= read -r workflow; do
     exit 1
   }
 done < <(grep -lE '^[[:space:]]+workflow_dispatch:' .github/workflows/*.yml .github/workflows/*.yaml | sort)
+# The Codex trust helper must keep deriving its identity from the committed
+# hook entry: a drift here would print a hash Codex rejects, and Codex would
+# then skip the guard silently.
+./scripts/codex-hook-trust.sh | grep -q 'trusted_hash = "sha256:[0-9a-f]\{64\}"' || {
+  printf 'scripts/codex-hook-trust.sh no longer prints a trust entry for .codex/hooks.json\n' >&2
+  exit 1
+}
 for doc in AGENTS.md CLAUDE.md GEMINI.md .cursor/rules/release-iso-build-policy.mdc; do
   grep -q 'Release guardrail: ISO image builds' "$doc" || {
     printf '%s lost the "Release guardrail: ISO image builds" section\n' "$doc" >&2

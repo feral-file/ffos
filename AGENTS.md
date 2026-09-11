@@ -78,6 +78,13 @@ guard.
   payload from `--input`/`--json`/`@file`, a REST dispatch without a literal
   ref, an `environment` value that is not one of the three choices). Rewrite
   such a command with literal values or hand it to the human.
+  `scripts/verify-agent-hooks-e2e.sh` drives each installed client with a
+  harmless probe and proves the hook fired and the deny held; run it after
+  touching any hook config or upgrading a client. **Codex runs a project hook
+  only after it is trusted in `~/.codex/config.toml` and skips it silently
+  otherwise**, so every Codex user must run `scripts/codex-hook-trust.sh
+  --apply` once per clone, and again after any edit to `.codex/hooks.json`.
+  Gemini and OpenCode run the project hook/plugin without a trust step.
   `scripts/test-agent-iso-build-guard.sh` pins the decisions in every
   dialect and that each config still points at the guard; `scripts/verify.sh`
   runs it. Any tool not listed here (or the GitHub web UI driven by browser
