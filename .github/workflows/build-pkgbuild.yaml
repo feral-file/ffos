@@ -70,10 +70,22 @@ jobs:
         uses: actions/cache@v4
         with:
           path: packages/${{ inputs.package }}/*.pkg.tar.zst
-          # Every file in the package directory (not subdirectories such as
-          # verify/): a hand-listed set would silently miss a source file added
-          # by a future re-base, and hashFiles ignores patterns that match nothing.
-          key: pkgbuild-${{ inputs.package }}-${{ inputs.pacman_snapshot }}-${{ hashFiles(format('packages/{0}/*', inputs.package)) }}
+          # Only the PKGBUILD is hashed, and that is a complete fingerprint of
+          # the local sources: every patch and config file is listed in
+          # source= with a real sha256sum that makepkg verifies, so editing one
+          # without updating the PKGBUILD fails the build rather than reusing a
+          # stale artifact, and adding one changes source=. A package that
+          # lists a local source with a SKIP checksum must not rely on this
+          # cache.
+          #
+          # Do not widen this to packages/<pkg>/*. hashFiles descends into
+          # matched directories, and the key is evaluated twice: at restore
+          # time, when the directory holds only the checked-in files, and in
+          # the post step, when makepkg has left its src/ and pkg/ trees (the
+          # whole kernel source and build output) behind. Hashing those trees
+          # on the host runner failed and marked an otherwise successful job
+          # as failed (run 34589376367).
+          key: pkgbuild-${{ inputs.package }}-${{ inputs.pacman_snapshot }}-${{ hashFiles(format('packages/{0}/PKGBUILD', inputs.package)) }}
 
       - name: Install build tooling
         run: |
