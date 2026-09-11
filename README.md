@@ -29,6 +29,7 @@ FFOS is the centralized build repository responsible for creating FFOS images. I
 ffos/
 ├── .github/workflows/           # GitHub Actions workflows
 │   ├── build-components.yaml    # Individual component build
+│   ├── build-pkgbuild.yaml     # Hand-written PKGBUILDs under packages/
 │   ├── pacman-repo.yaml        # Pacman repository management
 │   ├── build-image-to-cf.yml   # Complete build pipeline
 │   └── pure-build-image-to-cf.yml # Pure ISO build
@@ -37,6 +38,8 @@ ffos/
 │   ├── efiboot/                # EFI boot configuration
 │   ├── packages.x86_64         # Package list
 │   └── profiledef.sh           # Profile definition
+├── packages/                   # Hand-written PKGBUILDs built by build-pkgbuild.yaml
+│   └── amdgpu-vcn-h264-cap/    # Rebuilt amdgpu.ko, VCN 3.1.1 H.264 cap (ffos-user#302)
 └── README.md                   # This file
 ```
 
@@ -143,6 +146,17 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 - `is_development`: Include development tools
 - `install_to_emmc`: Build installation image
 
+### Dispatch Policy (agents)
+Every `workflow_dispatch` workflow here except `verify.yml` publishes under the
+dispatch branch's R2 prefix (the image builds upload the ISO; the manual
+component, player, and pacman-repo workflows write the package repo), so a
+dispatch on `release` (or with `environment=Production`) deploys straight to
+fielded devices. Coding agents must never trigger that dispatch, and may
+dispatch a `staging` build only after explicit user confirmation of the exact
+parameters. `scripts/agent-iso-build-guard.sh` enforces this as a pre-shell hook
+for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; the rule itself is in
+`AGENTS.md`, "Release guardrail: ISO image builds".
+
 ## R2 Storage Structure
 
 ```
@@ -211,6 +225,7 @@ This workflow is intended for fast repository configuration validation. Release/
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
 | `build-components.yaml` | `workflow_call` | Package one `ffos-user` component and upload the package/signature to R2. |
+| `build-pkgbuild.yaml` | `workflow_call` | Build one hand-written `packages/<name>/PKGBUILD` (today: `amdgpu-vcn-h264-cap`, the rebuilt amdgpu module for ffos-user#302), sign it, and upload the package/signature to R2. |
 | `build-feral-player.yaml` | `workflow_call` | Build the `ff-player` static export, package it as `feral-player`, and upload package artifacts to R2. |
 | `pacman-repo.yaml` | `workflow_call` | Download packages from R2, rebuild/sign the pacman DB, and upload the DB files. |
 | `permission-check.yaml` | `workflow_call` | Restrict privileged staging/release workflow runs to repository admins. |

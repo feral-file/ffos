@@ -1,0 +1,58 @@
+[
+  {
+    "url": "http://127.0.0.1:8765/h264_3840x2160.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 6,
+        "avg": [
+          124,
+          130,
+          126
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.09,
+        "frames": 31,
+        "avg": [
+          124,
+          130,
+          126
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "h264_3840x2160.mp4",
+    "mediaCapabilitiesCodec": "avc1.640034"
+  },
+  {
+    "url": "http://127.0.0.1:8765/hevc_3840x2160.mp4",
+    "outcome": "error",
+    "width": 0,
+    "height": 0,
+    "readyState": 0,
+    "error": {
+      "code": 4,
+      "message": "PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    "decodedFrames": 0,
+    "droppedFrames": 0,
+    "clip": "hevc_3840x2160.mp4",
+    "mediaCapabilitiesCodec": "hvc1.1.6.L180.B0"
+  }
+]

@@ -163,9 +163,27 @@ jobs:
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
+  build-amdgpu-vcn-h264-cap:
+    # Rebuilt amdgpu.ko with the VCN 3.1.1 H.264 decode cap (ffos-user#302).
+    # Pinned to the snapshot's exact linux-lts; see packages/amdgpu-vcn-h264-cap/README.md.
+    needs: [permission-check, resolve-container]
+    name: Build amdgpu VCN H.264 cap module
+    uses: ./.github/workflows/build-pkgbuild.yaml
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+      CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
+      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
+    with:
+      package: amdgpu-vcn-h264-cap
+      environment: ${{ inputs.environment }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+      container_image: ${{ needs.resolve-container.outputs.image }}
+
   build-feralfile-pacman-repo:
     name: Build Feralfile pacman repo
-    needs: [permission-check, resolve-container, build-feral-controld, build-feral-sys-monitord, build-feral-watchdog, build-feral-player]
+    needs: [permission-check, resolve-container, build-feral-controld, build-feral-sys-monitord, build-feral-watchdog, build-feral-player, build-amdgpu-vcn-h264-cap]
     uses: ./.github/workflows/pacman-repo.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

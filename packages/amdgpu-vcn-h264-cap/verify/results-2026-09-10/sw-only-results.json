@@ -1,0 +1,330 @@
+[
+  {
+    "url": "http://127.0.0.1:8765/h264_2048x2048.mp4",
+    "outcome": "frame",
+    "width": 2048,
+    "height": 2048,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 2,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          124,
+          131,
+          125
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.05,
+        "frames": 33,
+        "avg": [
+          125,
+          130,
+          126
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "h264_2048x2048.mp4",
+    "mediaCapabilitiesCodec": "avc1.640034"
+  },
+  {
+    "url": "http://127.0.0.1:8765/h264_3840x2160.mp4",
+    "outcome": "frame",
+    "width": 3840,
+    "height": 2160,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 5,
+        "avg": [
+          124,
+          130,
+          126
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.09,
+        "frames": 31,
+        "avg": [
+          124,
+          130,
+          126
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "h264_3840x2160.mp4",
+    "mediaCapabilitiesCodec": "avc1.640034"
+  },
+  {
+    "url": "http://127.0.0.1:8765/h264_4080x4096.mp4",
+    "outcome": "frame",
+    "width": 4080,
+    "height": 4096,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 7,
+        "avg": [
+          125,
+          131,
+          125
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.21,
+        "frames": 39,
+        "avg": [
+          125,
+          130,
+          126
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "h264_4080x4096.mp4",
+    "mediaCapabilitiesCodec": "avc1.640034"
+  },
+  {
+    "url": "http://127.0.0.1:8765/h264_4096x3072.mp4",
+    "outcome": "frame",
+    "width": 4096,
+    "height": 3072,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 6,
+        "avg": [
+          125,
+          130,
+          126
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.14,
+        "frames": 36,
+        "avg": [
+          125,
+          130,
+          126
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "h264_4096x3072.mp4",
+    "mediaCapabilitiesCodec": "avc1.640034"
+  },
+  {
+    "url": "http://127.0.0.1:8765/h264_4096x3584.mp4",
+    "outcome": "frame",
+    "width": 4096,
+    "height": 3584,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 6,
+        "avg": [
+          125,
+          130,
+          126
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.13,
+        "frames": 36,
+        "avg": [
+          125,
+          130,
+          126
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "h264_4096x3584.mp4",
+    "mediaCapabilitiesCodec": "avc1.640034"
+  },
+  {
+    "url": "http://127.0.0.1:8765/h264_4096x3840.mp4",
+    "outcome": "frame",
+    "width": 4096,
+    "height": 3840,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 6,
+        "avg": [
+          125,
+          130,
+          126
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.13,
+        "frames": 37,
+        "avg": [
+          125,
+          130,
+          126
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "h264_4096x3840.mp4",
+    "mediaCapabilitiesCodec": "avc1.640034"
+  },
+  {
+    "url": "http://127.0.0.1:8765/h264_4096x4080.mp4",
+    "outcome": "frame",
+    "width": 4096,
+    "height": 4080,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 6,
+        "avg": [
+          125,
+          131,
+          126
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.13,
+        "frames": 37,
+        "avg": [
+          125,
+          130,
+          126
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "h264_4096x4080.mp4",
+    "mediaCapabilitiesCodec": "avc1.640034"
+  },
+  {
+    "url": "http://127.0.0.1:8765/h264_4096x4096.mp4",
+    "outcome": "frame",
+    "width": 4096,
+    "height": 4096,
+    "readyState": 1,
+    "error": null,
+    "decodedFrames": 1,
+    "droppedFrames": 0,
+    "mediaCapabilities": {
+      "supported": true,
+      "smooth": true,
+      "powerEfficient": false
+    },
+    "samples": [
+      {
+        "t": 0,
+        "frames": 7,
+        "avg": [
+          125,
+          131,
+          125
+        ],
+        "spread": 255
+      },
+      {
+        "t": 1.21,
+        "frames": 39,
+        "avg": [
+          125,
+          130,
+          126
+        ],
+        "spread": 255
+      }
+    ],
+    "flat": false,
+    "zeroYuvGreen": false,
+    "clip": "h264_4096x4096.mp4",
+    "mediaCapabilitiesCodec": "avc1.640034"
+  }
+]

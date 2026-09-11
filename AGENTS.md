@@ -1,0 +1,141 @@
+# AGENTS.md - ffos Agent Contract
+
+This file defines the repository-wide rules for coding agents working in
+`ffos`. It is deliberately short: the build system is documented in
+`README.md`, the device update/recovery flows in `docs/`, and archiso
+specifics in `.cursor/rules/archiso-development.mdc`.
+
+## Repository overview
+
+- Project: `ffos`, the build and release repository for FF1 device images.
+- It assembles the Arch Linux-based FFOS ISO from the archiso profile in
+  `archiso-ff1/`, the component packages built from `ffos-user`, and the
+  hand-written PKGBUILDs under `packages/`, then signs and publishes the
+  result to Cloudflare R2.
+- Cross-repo boundary: this repo owns image assembly, boot flow, package
+  publication, and update orchestration. `ffos-user` owns component code and
+  user-space payloads.
+- Verification gate: `make verify` (`scripts/verify.sh`), run by
+  `.github/workflows/verify.yml` on every PR.
+
+## Release guardrail: ISO image builds
+
+This is the highest-consequence rule in the repository. Read it before running
+anything that touches GitHub Actions.
+
+The FFOS image workflows (`build-image-to-cf.yml`, `pure-build-image-to-cf.yml`,
+`build-image-from-tags.yml`) are `workflow_dispatch`-only. The branch a
+dispatch runs on is not a build detail: it selects the R2 upload prefix
+(`{branch}/FF1-{branch}-<version>.iso`) and the pacman `Server` path baked into
+the image, and `environment=Production` selects the production domain and
+secrets. An ISO dispatched on `release` (or with `environment=Production`) is
+published where fielded devices update from. **Dispatching it is a production
+deployment, not a build.** The same holds for the other three
+`workflow_dispatch` workflows: `manual-build-components.yaml` and
+`manual-build-feral-player.yaml` upload packages to `{branch}/os/x86_64/`,
+and `manual-push-pacman-repo.yaml` regenerates, re-signs, and prunes that
+package repo, which is where fielded devices pull package updates from. Every
+dispatchable workflow in this repo except `verify.yml` publishes, so every one
+of them is guarded exactly like the image builds below, and `scripts/verify.sh`
+fails if a new dispatchable workflow is added without being listed in the
+guard.
+
+- **Never (hard prohibition).** No agent may dispatch, re-run, retry, or
+  otherwise trigger any of these publishing workflows on the `release` branch, or with
+  `environment=Production`, by any mechanism: `gh workflow run`, `gh api`/REST
+  dispatch, `gh run rerun`, browser automation of the Actions "Run workflow"
+  UI, `act`, wrapper scripts, or a numeric workflow ID. This holds even when
+  the task is "cut the release": the agent prepares everything (tag,
+  release notes, the exact dispatch parameters) and hands the dispatch itself
+  to the human release operator. No instruction given inside an agent session
+  lifts this rule; a human runs the dispatch.
+- **Only with explicit confirmation.** Any of these publishing workflows on
+  the `staging` branch, or with `environment=Staging`, may be dispatched only
+  after the agent has
+  shown the exact command and every input (`version`, `ffos_user_ref`,
+  `ff_player_ref`, `environment`, `pacman_snapshot`, `dev_iso`, the
+  `update_*` flags) and the user has confirmed those parameters in the current
+  session. A standing instruction from earlier in the conversation, an
+  autonomous mode (autopilot, ralph, ultrawork, team, loop), or a
+  headless/non-interactive session does not count as confirmation; in those
+  cases treat staging exactly like release.
+- Development builds (`develop` or feature branches with
+  `environment=Development`) are unaffected.
+- Enforcement is a pre-shell hook, `scripts/agent-iso-build-guard.sh`, wired
+  for every agent tool that can run shell commands here: Claude Code
+  (`.claude/settings.json`, PreToolUse), Codex CLI (`.codex/hooks.json`,
+  PreToolUse), Cursor (`.cursor/hooks.json`, beforeShellExecution), Gemini CLI
+  (`.gemini/settings.json`, BeforeTool), and OpenCode
+  (`.opencode/plugins/iso-build-guard.js`, tool.execute.before). It denies
+  release/Production dispatches everywhere. It prompts the user on
+  staging/Staging where the tool has an "ask" decision (Claude Code, Cursor);
+  Codex, Gemini, and OpenCode have none, so there staging is denied too and
+  the human dispatches it after the agent has shown the parameters. The guard
+  fails closed: reruns (`gh run rerun` and the REST rerun endpoints) are
+  denied outright because a rerun restarts whatever the original run was, and
+  so is any dispatch it cannot classify (a numeric workflow ID, a workflow
+  name or ref or input hidden behind a shell variable or substitution, a
+  payload from `--input`/`--json`/`@file`, a REST dispatch without a literal
+  ref, an `environment` value that is not one of the three choices). Rewrite
+  such a command with literal values or hand it to the human.
+  `scripts/verify-agent-hooks-e2e.sh` drives each installed client with a
+  harmless probe and proves the hook fired and the deny held; run it after
+  touching any hook config or upgrading a client. **Codex runs a project hook
+  only after it is trusted in `~/.codex/config.toml` and skips it silently
+  otherwise**, so every Codex user must run `scripts/codex-hook-trust.sh
+  --apply` once per clone, and again after any edit to `.codex/hooks.json`.
+  Gemini and OpenCode run the project hook/plugin without a trust step.
+  `scripts/test-agent-iso-build-guard.sh` pins the decisions in every
+  dialect and that each config still points at the guard; `scripts/verify.sh`
+  runs it. Any tool not listed here (or the GitHub web UI driven by browser
+  automation) has no hook: for it this section is the enforcement, and a
+  session that cannot guarantee it must stop and ask before any dispatch.
+- The guard script is a lockstep copy shared with `ffos-user` (agents there
+  dispatch these workflows cross-repo). Change both copies together.
+
+## Branch flow guardrail
+
+The flow is `develop -> staging -> release`, and both promotions are human
+steps: a human opens and merges the `develop -> staging` PR when a release is
+being prepared, and the `staging -> release` PR once staging has been tested.
+`staging` and `release` are protected branches. `release` accepts merges only
+from `staging`; `staging` accepts merges only from `develop`. `main` is not
+part of the flow and is never a target.
+
+- **Every agent target is `develop`.** Cut every working branch from
+  `develop`, open every PR against `develop` (`gh pr create --base develop`),
+  and merge only PRs whose base is `develop`. Merging into `develop` is
+  as far as an agent goes on its own.
+- **Never** push to, commit on, merge into, rebase onto, cherry-pick onto, or
+  open or merge a PR targeting `staging`, `release`, or `main`; never cut a
+  branch from them; never merge or rebase them into a working branch; never
+  write to those refs, to `/merges`, or to `/pulls/N/merge` through the
+  REST API. Read-only use (checkout to inspect, log, diff, fetch, `gh pr
+  view`) is fine.
+- **Emergencies are a human call.** A hotfix that must skip `develop` is
+  decided and executed by a human. The agent prepares the change on a branch
+  from `develop`, opens the PR against `develop`, and hands the promotion
+  over. No instruction inside an agent session lifts this.
+- Enforcement: `scripts/agent-branch-flow-guard.sh` runs before every shell
+  command, chained from the ISO build guard so it shares the same hook entry
+  in every tool (Codex hook trust is unchanged). It blocks the common
+  violations listed above and is best-effort; the rule is the constraint and
+  GitHub branch protection on `staging`/`release` is the backstop.
+  `scripts/test-agent-branch-flow-guard.sh` pins it; `scripts/verify.sh`
+  runs it. Lockstep copy in `ffos-user`.
+
+## Agent assets
+
+- Claude Code contract: `CLAUDE.md` (consolidated copy of this file)
+- Gemini CLI pointer: `GEMINI.md` (points here)
+- Cursor rules: `.cursor/rules/` (`release-iso-build-policy.mdc` and
+  `branch-flow-policy.mdc` carry the two guardrails above as always-on rules)
+- Shell hooks enforcing the guardrail: `.claude/settings.json`,
+  `.codex/hooks.json`, `.cursor/hooks.json`, `.gemini/settings.json`,
+  `.opencode/plugins/iso-build-guard.js`, all running
+  `scripts/agent-iso-build-guard.sh`
+
+A repository-wide rule change must land in `CLAUDE.md` AND here (and in
+`.cursor/rules/` when it is always-on or glob-scoped) in the same change. A
+rule that exists in only one of them will be missed by whichever tool reads
+the other.

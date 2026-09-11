@@ -14,6 +14,13 @@ reflector
 # (see etc/pacman.d/hooks/60-linux-lts-kernel-compat.hook and
 # etc/mkinitcpio.d/linux-lts.preset)
 linux-lts
+# Rebuilt amdgpu.ko (installed under updates/, wins in depmod search order)
+# with the VCN 3.1.1 H.264 decode cap at 4096x4080: the firmware returns an
+# unwritten green surface at 4096x4096 and the stock kernel table advertises
+# it (ffos-user#302). Pinned to the exact linux-lts above; a snapshot bump
+# that moves the kernel fails this image build until the package is re-based
+# (see packages/amdgpu-vcn-h264-cap/README.md).
+amdgpu-vcn-h264-cap
 # Firmware trimmed for FF1 hardware only (AMD Ryzen 7 7735U SoC + Realtek Wi-Fi/BT)
 linux-firmware-amdgpu
 linux-firmware-realtek

@@ -1,0 +1,538 @@
+{
+ "source": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/video_demo_hevc.html",
+ "fetched": "2026-09-10",
+ "notes": "ByteDance HEVC conformance demo page. Every clip is served with Access-Control-Allow-Origin: * and Accept-Ranges: bytes, so probe-video-decode.py plays them straight from the CDN with an untainted canvas. The 8K clips are hundreds of MB; only the leading byte ranges are fetched.",
+ "items": [
+  {
+   "name": "main-bt709-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_8k60P_bilibili_1.mp4",
+   "codec": "hev1.1.6.L180.90",
+   "width": 7680,
+   "height": 4320,
+   "framerate": 60,
+   "title": "HEVC Main Profile - SDR - Sample 1 (8K + 60P)"
+  },
+  {
+   "name": "main-bt709-sample-2",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_8k60P_bilibili_2.mp4",
+   "codec": "hev1.1.6.L180.90",
+   "width": 7680,
+   "height": 4320,
+   "framerate": 60,
+   "title": "HEVC Main Profile - SDR - Sample 2 (8K + 60P)"
+  },
+  {
+   "name": "main-bt709-sample-3",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_8k60P_bilibili_3.mp4",
+   "codec": "hev1.1.6.L180.90",
+   "width": 7680,
+   "height": 4320,
+   "framerate": 60,
+   "title": "HEVC Main Profile - SDR - Sample 3 (8K + 60P)"
+  },
+  {
+   "name": "main-bt709-sample-4",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_8k30P_slice.mp4",
+   "codec": "hev1.1.6.L180.90",
+   "width": 7680,
+   "height": 4320,
+   "framerate": 30,
+   "title": "HEVC Main Profile - SDR - Sample 4 (8K + 30P)"
+  },
+  {
+   "name": "main-bt709-sample-5",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_8k10P_slice.mp4",
+   "codec": "hev1.1.6.L180.90",
+   "width": 7680,
+   "height": 4320,
+   "framerate": 10,
+   "title": "HEVC Main Profile - SDR - Sample 5 (8K + 10P)"
+  },
+  {
+   "name": "main-bt709-sample-6",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_5.7k60P_slice.mp4",
+   "codec": "hev1.1.6.L183.90",
+   "width": 5760,
+   "height": 3600,
+   "framerate": 60,
+   "title": "HEVC Main Profile - SDR - Sample 6 (5.7K + 60P)"
+  },
+  {
+   "name": "main-bt709-sample-7",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k60P_main_dji_mavic3.mov",
+   "codec": "hvc1.1.6.L180.80",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 60,
+   "title": "HEVC Main Profile - SDR - Sample 7 (4K + 60P)"
+  },
+  {
+   "name": "main-bt709-sample-8",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k30P_main_2.mp4",
+   "codec": "hvc1.1.6.L0.0",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 30,
+   "title": "HEVC Main Profile - SDR - Sample 8 (4K + 30P)"
+  },
+  {
+   "name": "main-bt709-sample-9",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k30P_main_3.mp4",
+   "codec": "hvc1.1.6.L0.0",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 30,
+   "title": "HEVC Main Profile - SDR - Sample 9 (4K + 30P)"
+  },
+  {
+   "name": "main-bt709-sample-10",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main_1.mp4",
+   "codec": "hvc1.1.6.L150.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 25,
+   "title": "HEVC Main Profile - SDR - Sample 10 (4K + 25P)"
+  },
+  {
+   "name": "main-bt709-sample-11",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main_2.mp4",
+   "codec": "hvc1.1.6.L150.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 25,
+   "title": "HEVC Main Profile - SDR - Sample 11 (4K + 25P)"
+  },
+  {
+   "name": "main-alpha-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_with_alpha_layer.mp4",
+   "codec": "hvc1.1.6.L93.B0",
+   "width": 1280,
+   "height": 720,
+   "framerate": 60,
+   "title": "HEVC Main Profile - HEVC with Alpha - Sample 1 (720 + 60P)"
+  },
+  {
+   "name": "main-alpha-sample-2",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_with_alpha_layer_2.mp4",
+   "codec": "hvc1.1.6.L62.B0",
+   "width": 496,
+   "height": 438,
+   "framerate": 15,
+   "title": "HEVC Main Profile - HEVC with Alpha - Sample 2 (438 + 15P)"
+  },
+  {
+   "name": "main-mv-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main_multiview_1.mp4",
+   "codec": "hvc1.2.4.L153.B0",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 24,
+   "title": "HEVC Main Profile - MV-HEVC - Sample 1 (4K + 24P)"
+  },
+  {
+   "name": "main10-bt709-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k60P_main10_10bit_420_eos_r5c_1.mp4",
+   "codec": "hvc1.2.4.H153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 60,
+   "title": "HEVC Main10 Profile - SDR - Sample 1 (4K + 60P)"
+  },
+  {
+   "name": "main10-bt709-sample-2",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_1.mp4",
+   "codec": "hev1.2.4.L153.B0",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 24,
+   "title": "HEVC Main10 Profile - SDR - Sample 2 (4K + 24P)"
+  },
+  {
+   "name": "main10-bt709-sample-3",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_2.mp4",
+   "codec": "hev1.2.4.L150.B0",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 24,
+   "title": "HEVC Main10 Profile - SDR - Sample 3 (4K + 24P)"
+  },
+  {
+   "name": "main10-bt709-sample-4",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_3.mp4",
+   "codec": "hev1.2.4.L150.B0",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 24,
+   "title": "HEVC Main10 Profile - SDR - Sample 4 (4K + 24P)"
+  },
+  {
+   "name": "main10-bt709-sample-5",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_main10.mp4",
+   "codec": "hvc1.2.4.L150.90",
+   "width": 1920,
+   "height": 1080,
+   "framerate": 24,
+   "title": "HEVC Main10 Profile - SDR - Sample 5 (2K + 24P)"
+  },
+  {
+   "name": "main10-bt709-sample-6",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_2k24P_main10.mp4",
+   "codec": "hev1.2.4.L120.90",
+   "width": 1920,
+   "height": 1080,
+   "framerate": 24,
+   "title": "HEVC Main10 Profile - SDR - Sample 6 (2K + 24P)"
+  },
+  {
+   "name": "main10-hdr10-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_bilibili_pq_1.mp4",
+   "codec": "hev1.2.4.L153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 60,
+   "title": "HEVC Main10 Profile - HDR10 - Sample 1 (4K + 60P)"
+  },
+  {
+   "name": "main10-hdr10-sample-2",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_bilibili_pq_2.mp4",
+   "codec": "hev1.2.4.L153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 60,
+   "title": "HEVC Main10 Profile - HDR10 - Sample 2 (4K + 60P)"
+  },
+  {
+   "name": "main10-hdr10-sample-3",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_bilibili_pq_4.mp4",
+   "codec": "hev1.2.4.L153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 60,
+   "title": "HEVC Main10 Profile - HDR10 - Sample 3 (4K + 60P)"
+  },
+  {
+   "name": "main10-hdr10-sample-4",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_bilibili_pq_5.mp4",
+   "codec": "hev1.2.4.L153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 60,
+   "title": "HEVC Main10 Profile - HDR10 - Sample 4 (4K + 60P)"
+  },
+  {
+   "name": "main10-hdr10-sample-5",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k30P_main10_1.mp4",
+   "codec": "hvc1.2.4.H150.B0",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 30,
+   "title": "HEVC Main10 Profile - HDR10 - Sample 5 (4K + 30P)"
+  },
+  {
+   "name": "main10-hdr10-sample-6",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_hdr10_2.mp4",
+   "codec": "hev1.2.4.H153.B0",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 24,
+   "title": "HEVC Main10 Profile - HDR10 - Sample 6 (4K + 24P)"
+  },
+  {
+   "name": "main10-hdr10-sample-7",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_hdr10_3.mp4",
+   "codec": "hev1.2.4.L150.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 24,
+   "title": "HEVC Main10 Profile - HDR10 - Sample 7 (4K + 24P)"
+  },
+  {
+   "name": "main10-hdr10-sample-8",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_main10_hdr10_4.mp4",
+   "codec": "hev1.2.4.H153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 24,
+   "title": "HEVC Main10 Profile - HDR10 - Sample 8 (4K + 24P)"
+  },
+  {
+   "name": "main10-pq10-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k60P_main10_pq10.mp4",
+   "codec": "hvc1.2.4.H153.B0",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 60,
+   "title": "HEVC Main10 Profile - PQ10 - Sample 1 (4K + 60P)"
+  },
+  {
+   "name": "main10-hlg-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_bilibili_hlg_1.mp4",
+   "codec": "hvc1.2.4.L150.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 60,
+   "title": "HEVC Main10 Profile - HLG - Sample 1 (4K + 60P)"
+  },
+  {
+   "name": "main10-hlg-sample-2",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_1.mp4",
+   "codec": "hvc1.2.4.H153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 25,
+   "title": "HEVC Main10 Profile - HLG - Sample 2 (4K + 25P)"
+  },
+  {
+   "name": "main10-hlg-sample-3",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_2.mp4",
+   "codec": "hvc1.2.4.H153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 25,
+   "title": "HEVC Main10 Profile - HLG - Sample 3 (4K + 25P)"
+  },
+  {
+   "name": "main10-hlg-sample-4",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_3.mp4",
+   "codec": "hvc1.2.4.H153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 25,
+   "title": "HEVC Main10 Profile - HLG - Sample 4 (4K + 25P)"
+  },
+  {
+   "name": "main10-hlg-sample-5",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_4.mp4",
+   "codec": "hvc1.2.4.H153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 25,
+   "title": "HEVC Main10 Profile - HLG - Sample 5 (4K + 25P)"
+  },
+  {
+   "name": "main10-hlg-sample-6",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_5.mp4",
+   "codec": "hvc1.2.4.H153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 25,
+   "title": "HEVC Main10 Profile - HLG - Sample 6 (4K + 25P)"
+  },
+  {
+   "name": "main10-hlg-sample-7",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k25P_main10_6.mp4",
+   "codec": "hvc1.2.4.H153.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 25,
+   "title": "HEVC Main10 Profile - HLG - Sample 7 (4K + 25P)"
+  },
+  {
+   "name": "main10-dv-p5-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_dolby_vision_profile5_1.mp4",
+   "codec": "dvh1.05.09",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 60,
+   "title": "HEVC Main10 Profile - DV Profile 5 - Sample 1 (4K + 60P)"
+  },
+  {
+   "name": "main10-dv-p5-sample-2",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K30P_dolby_vision_profile5_1.mp4",
+   "codec": "dvh1.05.07",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 30,
+   "title": "HEVC Main10 Profile - DV Profile 5 - Sample 2 (4K + 30P)"
+  },
+  {
+   "name": "main10-dv-p8-1-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K60P_dolby_vision_profile8_1.mp4",
+   "codec": "dvhe.08.07",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 60,
+   "title": "HEVC Main10 Profile - DV Profile 8.1 - Sample 1 (4K + 60P)"
+  },
+  {
+   "name": "msp-bt709-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_msp.mp4",
+   "codec": "hev1.3.E.L120.0",
+   "width": 1920,
+   "height": 1080,
+   "framerate": 25,
+   "title": "HEVC Main Still Picture Profile - SDR - Sample 1 (1080 + 25P)"
+  },
+  {
+   "name": "rext-bt709-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k60P_rext_10bit_422_eos_r5c_1.mp4",
+   "codec": "hvc1.4.10.H153.9D.08",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 60,
+   "title": "HEVC Rext Profile - SDR - Sample 1 (4K + 60P + 10b/4:2:2)"
+  },
+  {
+   "name": "rext-bt709-sample-2",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k50P.mp4",
+   "codec": "hvc1.4.10.H156.9D.08",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 50,
+   "title": "HEVC Rext Profile - SDR - Sample 2 (4K + 50P + 10b/4:2:2)"
+  },
+  {
+   "name": "rext-bt709-sample-3",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_all_i.mp4",
+   "codec": "hev1.4.10.L150.9F.A8",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 30,
+   "title": "HEVC Rext Profile - SDR - Sample 3 (4K + 30P + 8b/4:2:0)"
+  },
+  {
+   "name": "rext-bt709-sample-4",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4K24P_rext_12bit_444_yuv444p12le_1.mp4",
+   "codec": "hvc1.4.10.L180.90",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 24,
+   "title": "HEVC Rext Profile - SDR - Sample 4 (4K + 24P + 12b/4:4:4)"
+  },
+  {
+   "name": "rext-bt709-sample-5",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_2K24P_rext_10bit_444_yuv444p10le_1.mp4",
+   "codec": "hvc1.4.10.H120.90",
+   "width": 1920,
+   "height": 1080,
+   "framerate": 24,
+   "title": "HEVC Rext Profile - SDR - Sample 5 (2K + 24P + 10b/4:4:4)"
+  },
+  {
+   "name": "rext-bt709-sample-6",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_2K24P_rext_10bit_444_yuv444p10le_3.mp4",
+   "codec": "hvc1.4.10.H120.90",
+   "width": 1920,
+   "height": 1080,
+   "framerate": 24,
+   "title": "HEVC Rext Profile - SDR - Sample 6 (2K + 24P + 10b/4:4:4)"
+  },
+  {
+   "name": "rext-bt709-sample-7",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-8bit-400-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.9F.C8",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 7 (720 + 1P + 8b/4:0:0)"
+  },
+  {
+   "name": "rext-bt709-sample-8",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-8bit-420-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.9F.A8",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 8 (720 + 1P + 8b/4:2:0)"
+  },
+  {
+   "name": "rext-bt709-sample-9",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-8bit-422-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.9D.08",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 9 (720 + 1P + 8b/4:2:2)"
+  },
+  {
+   "name": "rext-bt709-sample-10",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-8bit-444-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.9E.08",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 10 (720 + 1P + 8b/4:4:4)"
+  },
+  {
+   "name": "rext-bt709-sample-11",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-10bit-400-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.9D.C8",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 11 (720 + 1P + 10b/4:0:0)"
+  },
+  {
+   "name": "rext-bt709-sample-12",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-10bit-420-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.9D.A8",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 12 (720 + 1P + 10b/4:2:0)"
+  },
+  {
+   "name": "rext-bt709-sample-13",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-10bit-422-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.9D.08",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 13 (720 + 1P + 10b/4:2:2)"
+  },
+  {
+   "name": "rext-bt709-sample-14",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-10bit-444-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.9C.08",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 14 (720 + 1P + 10b/4:4:4)"
+  },
+  {
+   "name": "rext-bt709-sample-15",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-12bit-400-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.99.C8",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 15 (720 + 1P + 12b/4:0:0)"
+  },
+  {
+   "name": "rext-bt709-sample-16",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-12bit-420-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.99.88",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 16 (720 + 1P + 12b/4:2:0)"
+  },
+  {
+   "name": "rext-bt709-sample-17",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-12bit-422-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.99.08",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 17 (720 + 1P + 12b/4:2:2)"
+  },
+  {
+   "name": "rext-bt709-sample-18",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/quick-brown-fox-1280x720-hevc-rext-12bit-444-no-audio.mp4",
+   "codec": "hvc1.4.10.L93.98.08",
+   "width": 1280,
+   "height": 720,
+   "framerate": 1,
+   "title": "HEVC Rext Profile - SDR - Sample 18 (720 + 1P + 12b/4:4:4)"
+  },
+  {
+   "name": "rext-hdr10-sample-1",
+   "url": "https://lf-tk-sg.ibytedtos.com/obj/tcs-client-sg/resources/hevc_4k24P_rext_12bit_444_pq.mp4",
+   "codec": "hvc1.4.10.L93.98.08",
+   "width": 3840,
+   "height": 2160,
+   "framerate": 24,
+   "title": "HEVC Rext Profile - HDR10 - Sample 1 (4K + 24P + 12b/4:4:4)"
+  }
+ ]
+}
