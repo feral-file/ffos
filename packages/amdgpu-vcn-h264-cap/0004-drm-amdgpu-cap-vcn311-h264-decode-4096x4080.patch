@@ -1,0 +1,32 @@
+From: Feral File <dev@feralfile.com>
+Subject: [PATCH] drm/amdgpu: cap VCN 3.1.1 H.264 decode at 4096x4080
+
+The Yellow Carp (VCN 3.1.1) decode table advertises H.264 at 4096x4096,
+Level 5.2. Level 5.2 allows 36,864 macroblocks; 4096x4096 is 65,536.
+Measured on a Ryzen 7 7735U / Radeon 680M (Linux 6.18.38, Mesa 26.1.4
+radeonsi VA-API): every H.264 frame of 65,280 macroblocks (4096x4080,
+4080x4096) decodes correctly, and every frame of 65,536 macroblocks
+(4096x4096) returns an unwritten, all-zero NV12 surface with no error
+reported. HEVC at 4096x4096 is unaffected. Userspace (Mesa, then
+Chromium via VA-API) trusts max_width/max_height literally, so the
+over-claim routes a stream the firmware cannot decode to the hardware
+and the user sees a solid green frame.
+
+Cap the height at 4080 so no advertised frame reaches 2^16 macroblocks.
+The cap API has no area term that userspace consumes, so this also
+refuses frames taller than 4080 rows at narrower widths; those fall back
+to software decode in the callers that have one.
+
+Evidence: feral-file/ffos-user#302 (probe output and bisection clips).
+---
+--- a/drivers/gpu/drm/amd/amdgpu/nv.c
++++ b/drivers/gpu/drm/amd/amdgpu/nv.c
+@@ -195,7 +195,7 @@
+ 
+ /* Yellow Carp*/
+ static const struct amdgpu_video_codec_info yc_video_codecs_decode_array[] = {
+-	{codec_info_build(AMDGPU_INFO_VIDEO_CAPS_CODEC_IDX_MPEG4_AVC, 4096, 4096, 52)},
++	{codec_info_build(AMDGPU_INFO_VIDEO_CAPS_CODEC_IDX_MPEG4_AVC, 4096, 4080, 52)},
+ 	{codec_info_build(AMDGPU_INFO_VIDEO_CAPS_CODEC_IDX_HEVC, 8192, 4352, 186)},
+ 	{codec_info_build(AMDGPU_INFO_VIDEO_CAPS_CODEC_IDX_VP9, 8192, 4352, 0)},
+ 	{codec_info_build(AMDGPU_INFO_VIDEO_CAPS_CODEC_IDX_JPEG, 16384, 16384, 0)},

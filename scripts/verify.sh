@@ -19,11 +19,15 @@ require_tool bash
 require_tool ruby
 require_tool shellcheck
 
+# Shell files under packages/ (PKGBUILD helpers) join the gate by discovery so
+# a new package cannot land an unchecked script.
+mapfile -t package_shell_files < <(find packages -type f -name '*.sh' | sort)
+
 log "Checking shell syntax"
-bash -n scripts/verify.sh archiso-ff1/profiledef.sh
+bash -n scripts/verify.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
 log "Running shellcheck"
-shellcheck scripts/verify.sh archiso-ff1/profiledef.sh
+shellcheck scripts/verify.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
 log "Validating GitHub workflow YAML"
 ruby <<'RUBY'
