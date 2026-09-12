@@ -82,7 +82,6 @@ jobs:
           repository: feral-file/ffos-user
           ref: ${{ inputs.ffos_user_ref }}
           path: ffos-user
-          token: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
 
       - name: Setup pacman
         uses: ./.github/actions/setup-pacman
