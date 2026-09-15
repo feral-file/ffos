@@ -63,7 +63,16 @@ wlroots0.18
 xorg-xwayland
 chromium
 wlr-randr
+# seatd gives cage DRM/input access without a logind session (ffos#126): no
+# getty or login shell runs on tty1, so libseat's logind backend has no session
+# to attach to. Selected through LIBSEAT_BACKEND=seatd in
+# etc/systemd/user.conf.d/10-ff1-seatd.conf; feralfile/soaktest are in `seat`.
 seatd
+# Plymouth paints every non-kiosk moment (boot, shutdown, the watchdog's
+# "Something went wrong..." fallback) with the ff1 theme so the framebuffer
+# console is never what a customer sees. Not in the initramfs HOOKS: console=tty3
+# already keeps initramfs text off the panel and a broken hook would brick boot.
+plymouth
 
 # Fonts and themes
 ttf-dejavu

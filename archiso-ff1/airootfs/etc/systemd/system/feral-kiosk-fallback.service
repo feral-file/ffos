@@ -1,0 +1,18 @@
+[Unit]
+Description=FF1 fallback screen (spinner + "Something went wrong...")
+# Started by feral-watchdog once its Chromium restart budget is exhausted (it
+# stops chromium-kiosk.service first so DRM master is free), and stopped by
+# chromium-kiosk.service's ExecStartPre on every kiosk start. A fresh plymouthd
+# is launched here because the boot-time one has already quit; the explicit
+# kernel command line makes it pick the graphical ff1 theme regardless of how
+# it was invoked (plymouth.ignore-serial-consoles: with console=tty3 plymouth
+# would otherwise treat the console as serial and fall back to text mode).
+Conflicts=plymouth-start.service
+
+[Service]
+Type=forking
+PIDFile=/run/plymouth/pid
+ExecStart=/usr/bin/plymouthd --mode=boot --pid-file=/run/plymouth/pid --attach-to-session --kernel-command-line="splash quiet plymouth.ignore-serial-consoles"
+ExecStartPost=/usr/bin/plymouth show-splash
+ExecStartPost=/usr/bin/plymouth display-message --text="Something went wrong..."
+ExecStop=/usr/bin/plymouth quit

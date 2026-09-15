@@ -26,6 +26,9 @@ rm -f /root/.automated_script.sh
 rm -f /root/.bash_profile
 rm -rf /home/soaktest
 rm -f /usr/local/bin/websocat
+# userdel below does not touch sudoers; without this the soak-test NOPASSWD
+# grant shipped on every device (ffos#126).
+rm -f /etc/sudoers.d/soaktest
 
 # feral-system-update.sh protects /home/feralfile/.cache wholesale so the
 # offline artwork blob store survives a full-image update. That inverts the
@@ -44,11 +47,9 @@ rm -f /usr/local/bin/websocat
 rm -rf /home/feralfile/.cache/offline-artworks-headless-profile
 rm -rf /home/feralfile/.cache/chromium
 
-cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf <<'EOF'
-[Service]
-ExecStart=
-ExecStart=-/usr/bin/agetty --noclear --autologin feralfile %I $TERM
-EOF
+# No getty autologin is written any more (ffos#126): the image's
+# getty@tty1.service.d/autologin.conf only applies to live ISO boots and
+# feral-kiosk-startup.service owns tty1 on installed devices.
 
 echo "Cleaning up test users..."
 if id soaktest &>/dev/null; then
@@ -75,6 +76,12 @@ if [[ -z "$PARTUUID" ]]; then
 fi
 
 echo "Writing boot loader configuration (PARTUUID: $PARTUUID)..."
+# Kernel options shared by every FF1 boot entry (single source, ffos#126).
+if [[ ! -r /root/scripts/ff1-boot-options.sh ]]; then
+    echo "ERROR: /root/scripts/ff1-boot-options.sh missing; refusing to write a boot entry without the shared kernel options" >&2
+    exit 1
+fi
+source /root/scripts/ff1-boot-options.sh
 
 # random-seed-mode off: the power-cycle reset gesture (issue #122) invites
 # users to cut power in early boot — exactly when systemd-boot would rewrite
@@ -96,7 +103,7 @@ title   FF1
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 initrd  /intel-ucode.img
-options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
+options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID $FF1_KERNEL_OPTS
 EOF
 
 cat > /boot/loader/entries/factory_reset.conf <<EOF
@@ -104,7 +111,7 @@ title   FF1 - Factory Reset
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 initrd  /intel-ucode.img
-options rollback=factory root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
+options rollback=factory root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID $FF1_KERNEL_OPTS
 EOF
 
 # --- Step 4: Configure mkinitcpio hooks ---
@@ -141,6 +148,9 @@ pacman -Syy || echo "Warning: Failed to sync package databases, continuing anywa
 # --- Step 8: Configure tss group and udev rules ---
 echo "Configuring TPM access..."
 usermod -aG tss feralfile
+# seat: cage talks to seatd (ffos#126); /etc/group in the image already lists
+# it, this is the belt for a root whose group file predates that.
+usermod -aG seat feralfile
 mkdir -p /etc/udev/rules.d
 echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
 
