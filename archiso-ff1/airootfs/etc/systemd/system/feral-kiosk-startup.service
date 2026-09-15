@@ -1,0 +1,42 @@
+[Unit]
+Description=Feral File kiosk startup
+# Replaces the tty1 autologin shell (ffos#126): the kiosk used to be started by
+# ~/.bash_profile of an agetty autologin session for feralfile, so whenever cage
+# had no picture the TV showed a NOPASSWD sudo shell. Nothing logs in on tty1
+# any more; this system unit runs the startup script as feralfile, and the
+# script starts the real user units (kiosk, watchdog, controld) inside
+# user@1000, where LIBSEAT_BACKEND=seatd applies and cage reaches DRM through
+# seatd, not logind. Do not move cage into this unit: it would lose that.
+# Live ISO boots (installer, soak test, cmdline carries archisobasedir=) keep
+# their root/soaktest autologin getty instead: see getty@tty1.service.d.
+ConditionKernelCommandLine=!archisobasedir
+# Conflicts alone does not order the getty's stop job against our start job.
+Conflicts=getty@tty1.service
+Before=getty@tty1.service
+Wants=user@1000.service seatd.service
+# plymouth-quit-wait: cage must not fight plymouth for DRM master at boot.
+After=user@1000.service seatd.service systemd-logind.service systemd-user-sessions.service plymouth-quit-wait.service btrfs-subvolume-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# .start-services.sh blocks on several `systemctl --user start` calls (each
+# bounded by its unit's own start timeout) plus a fixed sleep; the tty1
+# autologin it replaces had no timeout at all, and Restart= is not available
+# for oneshot units, so any timeout that trips leaves the device with no
+# kiosk and no watchdog until the next reboot. The default 90 s is short
+# enough to trip on a slow cold boot; do not bound it.
+TimeoutStartSec=infinity
+User=feralfile
+WorkingDirectory=/home/feralfile
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+# Same steps ~/.bash_profile performed on the tty1 login, in the same order.
+ExecStartPre=+/usr/bin/chown -R feralfile:feralfile /home/feralfile
+ExecStartPre=/usr/bin/bash /home/feralfile/.file_permissions.sh
+ExecStart=/usr/bin/bash /home/feralfile/.start-services.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

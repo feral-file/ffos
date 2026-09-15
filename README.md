@@ -23,6 +23,8 @@ FFOS is the centralized build repository responsible for creating FFOS images. I
    User Data             ISO Generation
 ```
 
+Boot-time display and console behaviour (no console on the panel, plymouth, developer tty2) is documented in `docs/BOOT_DISPLAY_AND_CONSOLE.md`.
+
 ## Repository Structure
 
 ```

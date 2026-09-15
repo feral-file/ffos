@@ -1,0 +1,45 @@
+[Plymouth Theme]
+Name=FF1
+Description=Feral File FF1 boot, shutdown and fallback screen: black, spinner, no distro branding
+ModuleName=two-step
+
+# Derived from plymouth's spinner theme (GPL-2.0-or-later); the PNGs in this
+# directory are its assets: throbber-* is the spinner, and lock/entry/bullet
+# (plus the optional keyboard/capslock/keymap-render) are required by the
+# two-step plugin even though no dialog is ever shown - without them it
+# refuses to load and plymouth falls back to TEXT on the panel. spinner's
+# animation-* end-animation frames are omitted: UseEndAnimation=false below. There is deliberately no watermark.png (that is where
+# the distro logo would come from) and no progress bar. To brand it, add a
+# watermark.png here.
+[two-step]
+Font=DejaVu Sans 20
+TitleFont=DejaVu Sans 30
+ImageDir=/usr/share/plymouth/themes/ff1
+DialogHorizontalAlignment=.5
+DialogVerticalAlignment=.382
+TitleHorizontalAlignment=.5
+TitleVerticalAlignment=.382
+HorizontalAlignment=.5
+VerticalAlignment=.5
+WatermarkHorizontalAlignment=.5
+WatermarkVerticalAlignment=.96
+Transition=none
+TransitionDuration=0.0
+BackgroundStartColor=0x000000
+BackgroundEndColor=0x000000
+ProgressBarBackgroundColor=0x000000
+ProgressBarForegroundColor=0x000000
+DialogClearsFirmwareBackground=true
+MessageBelowAnimation=true
+
+[boot-up]
+UseEndAnimation=false
+UseFirmwareBackground=false
+
+[shutdown]
+UseEndAnimation=false
+UseFirmwareBackground=false
+
+[reboot]
+UseEndAnimation=false
+UseFirmwareBackground=false

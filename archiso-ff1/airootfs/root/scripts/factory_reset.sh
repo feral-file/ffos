@@ -86,12 +86,18 @@ fi
 log_msg "Creating one-shot candidate boot entry..."
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
 
+# Kernel options shared by every FF1 boot entry (single source, ffos#126).
+if [[ ! -r /root/scripts/ff1-boot-options.sh ]]; then
+    echo "ERROR: /root/scripts/ff1-boot-options.sh missing; refusing to write a boot entry without the shared kernel options" >&2
+    exit 1
+fi
+source /root/scripts/ff1-boot-options.sh
 cat > /boot/loader/entries/arch-candidate.conf <<EOF
 title   FF1 - Factory Reset Candidate
 linux   $CANDIDATE_KERNEL_PREFIX/vmlinuz-linux
 initrd  $CANDIDATE_KERNEL_PREFIX/initramfs-linux.img
 initrd  $CANDIDATE_KERNEL_PREFIX/intel-ucode.img
-options rootflags=subvol=@snapshots/@factory_reset_new root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
+options rootflags=subvol=@snapshots/@factory_reset_new root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID $FF1_KERNEL_OPTS
 EOF
 
 chmod 644 /boot/loader/entries/arch-candidate.conf

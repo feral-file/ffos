@@ -254,8 +254,8 @@ This keeps v1 devices (root at `@`) and v2 devices (root at `@snapshots/@`) work
 `post-extraction.sh` is the shared script run inside a newly populated root (OTA snapshot or recovery candidate). It is invoked by `feral-system-update.sh` and `feral-recovery-update.sh` with the root device as an argument. It:
 
 - Removes test/development files and the soaktest user
-- Configures getty autologin and environment (e.g. "live")
-- Writes `/boot/loader/loader.conf` and entries (`arch.conf`, `factory_reset.conf`) with the correct PARTUUID
+- Removes the soak-test sudoers grant and sets the environment (e.g. "live"); no getty autologin is written (see `docs/BOOT_DISPLAY_AND_CONSOLE.md`)
+- Writes `/boot/loader/loader.conf` and entries (`arch.conf`, `factory_reset.conf`) with the correct PARTUUID and the shared kernel options from `/root/scripts/ff1-boot-options.sh`
 - Configures mkinitcpio (including the btrfs-rollback hook) and runs `mkinitcpio -P`
 - Initializes pacman keys and FeralFile package key; runs `pacman -Syy`
 - Sets TPM udev rules and group membership
