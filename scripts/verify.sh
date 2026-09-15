@@ -250,6 +250,22 @@ grep -q '^Theme=ff1$' "$AIROOTFS/etc/plymouth/plymouthd.conf" || {
   printf 'plymouthd.conf must select Theme=ff1\n' >&2
   exit 1
 }
+# Live ISO boots (installer, soak test) must not run plymouth at all: every
+# plymouth unit carries ConditionKernelCommandLine=!plymouth.enable=0, and
+# the installer getty is ordered after plymouth-quit-wait, so a splash daemon
+# that never quits (observed on a live ISO build) would block the install.
+for entry in archiso-ff1/efiboot/loader/entries/*.conf; do
+  grep -qE '^options .*\bplymouth\.enable=0\b' "$entry" || {
+    printf '%s: live ISO entries must carry plymouth.enable=0\n' "$entry" >&2
+    exit 1
+  }
+done
+for unit in plymouth-quit-wait plymouth-quit; do
+  grep -q '^TimeoutStartSec=' "$AIROOTFS/etc/systemd/system/$unit.service.d/10-ff1-timeout.conf" || {
+    printf '%s must keep its start timeout drop-in (boot must never hang on plymouth)\n' "$unit" >&2
+    exit 1
+  }
+done
 
 log "Checking README workflow inventory"
 while IFS= read -r workflow; do

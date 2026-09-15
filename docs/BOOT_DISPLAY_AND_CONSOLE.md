@@ -43,7 +43,11 @@ hardware.
    because plymouth otherwise treats `console=tty3` as a serial console and
    degrades to text mode. Plymouth is **not** in the initramfs HOOKS: the
    console redirect already hides initramfs text and a broken hook would
-   brick boot.
+   brick boot. Live ISO entries carry `plymouth.enable=0`: the installer
+   and soak test want their text console, and a plymouth daemon that never
+   answered `quit` blocked a live ISO at "Hold until boot process finishes
+   up" (the installer getty is ordered after it). On installed devices the
+   two quit units are capped at 30 s by drop-ins for the same reason.
 5. **Developers keep an easy way in.** `getty@tty2` is enabled with a normal
    password login: plug a keyboard, press Ctrl+Alt+F2 (cage runs with `-s`,
    which allows VT switching), work, press Alt+F1 to return. `logind.conf.d`
