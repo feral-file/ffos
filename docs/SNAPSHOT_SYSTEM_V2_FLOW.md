@@ -89,7 +89,7 @@ deletes the old `@`, that removal is permanent. Device state therefore survives
 | `/var/lib/systemd/random-seed` | Per-device entropy seed. |
 | `/home/feralfile/.cache` | Protected for feral-controld's offline artwork blob store at `offlineCache.rootDir` (itself bounded by `maxDiskBytes`, 80 GB). Expensive to rebuild — every item re-downloads and software artworks re-capture through headless Chromium. The whole XDG cache directory inherits this protection; see below. |
 | `/home/feralfile/.config/chromium` | Kiosk browser profile. |
-| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version`. |
+| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version` and controld's owner-set records: the device name and the DP-1 signature verification mode (`signature-verification.json`, `silent`/`notify`/`strict`). Losing the latter would silently drop an owner's `strict` choice back to the `notify` default on every update. |
 
 `/home/feralfile/.cache` is excluded as a whole directory rather than as
 `.cache/offline-artworks`, because rsync only protects paths it is told to
