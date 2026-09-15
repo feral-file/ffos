@@ -203,6 +203,14 @@ grep -q '^ConditionKernelCommandLine=!archisobasedir$' "$AIROOTFS/etc/systemd/sy
   printf 'feral-kiosk-startup.service lost its installed-system-only condition\n' >&2
   exit 1
 }
+# Conflicts= is resolved in the boot transaction before conditions run: with
+# Conflicts=getty@tty1.service the live ISO dropped the installer getty's
+# start job even though this unit was condition-skipped (observed on a built
+# ISO). The getty drop-in's condition is the only tty1 mechanism.
+if grep -q '^Conflicts=' "$AIROOTFS/etc/systemd/system/feral-kiosk-startup.service"; then
+  printf 'feral-kiosk-startup.service must not declare Conflicts= (it would drop the live-ISO installer getty job)\n' >&2
+  exit 1
+fi
 # getty@.service must list tty1 as well: this file sorts before systemd's own
 # 90-systemd.preset and the first matching rule wins, so omitting tty1 would
 # leave the live ISO without its installer getty.

@@ -10,9 +10,13 @@ Description=Feral File kiosk startup
 # Live ISO boots (installer, soak test, cmdline carries archisobasedir=) keep
 # their root/soaktest autologin getty instead: see getty@tty1.service.d.
 ConditionKernelCommandLine=!archisobasedir
-# Conflicts alone does not order the getty's stop job against our start job.
-Conflicts=getty@tty1.service
-Before=getty@tty1.service
+# No Conflicts=getty@tty1.service here, on purpose. systemd resolves
+# Conflicts= while building the boot transaction, BEFORE conditions are
+# evaluated, so on the live ISO (where this unit's condition is false and
+# getty@tty1 must autologin the installer) the getty's start job was dropped
+# anyway and the ISO stopped at graphical.target with no installer. The
+# getty@tty1 drop-in's own ConditionKernelCommandLine keeps it off installed
+# devices; that is the only mechanism.
 Wants=user@1000.service seatd.service
 # plymouth-quit-wait: cage must not fight plymouth for DRM master at boot.
 After=user@1000.service seatd.service systemd-logind.service systemd-user-sessions.service plymouth-quit-wait.service btrfs-subvolume-manager.service

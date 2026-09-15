@@ -24,7 +24,12 @@ hardware.
    `~/.bash_profile` rail. The user manager starts at
    boot because `/var/lib/systemd/linger/feralfile` ships in the image. The
    `getty@tty1` drop-in is conditioned on `archisobasedir` (live ISO only:
-   installer and soak test keep their root/soaktest autologin).
+   installer and soak test keep their root/soaktest autologin), and that
+   condition is the *only* thing keeping getty off tty1: the startup unit
+   deliberately has no `Conflicts=getty@tty1.service`, because systemd
+   resolves `Conflicts=` while building the boot transaction, before any
+   condition is evaluated, and on a live ISO that dropped the installer
+   getty's job and left the ISO parked at `graphical.target`.
 3. **cage gets DRM through seatd, not logind.** With no session on tty1,
    libseat's logind backend would attach to whatever session logind elects
    for the user (an SSH login, for instance) and fail. `seatd.service` is
