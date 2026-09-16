@@ -305,8 +305,28 @@ jobs:
           # log growth 1, btrfs metadata/global reserve 2, and a 5% btrfs
           # free-space floor 6.4 — about 28.5 GB total.
           # captureWindowMs omitted/0 uses 20s.
+          #
+          # signatureVerification is the fleet kill switch for DP-1 playlist
+          # signature verification (ffos-user#307; controld's
+          # config.SignatureVerificationConfig). An absent section already
+          # means ON, so pinning {disabled: false} changes no behavior; it is
+          # written here, like offlineCache, so the switch lives in a reviewed
+          # diff on the build branch rather than in the environment secret
+          # (which this overlay overrides), and so the next operator finds it.
+          # Flip it to true only on evidence of a systematic false "invalid"
+          # across the fleet (a verifier/canonicalization divergence between
+          # the device and the signer). With it on, controld computes no
+          # verdict, omits every signatureStatus field, refuses
+          # setSignatureVerificationMode, and drops signatureVerificationMode
+          # from device_status so ff-app hides the setting. The owner's chosen
+          # mode (silent/notify/strict, default notify) is NOT config: controld
+          # persists it at /home/feralfile/.state/signature-verification.json,
+          # which feral-system-update.sh's rsync exclusion of
+          # /home/feralfile/.state carries across OTA (see
+          # docs/SNAPSHOT_SYSTEM_V2_FLOW.md).
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
             .sentry.release = $version
+            | .signatureVerification = { disabled: false }
             | .offlineCache = {
                 enabled: true,
                 rootDir: "/home/feralfile/.cache/offline-artworks",
