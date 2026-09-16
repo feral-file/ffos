@@ -341,12 +341,14 @@ jobs:
 
       - name: Add Configs and Services
         env:
+          CLOUDFLARE_LOG_STREAM_API_KEY: ${{ secrets.CLOUDFLARE_LOG_STREAM_API_KEY }}
           FERAL_CONTROLD_CONFIG_JSON: ${{ secrets.FERAL_CONTROLD_CONFIG_JSON }}
           FERAL_FF1_CONFIG_JSON: ${{ secrets.FERAL_FF1_CONFIG_JSON }}
           FERAL_SYS_MONITORD_CONFIG_JSON: ${{ secrets.FERAL_SYS_MONITORD_CONFIG_JSON }}
           FERAL_WATCHDOG_CONFIG_JSON: ${{ secrets.FERAL_WATCHDOG_CONFIG_JSON }}
           BUILD_BRANCH: ${{ github.ref_name }}
           BUILD_VERSION: ${{ inputs.version }}
+          LOG_STREAM_ENVIRONMENT: ${{ inputs.environment }}
         run: |
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.config
 
@@ -354,6 +356,7 @@ jobs:
             local target="$1"
             local content="$2"
             local filter="${3:-.}"
+            local mode="${4:-755}"
             local name
             name="$(basename "$target")"
 
@@ -363,10 +366,17 @@ jobs:
             fi
 
             printf '%s' "$content" \
-              | jq --arg branch "$BUILD_BRANCH" --arg version "$BUILD_VERSION" "$filter" \
+              | jq --arg branch "$BUILD_BRANCH" --arg version "$BUILD_VERSION" \
+                  --arg log_stream_api_key "$CLOUDFLARE_LOG_STREAM_API_KEY" \
+                  --arg log_stream_environment "$LOG_STREAM_ENVIRONMENT" "$filter" \
               > "$target"
-            chmod 755 "$target"
+            chmod "$mode" "$target"
           }
+
+          if [ -z "$CLOUDFLARE_LOG_STREAM_API_KEY" ]; then
+            echo "::error::Missing CLOUDFLARE_LOG_STREAM_API_KEY secret"
+            exit 1
+          fi
 
           # Overlay per-build values (branch/version) that change every build and
           # therefore cannot be baked into the environment-scoped JSON secrets.
@@ -416,7 +426,15 @@ jobs:
           # /home/feralfile/.state carries across OTA (see
           # docs/SNAPSHOT_SYSTEM_V2_FLOW.md).
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
-            .sentry.release = $version
+            del(.sentry)
+            | .logStreaming = {
+                endpoint: "https://677c668ad85c407fb1f0b68f63f41f21.ingest.cloudflare.com",
+                apiKey: $log_stream_api_key,
+                environment: ($log_stream_environment | ascii_downcase),
+                sampleRate: 1,
+                idleTimeoutSeconds: 5,
+                maxBatchDurationSeconds: 60
+              }
             | .signatureVerification = { disabled: false }
             | .offlineCache = {
                 enabled: true,
@@ -428,7 +446,7 @@ jobs:
                 headlessIdleTeardownSeconds: 30,
                 staticServerAddr: "127.0.0.1:8082",
                 missPolicy: "fail_closed"
-              }'
+              }' 600
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'

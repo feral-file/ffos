@@ -158,6 +158,14 @@ parameters. `scripts/agent-iso-build-guard.sh` enforces this as a pre-shell hook
 for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; the rule itself is in
 `AGENTS.md`, "Release guardrail: ISO image builds".
 
+### FF1 log-stream secret
+
+Each `Development`, `Staging`, and `Production` GitHub environment must define
+`CLOUDFLARE_LOG_STREAM_API_KEY`. The three image workflows fail before image
+generation when it is absent. They inject it into controld's mode-600 config,
+remove the obsolete controld Sentry block, and pin full-session upload with a
+five-second idle boundary and a one-minute maximum duration.
+
 ## R2 Storage Structure
 
 ```

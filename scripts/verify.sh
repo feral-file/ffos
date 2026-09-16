@@ -98,6 +98,29 @@ while IFS= read -r workflow; do
   }
 done <<< "$offline_cache_workflows"
 
+log "Checking FF1 log-stream image configuration"
+log_stream_workflows="$(grep -rl 'write_json .*controld\.json' .github/workflows | sort || true)"
+if [[ "$(printf '%s\n' "$log_stream_workflows" | grep -c .)" -ne 3 ]]; then
+  printf 'expected exactly three image workflows to generate controld.json with log streaming\n' >&2
+  exit 1
+fi
+while IFS= read -r workflow; do
+  for required in \
+    'secrets.CLOUDFLARE_LOG_STREAM_API_KEY' \
+    'Missing CLOUDFLARE_LOG_STREAM_API_KEY secret' \
+    'del(.sentry)' \
+    '.logStreaming = {' \
+    "apiKey: \$log_stream_api_key" \
+    'sampleRate: 1' \
+    "maxBatchDurationSeconds: 60" \
+    "}' 600"; do
+    grep -Fq "$required" "$workflow" || {
+      printf '%s: missing required FF1 log-stream contract: %s\n' "$workflow" "$required" >&2
+      exit 1
+    }
+  done
+done <<< "$log_stream_workflows"
+
 log "Checking agent ISO build guard"
 # AGENTS.md "Release guardrail: ISO image builds": the pre-shell hook that
 # blocks release/Production ISO dispatches and escalates staging, wired for
