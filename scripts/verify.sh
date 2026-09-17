@@ -109,10 +109,11 @@ while IFS= read -r workflow; do
     'secrets.CLOUDFLARE_LOG_STREAM_API_KEY' \
     'Missing CLOUDFLARE_LOG_STREAM_API_KEY secret' \
     'del(.sentry)' \
-    '.logStreaming = {' \
+    '.logStreaming = ((.logStreaming // {}) + {' \
     "apiKey: \$log_stream_api_key" \
     "environment: (\$log_stream_environment | ascii_downcase)" \
-    'sampleRate: 1' \
+    '.logStreaming.sampleRate //= 1' \
+    '.logStreaming.playerSampleRate //= 1' \
     "}' 600"; do
     grep -Fq "$required" "$workflow" || {
       printf '%s: missing required FF1 log-stream contract: %s\n' "$workflow" "$required" >&2

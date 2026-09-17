@@ -562,12 +562,13 @@ jobs:
           # docs/SNAPSHOT_SYSTEM_V2_FLOW.md).
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
             del(.sentry)
-            | .logStreaming = {
+            | .logStreaming = ((.logStreaming // {}) + {
                 endpoint: "https://677c668ad85c407fb1f0b68f63f41f21.ingest.cloudflare.com",
                 apiKey: $log_stream_api_key,
-                environment: ($log_stream_environment | ascii_downcase),
-                sampleRate: 1
-              }
+                environment: ($log_stream_environment | ascii_downcase)
+              })
+            | .logStreaming.sampleRate //= 1
+            | .logStreaming.playerSampleRate //= 1
             | .signatureVerification = { disabled: false }
             | .offlineCache = {
                 enabled: true,
