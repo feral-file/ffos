@@ -250,7 +250,6 @@ jobs:
 
       - name: Add Configs and Services
         env:
-          CLOUDFLARE_LOG_STREAM_API_KEY: ${{ secrets.CLOUDFLARE_LOG_STREAM_API_KEY }}
           FERAL_CONTROLD_CONFIG_JSON: ${{ secrets.FERAL_CONTROLD_CONFIG_JSON }}
           FERAL_FF1_CONFIG_JSON: ${{ secrets.FERAL_FF1_CONFIG_JSON }}
           FERAL_SYS_MONITORD_CONFIG_JSON: ${{ secrets.FERAL_SYS_MONITORD_CONFIG_JSON }}
@@ -276,16 +275,10 @@ jobs:
 
             printf '%s' "$content" \
               | jq --arg branch "$BUILD_BRANCH" --arg version "$BUILD_VERSION" \
-                  --arg log_stream_api_key "$CLOUDFLARE_LOG_STREAM_API_KEY" \
                   --arg log_stream_environment "$LOG_STREAM_ENVIRONMENT" "$filter" \
               > "$target"
             chmod "$mode" "$target"
           }
-
-          if [ -z "$CLOUDFLARE_LOG_STREAM_API_KEY" ]; then
-            echo "::error::Missing CLOUDFLARE_LOG_STREAM_API_KEY secret"
-            exit 1
-          fi
 
           # Overlay per-build values (branch/version) that change every build and
           # therefore cannot be baked into the environment-scoped JSON secrets.
@@ -338,7 +331,6 @@ jobs:
             del(.sentry)
             | .logStreaming = ((.logStreaming // {}) + {
                 endpoint: "https://677c668ad85c407fb1f0b68f63f41f21.ingest.cloudflare.com",
-                apiKey: $log_stream_api_key,
                 environment: ($log_stream_environment | ascii_downcase)
               })
             | .logStreaming.sampleRate //= 1

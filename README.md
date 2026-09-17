@@ -160,11 +160,11 @@ for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; the rule itself is in
 
 ### FF1 log-stream secret
 
-Each `Development`, `Staging`, and `Production` GitHub environment must define
-`CLOUDFLARE_LOG_STREAM_API_KEY`. The three image workflows fail before image
-generation when it is absent. They inject it into controld's mode-600 config
-and remove the obsolete controld Sentry block. The environment-scoped
-`FERAL_CONTROLD_CONFIG_JSON` independently controls whole-session sampling with
+Each `Development`, `Staging`, and `Production` GitHub environment supplies the
+Cloudflare credential in `FERAL_CONTROLD_CONFIG_JSON` as
+`logStreaming.apiKey`. The three image workflows preserve that credential in
+controld's mode-600 config and remove the obsolete controld Sentry block. The
+same environment-scoped JSON independently controls whole-session sampling with
 `logStreaming.sampleRate` for `feral-controld` and
 `logStreaming.playerSampleRate` for `player`; each defaults to `1` when absent.
 The paired controld runtime fixes session boundaries at five seconds idle and

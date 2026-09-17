@@ -106,11 +106,8 @@ if [[ "$(printf '%s\n' "$log_stream_workflows" | grep -c .)" -ne 3 ]]; then
 fi
 while IFS= read -r workflow; do
   for required in \
-    'secrets.CLOUDFLARE_LOG_STREAM_API_KEY' \
-    'Missing CLOUDFLARE_LOG_STREAM_API_KEY secret' \
     'del(.sentry)' \
     '.logStreaming = ((.logStreaming // {}) + {' \
-    "apiKey: \$log_stream_api_key" \
     "environment: (\$log_stream_environment | ascii_downcase)" \
     '.logStreaming.sampleRate //= 1' \
     '.logStreaming.playerSampleRate //= 1' \
@@ -120,6 +117,11 @@ while IFS= read -r workflow; do
       exit 1
     }
   done
+  if grep -Fq 'CLOUDFLARE_LOG_STREAM_API_KEY' "$workflow"; then
+    printf '%s: log-stream API key must come from FERAL_CONTROLD_CONFIG_JSON\n' \
+      "$workflow" >&2
+    exit 1
+  fi
 done <<< "$log_stream_workflows"
 
 log "Checking agent ISO build guard"
