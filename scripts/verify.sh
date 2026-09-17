@@ -111,8 +111,8 @@ while IFS= read -r workflow; do
     'del(.sentry)' \
     '.logStreaming = {' \
     "apiKey: \$log_stream_api_key" \
+    "environment: (\$log_stream_environment | ascii_downcase)" \
     'sampleRate: 1' \
-    "maxBatchDurationSeconds: 60" \
     "}' 600"; do
     grep -Fq "$required" "$workflow" || {
       printf '%s: missing required FF1 log-stream contract: %s\n' "$workflow" "$required" >&2

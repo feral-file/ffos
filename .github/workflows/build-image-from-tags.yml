@@ -566,9 +566,7 @@ jobs:
                 endpoint: "https://677c668ad85c407fb1f0b68f63f41f21.ingest.cloudflare.com",
                 apiKey: $log_stream_api_key,
                 environment: ($log_stream_environment | ascii_downcase),
-                sampleRate: 1,
-                idleTimeoutSeconds: 5,
-                maxBatchDurationSeconds: 60
+                sampleRate: 1
               }
             | .signatureVerification = { disabled: false }
             | .offlineCache = {
