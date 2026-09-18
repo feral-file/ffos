@@ -23,6 +23,8 @@ FFOS is the centralized build repository responsible for creating FFOS images. I
    User Data             ISO Generation
 ```
 
+Boot-time display and console behaviour (no console on the panel, plymouth, developer tty2) is documented in `docs/BOOT_DISPLAY_AND_CONSOLE.md`.
+
 ## Repository Structure
 
 ```
@@ -136,7 +138,6 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account identifier
 - `CLOUDFLARE_ACCESS_KEY_ID`: R2 access key
 - `CLOUDFLARE_SECRET_ACCESS_KEY`: R2 secret key
-- `FERALFILE_BOT_REPOS_READONLY_TOKEN`: GitHub token for ffos-user access
 
 ### Build Parameters
 - `version`: ISO version number
@@ -156,6 +157,18 @@ dispatch a `staging` build only after explicit user confirmation of the exact
 parameters. `scripts/agent-iso-build-guard.sh` enforces this as a pre-shell hook
 for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; the rule itself is in
 `AGENTS.md`, "Release guardrail: ISO image builds".
+
+### FF1 log-stream secret
+
+Each `Development`, `Staging`, and `Production` GitHub environment supplies the
+Cloudflare credential in `FERAL_CONTROLD_CONFIG_JSON` as
+`logStreaming.apiKey`. The three image workflows preserve that credential in
+controld's mode-600 config and remove the obsolete controld Sentry block. The
+same environment-scoped JSON independently controls whole-session sampling with
+`logStreaming.sampleRate` for `feral-controld` and
+`logStreaming.playerSampleRate` for `player`; each defaults to `1` when absent.
+The paired controld runtime fixes session boundaries at five seconds idle and
+one minute maximum duration rather than accepting image-time overrides.
 
 ## R2 Storage Structure
 

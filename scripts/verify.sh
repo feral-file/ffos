@@ -24,7 +24,11 @@ require_tool shellcheck
 mapfile -t package_shell_files < <(find packages -type f -name '*.sh' | sort)
 
 log "Checking shell syntax"
-bash -n scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+# One file per invocation: `bash -n a b` parses only a and treats b as a
+# positional parameter, so a multi-file call silently checks the first file.
+for f in scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
+  bash -n "$f"
+done
 
 log "Running shellcheck"
 shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
@@ -94,6 +98,32 @@ while IFS= read -r workflow; do
   }
 done <<< "$offline_cache_workflows"
 
+log "Checking FF1 log-stream image configuration"
+log_stream_workflows="$(grep -rl 'write_json .*controld\.json' .github/workflows | sort || true)"
+if [[ "$(printf '%s\n' "$log_stream_workflows" | grep -c .)" -ne 3 ]]; then
+  printf 'expected exactly three image workflows to generate controld.json with log streaming\n' >&2
+  exit 1
+fi
+while IFS= read -r workflow; do
+  for required in \
+    'del(.sentry)' \
+    '.logStreaming = ((.logStreaming // {}) + {' \
+    "environment: (\$log_stream_environment | ascii_downcase)" \
+    '.logStreaming.sampleRate //= 1' \
+    '.logStreaming.playerSampleRate //= 1' \
+    "}' 600"; do
+    grep -Fq "$required" "$workflow" || {
+      printf '%s: missing required FF1 log-stream contract: %s\n' "$workflow" "$required" >&2
+      exit 1
+    }
+  done
+  if grep -Fq 'CLOUDFLARE_LOG_STREAM_API_KEY' "$workflow"; then
+    printf '%s: log-stream API key must come from FERAL_CONTROLD_CONFIG_JSON\n' \
+      "$workflow" >&2
+    exit 1
+  fi
+done <<< "$log_stream_workflows"
+
 log "Checking agent ISO build guard"
 # AGENTS.md "Release guardrail: ISO image builds": the pre-shell hook that
 # blocks release/Production ISO dispatches and escalates staging, wired for
@@ -147,6 +177,129 @@ log "Checking agent branch flow guard"
 # pins the decisions and that the ISO guard still chains into this guard,
 # which is its only wiring.
 ./scripts/test-agent-branch-flow-guard.sh
+
+log "Checking kiosk console policy"
+# docs/BOOT_DISPLAY_AND_CONSOLE.md (ffos#126): no login shell on tty1, every
+# boot entry shares one kernel command line, plymouth covers the non-kiosk
+# moments. Each line below pins a piece that would fail silently on a device
+# (a sudo shell on a customer's TV, or console text leaking back onto the
+# panel) rather than in a build.
+AIROOTFS="archiso-ff1/airootfs"
+BOOT_OPTS="$AIROOTFS/root/scripts/ff1-boot-options.sh"
+mapfile -t root_scripts < <(find "$AIROOTFS/root/scripts" -type f -name '*.sh' | sort)
+for f in "${root_scripts[@]}"; do
+  bash -n "$f"
+done
+grep -q '^FF1_KERNEL_OPTS="' "$BOOT_OPTS" || {
+  printf '%s must define FF1_KERNEL_OPTS\n' "$BOOT_OPTS" >&2
+  exit 1
+}
+for word in console=tty3 systemd.show_status=false rd.systemd.show_status=false splash plymouth.ignore-serial-consoles vt.global_cursor_default=0; do
+  grep -q "^FF1_KERNEL_OPTS=.* ${word}[ \"]" "$BOOT_OPTS" || {
+    printf '%s: FF1_KERNEL_OPTS lost %s\n' "$BOOT_OPTS" "$word" >&2
+    exit 1
+  }
+done
+# Every loader entry heredoc must take its options from the shared file: a
+# literal loglevel=/show_status= anywhere else is a second copy drifting.
+for script in "${root_scripts[@]}"; do
+  [[ "$script" == "$BOOT_OPTS" ]] && continue
+  if grep -vE '^[[:space:]]*#' "$script" | grep -qE '(^|[[:space:]])(loglevel=[0-9]|rd\.systemd\.show_status=|systemd\.show_status=|console=tty[0-9])'; then
+    printf '%s: kernel options must come from ff1-boot-options.sh (FF1_KERNEL_OPTS), not a literal\n' "$script" >&2
+    exit 1
+  fi
+  if grep -q '^options ' "$script"; then
+    if ! grep -q 'source /root/scripts/ff1-boot-options.sh' "$script" || ! grep -qF 'FF1_KERNEL_OPTS' "$script"; then
+      printf '%s writes a loader entry but does not source ff1-boot-options.sh and use FF1_KERNEL_OPTS\n' "$script" >&2
+      exit 1
+    fi
+  fi
+done
+# The only autologin left is the live-ISO getty drop-in, and it must stay
+# gated on the ISO cmdline so an installed device never runs it.
+if grep -rn -- '--autologin' "$AIROOTFS" | grep -v 'etc/systemd/system/getty@tty1.service.d/autologin.conf'; then
+  printf 'an autologin getty outside the live-ISO drop-in was added; see docs/BOOT_DISPLAY_AND_CONSOLE.md\n' >&2
+  exit 1
+fi
+grep -q '^ConditionKernelCommandLine=archisobasedir$' "$AIROOTFS/etc/systemd/system/getty@tty1.service.d/autologin.conf" || {
+  printf 'getty@tty1 drop-in lost its live-ISO-only condition\n' >&2
+  exit 1
+}
+grep -q '^ConditionKernelCommandLine=!archisobasedir$' "$AIROOTFS/etc/systemd/system/feral-kiosk-startup.service" || {
+  printf 'feral-kiosk-startup.service lost its installed-system-only condition\n' >&2
+  exit 1
+}
+# Conflicts= is resolved in the boot transaction before conditions run: with
+# Conflicts=getty@tty1.service the live ISO dropped the installer getty's
+# start job even though this unit was condition-skipped (observed on a built
+# ISO). The getty drop-in's condition is the only tty1 mechanism.
+if grep -q '^Conflicts=' "$AIROOTFS/etc/systemd/system/feral-kiosk-startup.service"; then
+  printf 'feral-kiosk-startup.service must not declare Conflicts= (it would drop the live-ISO installer getty job)\n' >&2
+  exit 1
+fi
+# getty@.service must list tty1 as well: this file sorts before systemd's own
+# 90-systemd.preset and the first matching rule wins, so omitting tty1 would
+# leave the live ISO without its installer getty.
+for unit in "seatd.service" "feral-kiosk-startup.service" "getty@.service tty1 tty2"; do
+  grep -q "^enable $unit$" "$AIROOTFS/etc/systemd/system-preset/90-default.preset" || {
+    printf '90-default.preset must contain "enable %s" (template instances use the two-token form, see the timer comment there)\n' "$unit" >&2
+    exit 1
+  }
+done
+for pkg in seatd plymouth; do
+  grep -q "^$pkg$" archiso-ff1/packages.x86_64 || {
+    printf 'packages.x86_64 must list %s\n' "$pkg" >&2
+    exit 1
+  }
+done
+grep -q '^DefaultEnvironment=LIBSEAT_BACKEND=seatd$' "$AIROOTFS/etc/systemd/user.conf.d/10-ff1-seatd.conf" || {
+  printf 'user.conf.d/10-ff1-seatd.conf must pin LIBSEAT_BACKEND=seatd\n' >&2
+  exit 1
+}
+grep -q '^seat:x:[0-9]*:.*feralfile' "$AIROOTFS/etc/group" || {
+  printf '/etc/group must put feralfile in the seat group\n' >&2
+  exit 1
+}
+[[ -f "$AIROOTFS/var/lib/systemd/linger/feralfile" ]] || {
+  printf 'missing linger file for feralfile (user manager must start without a login)\n' >&2
+  exit 1
+}
+[[ -f "$AIROOTFS/usr/share/plymouth/themes/ff1/ff1.plymouth" ]] || {
+  printf 'missing plymouth theme ff1\n' >&2
+  exit 1
+}
+# The two-step plugin hard-fails (and plymouth degrades to text on the panel)
+# without the dialog assets, even though no dialog is ever shown.
+for asset in lock.png entry.png bullet.png throbber-0001.png; do
+  [[ -f "$AIROOTFS/usr/share/plymouth/themes/ff1/$asset" ]] || {
+    printf 'themes/ff1/%s missing: the two-step plugin refuses to load without it\n' "$asset" >&2
+    exit 1
+  }
+done
+[[ ! -e "$AIROOTFS/usr/share/plymouth/themes/ff1/watermark.png" ]] || {
+  printf 'themes/ff1/watermark.png would put a logo under the spinner; the theme is deliberately unbranded\n' >&2
+  exit 1
+}
+grep -q '^Theme=ff1$' "$AIROOTFS/etc/plymouth/plymouthd.conf" || {
+  printf 'plymouthd.conf must select Theme=ff1\n' >&2
+  exit 1
+}
+# Live ISO boots (installer, soak test) must not run plymouth at all: every
+# plymouth unit carries ConditionKernelCommandLine=!plymouth.enable=0, and
+# the installer getty is ordered after plymouth-quit-wait, so a splash daemon
+# that never quits (observed on a live ISO build) would block the install.
+for entry in archiso-ff1/efiboot/loader/entries/*.conf; do
+  grep -qE '^options .*\bplymouth\.enable=0\b' "$entry" || {
+    printf '%s: live ISO entries must carry plymouth.enable=0\n' "$entry" >&2
+    exit 1
+  }
+done
+for unit in plymouth-quit-wait plymouth-quit; do
+  grep -q '^TimeoutStartSec=' "$AIROOTFS/etc/systemd/system/$unit.service.d/10-ff1-timeout.conf" || {
+    printf '%s must keep its start timeout drop-in (boot must never hang on plymouth)\n' "$unit" >&2
+    exit 1
+  }
+done
 
 log "Checking README workflow inventory"
 while IFS= read -r workflow; do

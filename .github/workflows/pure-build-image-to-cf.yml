@@ -88,7 +88,6 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
-      FERALFILE_BOT_REPOS_READONLY_TOKEN: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -123,7 +122,6 @@ jobs:
           repository: feral-file/ffos-user
           ref: ${{ inputs.ffos_user_ref }}
           path: ffos-user
-          token: ${{ secrets.FERALFILE_BOT_REPOS_READONLY_TOKEN }}
 
       - name: Setup pacman
         uses: ./.github/actions/setup-pacman
@@ -258,6 +256,7 @@ jobs:
           FERAL_WATCHDOG_CONFIG_JSON: ${{ secrets.FERAL_WATCHDOG_CONFIG_JSON }}
           BUILD_BRANCH: ${{ github.ref_name }}
           BUILD_VERSION: ${{ inputs.version }}
+          LOG_STREAM_ENVIRONMENT: ${{ inputs.environment }}
         run: |
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.config
 
@@ -265,6 +264,7 @@ jobs:
             local target="$1"
             local content="$2"
             local filter="${3:-.}"
+            local mode="${4:-755}"
             local name
             name="$(basename "$target")"
 
@@ -274,9 +274,10 @@ jobs:
             fi
 
             printf '%s' "$content" \
-              | jq --arg branch "$BUILD_BRANCH" --arg version "$BUILD_VERSION" "$filter" \
+              | jq --arg branch "$BUILD_BRANCH" --arg version "$BUILD_VERSION" \
+                  --arg log_stream_environment "$LOG_STREAM_ENVIRONMENT" "$filter" \
               > "$target"
-            chmod 755 "$target"
+            chmod "$mode" "$target"
           }
 
           # Overlay per-build values (branch/version) that change every build and
@@ -307,8 +308,34 @@ jobs:
           # log growth 1, btrfs metadata/global reserve 2, and a 5% btrfs
           # free-space floor 6.4 — about 28.5 GB total.
           # captureWindowMs omitted/0 uses 20s.
+          #
+          # signatureVerification is the fleet kill switch for DP-1 playlist
+          # signature verification (ffos-user#307; controld's
+          # config.SignatureVerificationConfig). An absent section already
+          # means ON, so pinning {disabled: false} changes no behavior; it is
+          # written here, like offlineCache, so the switch lives in a reviewed
+          # diff on the build branch rather than in the environment secret
+          # (which this overlay overrides), and so the next operator finds it.
+          # Flip it to true only on evidence of a systematic false "invalid"
+          # across the fleet (a verifier/canonicalization divergence between
+          # the device and the signer). With it on, controld computes no
+          # verdict, omits every signatureStatus field, refuses
+          # setSignatureVerificationMode, and drops signatureVerificationMode
+          # from device_status so ff-app hides the setting. The owner's chosen
+          # mode (silent/notify/strict, default notify) is NOT config: controld
+          # persists it at /home/feralfile/.state/signature-verification.json,
+          # which feral-system-update.sh's rsync exclusion of
+          # /home/feralfile/.state carries across OTA (see
+          # docs/SNAPSHOT_SYSTEM_V2_FLOW.md).
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
-            .sentry.release = $version
+            del(.sentry)
+            | .logStreaming = ((.logStreaming // {}) + {
+                endpoint: "https://677c668ad85c407fb1f0b68f63f41f21.ingest.cloudflare.com",
+                environment: ($log_stream_environment | ascii_downcase)
+              })
+            | .logStreaming.sampleRate //= 1
+            | .logStreaming.playerSampleRate //= 1
+            | .signatureVerification = { disabled: false }
             | .offlineCache = {
                 enabled: true,
                 rootDir: "/home/feralfile/.cache/offline-artworks",
@@ -319,7 +346,7 @@ jobs:
                 headlessIdleTeardownSeconds: 30,
                 staticServerAddr: "127.0.0.1:8082",
                 missPolicy: "fail_closed"
-              }'
+              }' 600
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'

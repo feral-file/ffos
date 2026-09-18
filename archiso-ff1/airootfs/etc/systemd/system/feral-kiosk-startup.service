@@ -1,0 +1,46 @@
+[Unit]
+Description=Feral File kiosk startup
+# Replaces the tty1 autologin shell (ffos#126): the kiosk used to be started by
+# ~/.bash_profile of an agetty autologin session for feralfile, so whenever cage
+# had no picture the TV showed a NOPASSWD sudo shell. Nothing logs in on tty1
+# any more; this system unit runs the startup script as feralfile, and the
+# script starts the real user units (kiosk, watchdog, controld) inside
+# user@1000, where LIBSEAT_BACKEND=seatd applies and cage reaches DRM through
+# seatd, not logind. Do not move cage into this unit: it would lose that.
+# Live ISO boots (installer, soak test, cmdline carries archisobasedir=) keep
+# their root/soaktest autologin getty instead: see getty@tty1.service.d.
+ConditionKernelCommandLine=!archisobasedir
+# No Conflicts=getty@tty1.service here, on purpose. systemd resolves
+# Conflicts= while building the boot transaction, BEFORE conditions are
+# evaluated, so on the live ISO (where this unit's condition is false and
+# getty@tty1 must autologin the installer) the getty's start job was dropped
+# anyway and the ISO stopped at graphical.target with no installer. The
+# getty@tty1 drop-in's own ConditionKernelCommandLine keeps it off installed
+# devices; that is the only mechanism.
+Wants=user@1000.service seatd.service
+# plymouth-quit-wait: cage must not fight plymouth for DRM master at boot.
+After=user@1000.service seatd.service systemd-logind.service systemd-user-sessions.service plymouth-quit-wait.service btrfs-subvolume-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# .start-services.sh blocks on several `systemctl --user start` calls (each
+# bounded by its unit's own start timeout) plus a fixed sleep; the tty1
+# autologin it replaces had no timeout at all, and Restart= is not available
+# for oneshot units, so any timeout that trips leaves the device with no
+# kiosk and no watchdog until the next reboot. The default 90 s is short
+# enough to trip on a slow cold boot; do not bound it.
+TimeoutStartSec=infinity
+User=feralfile
+WorkingDirectory=/home/feralfile
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+# Same steps ~/.bash_profile performed on the tty1 login, in the same order.
+ExecStartPre=+/usr/bin/chown -R feralfile:feralfile /home/feralfile
+ExecStartPre=/usr/bin/bash /home/feralfile/.file_permissions.sh
+ExecStart=/usr/bin/bash /home/feralfile/.start-services.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

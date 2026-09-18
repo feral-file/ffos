@@ -3,5 +3,6 @@ wheel:x:10:feralfile,soaktest
 audio:x:92:feralfile,soaktest
 video:x:91:feralfile,soaktest
 input:x:97:feralfile,soaktest
+seat:x:973:feralfile,soaktest
 feralfile:x:1000:
 soaktest:x:1001:

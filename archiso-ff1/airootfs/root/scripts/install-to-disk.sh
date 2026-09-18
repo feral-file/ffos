@@ -131,11 +131,10 @@ echo "Copying root filesystem..."
 rm -rf /home/soaktest
 rm -f /usr/local/bin/websocat
 rsync -aAX --info=progress2 --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/live-efi/*","/media/*","/lost+found"} / /mnt
-cat > /mnt/etc/systemd/system/getty@tty1.service.d/autologin.conf <<EOF
-[Service]
-ExecStart=
-ExecStart=-/usr/bin/agetty --noclear --autologin feralfile %I $TERM
-EOF
+# No tty1 autologin on the installed system (ffos#126): the image's
+# getty@tty1 drop-in is conditioned on the live ISO cmdline and
+# feral-kiosk-startup.service owns tty1. Drop the soak-test sudoers grant too.
+rm -f /mnt/etc/sudoers.d/soaktest
 mkdir -p /mnt/home/feralfile/.state
 cat > /mnt/home/feralfile/.state/environment <<EOF
 live
@@ -202,12 +201,18 @@ editor no
 random-seed-mode off
 EOF
 
+# Kernel options shared by every FF1 boot entry (single source, ffos#126).
+if [[ ! -r /root/scripts/ff1-boot-options.sh ]]; then
+    echo "ERROR: /root/scripts/ff1-boot-options.sh missing; refusing to write a boot entry without the shared kernel options" >&2
+    exit 1
+fi
+source /root/scripts/ff1-boot-options.sh
 cat > /mnt/boot/loader/entries/arch.conf <<EOF
 title   FF1
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 initrd  /intel-ucode.img
-options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
+options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID $FF1_KERNEL_OPTS
 EOF
 
 cat > /mnt/boot/loader/entries/factory_reset.conf <<EOF
@@ -215,7 +220,7 @@ title   FF1 - Factory Reset
 linux   /vmlinuz-linux
 initrd  /initramfs-linux.img
 initrd  /intel-ucode.img
-options rollback=factory root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID ipv6.disable=1 rw quiet loglevel=3 systemd.show_status=auto rd.udev.log_level=3 nowatchdog
+options rollback=factory root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID $FF1_KERNEL_OPTS
 EOF
 
 chmod 644 /mnt/boot/loader/entries/*.conf
@@ -287,6 +292,7 @@ tpm2_evictcontrol -C o -c ecdsa.ctx 0x81010002
 rm -f primary.ctx ecdsa.pub ecdsa.priv ecdsa.ctx
 
 usermod -aG tss feralfile
+usermod -aG seat feralfile
 mkdir -p /etc/udev/rules.d
 echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
 

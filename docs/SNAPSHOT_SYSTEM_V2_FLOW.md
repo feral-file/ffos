@@ -89,7 +89,7 @@ deletes the old `@`, that removal is permanent. Device state therefore survives
 | `/var/lib/systemd/random-seed` | Per-device entropy seed. |
 | `/home/feralfile/.cache` | Protected for feral-controld's offline artwork blob store at `offlineCache.rootDir` (itself bounded by `maxDiskBytes`, 80 GB). Expensive to rebuild — every item re-downloads and software artworks re-capture through headless Chromium. The whole XDG cache directory inherits this protection; see below. |
 | `/home/feralfile/.config/chromium` | Kiosk browser profile. |
-| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version`. |
+| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version` and controld's owner-set records: the device name and the DP-1 signature verification mode (`signature-verification.json`, `silent`/`notify`/`strict`). Losing the latter would silently drop an owner's `strict` choice back to the `notify` default on every update. |
 
 `/home/feralfile/.cache` is excluded as a whole directory rather than as
 `.cache/offline-artworks`, because rsync only protects paths it is told to
@@ -254,8 +254,8 @@ This keeps v1 devices (root at `@`) and v2 devices (root at `@snapshots/@`) work
 `post-extraction.sh` is the shared script run inside a newly populated root (OTA snapshot or recovery candidate). It is invoked by `feral-system-update.sh` and `feral-recovery-update.sh` with the root device as an argument. It:
 
 - Removes test/development files and the soaktest user
-- Configures getty autologin and environment (e.g. "live")
-- Writes `/boot/loader/loader.conf` and entries (`arch.conf`, `factory_reset.conf`) with the correct PARTUUID
+- Removes the soak-test sudoers grant and sets the environment (e.g. "live"); no getty autologin is written (see `docs/BOOT_DISPLAY_AND_CONSOLE.md`)
+- Writes `/boot/loader/loader.conf` and entries (`arch.conf`, `factory_reset.conf`) with the correct PARTUUID and the shared kernel options from `/root/scripts/ff1-boot-options.sh`
 - Configures mkinitcpio (including the btrfs-rollback hook) and runs `mkinitcpio -P`
 - Initializes pacman keys and FeralFile package key; runs `pacman -Syy`
 - Sets TPM udev rules and group membership
