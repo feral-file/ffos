@@ -151,8 +151,13 @@ usermod -aG tss feralfile
 # seat: cage talks to seatd (ffos#126); /etc/group in the image already lists
 # it, this is the belt for a root whose group file predates that.
 usermod -aG seat feralfile
+# i2c: feral-controld reaches the panel over i2c-dev, and ddcutil's rule grants
+# it by GROUP="i2c" now that no logind session carries a uaccess ACL (ffos#151/#156).
+groupadd -rf i2c
+usermod -aG i2c feralfile
 mkdir -p /etc/udev/rules.d
 echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
+echo 'SUBSYSTEM=="i2c-dev", KERNEL=="i2c-[0-9]*", GROUP="i2c", MODE="0660"' > /etc/udev/rules.d/99-i2c-feralfile.rules
 
 # --- Step 9: Apply systemd presets ---
 # This ensures services are enabled/disabled according to the new version's preferences
