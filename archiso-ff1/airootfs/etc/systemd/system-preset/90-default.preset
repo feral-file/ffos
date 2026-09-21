@@ -31,3 +31,17 @@ enable feral-recovery-update@.timer 5:30
 # cut. Preset (not .start-services.sh) for the same F-03 reason as the timers
 # above: the full-image OTA rsync must not be able to strip it.
 enable clean-shutdown-marker.service
+# Kiosk session without a console (ffos#126): seatd hands cage the DRM/input
+# devices, feral-kiosk-startup replaces the tty1 autologin shell, and getty@tty2
+# is the password-protected developer console (keyboard + Ctrl+Alt+F2).
+# tty1 must be listed here too: preset files are consulted in name order and
+# the FIRST rule matching the unit file wins, so this rule shadows systemd's
+# own `enable getty@.service` (90-systemd.preset, DefaultInstance=tty1).
+# Dropping tty1 would leave the live ISO with no getty and no installer.
+# getty@tty1's drop-in keeps it inert on installed devices.
+# Template-instance syntax as for the timers above: `enable getty@tty2.service`
+# is NOT instantiated by preset-all (verified in an OTA rehearsal: the symlink
+# was simply not created).
+enable seatd.service
+enable feral-kiosk-startup.service
+enable getty@.service tty1 tty2
