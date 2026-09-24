@@ -61,6 +61,22 @@ hardware.
    active VT, and the watchdog suppresses escalation in that state, so a
    kiosk restart cannot steal the developer's console. SSH via the
    controld dev-ssh flow is unchanged.
+6. **Device access that used to come from the login must be granted
+   explicitly.** A logind seat session is also what turns udev's
+   `TAG+="uaccess"` into an ACL for the logged-in user. With no session, no
+   `uaccess` ACL is ever applied, so anything the tty1 autologin got for free
+   through that tag is gone. The one known case is `ddcutil`: its package
+   rule (`60-ddcutil-i2c.rules`) grants the GPU's `/dev/i2c-*` buses by
+   `uaccess` only, so after ffos#126 every ddcutil call from controld
+   (brightness, contrast, volume, panel power, the 5 s status poll, the
+   sleep-schedule panel-off leg) failed with `EACCES` and the app's Device
+   Config lost its display controls.
+   `etc/udev/rules.d/61-ff1-i2c-group.rules` grants those buses to group
+   `i2c` instead, `feralfile` is in `i2c` (`etc/group`, `etc/gshadow`), and
+   `post-extraction.sh`, `install-to-disk.sh` and `auto-install.sh` re-apply
+   the membership next to the `seat` one. When adding another
+   device-touching feature under `user@1000`, check whether its udev rule
+   relies on `uaccess` and add a group grant the same way.
 
 ## Where each piece lives
 
@@ -72,6 +88,7 @@ hardware.
 | Live-ISO-only autologin | `archiso-ff1/airootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf` |
 | No autovt | `archiso-ff1/airootfs/etc/systemd/logind.conf.d/10-ff1-no-autovt.conf` |
 | seatd for user units | `archiso-ff1/airootfs/etc/systemd/user.conf.d/10-ff1-seatd.conf` |
+| i2c access for ddcutil (no uaccess without a session) | `archiso-ff1/airootfs/etc/udev/rules.d/61-ff1-i2c-group.rules`, `archiso-ff1/airootfs/etc/group`, `etc/gshadow` |
 | Enabled units | `archiso-ff1/airootfs/etc/systemd/system-preset/90-default.preset` |
 | Plymouth | `archiso-ff1/airootfs/etc/plymouth/plymouthd.conf`, `archiso-ff1/airootfs/usr/share/plymouth/themes/ff1/` |
 | Kiosk side (`cage -s`, VT1 wait, fallback stop, watchdog policy) | ffos-user `users/feralfile/`, `components/feral-watchdog/` |

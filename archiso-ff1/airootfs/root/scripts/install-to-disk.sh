@@ -293,6 +293,14 @@ rm -f primary.ctx ecdsa.pub ecdsa.priv ecdsa.ctx
 
 usermod -aG tss feralfile
 usermod -aG seat feralfile
+# i2c: ddcutil (DDC/CI panel control in feral-controld) needs RW on /dev/i2c-*.
+# Its package rule uses TAG+="uaccess", which only an active logind seat
+# session receives, and since ffos#126 nobody logs in, so the image grants the
+# buses to group i2c (etc/udev/rules.d/61-ff1-i2c-group.rules). The group is
+# in the image's /etc/group; this is the belt for a root whose group file
+# predates it (groupadd -f is a no-op when it already exists).
+groupadd -f --system i2c
+usermod -aG i2c feralfile
 mkdir -p /etc/udev/rules.d
 echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
 
