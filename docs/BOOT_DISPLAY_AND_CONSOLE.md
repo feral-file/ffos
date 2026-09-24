@@ -61,6 +61,27 @@ hardware.
    active VT, and the watchdog suppresses escalation in that state, so a
    kiosk restart cannot steal the developer's console. SSH via the
    controld dev-ssh flow is unchanged.
+6. **Device access that used to come from the login must be granted
+   explicitly.** A logind seat session is also what turns udev's
+   `TAG+="uaccess"` into an ACL for the logged-in user. With no session, no
+   `uaccess` ACL is ever applied, so anything the tty1 autologin got for free
+   through that tag is gone. The one known case is `ddcutil`. On FF1 the
+   `/dev/i2c-*` buses are `root:i2c 0660` (udev rules from `i2c-tools`, a
+   hard dependency of `ddcutil`, and from `ddcutil` itself; the `i2c` group
+   comes from `i2c-tools`' sysusers entry), and `feralfile` was never a member
+   of `i2c` because the `uaccess` ACL covered it. After ffos#126 every ddcutil
+   call from controld (brightness, contrast, volume, panel power, the 5 s
+   status poll, the sleep-schedule panel-off leg) failed with `EACCES` and the
+   app's Device Config lost its display controls; verified on an FF1, where
+   controld ran without `i2c` in its groups and `ddcutil detect` got `EACCES`
+   on every bus, and adding the membership alone fixed it. So the fix is
+   membership only: `feralfile` is in `i2c` (`etc/group`, `etc/gshadow`,
+   pre-seeded like `seat`), and `post-extraction.sh`, `install-to-disk.sh`
+   and `auto-install.sh` re-apply it next to the `seat` one. `i2c-tools` is
+   listed in `packages.x86_64` explicitly because the image relies on its
+   group and rule, not only on ddcutil's dependency list. When adding another
+   device-touching feature under `user@1000`, check whether its udev rule
+   relies on `uaccess` and add a group membership the same way.
 
 ## Where each piece lives
 
@@ -72,6 +93,7 @@ hardware.
 | Live-ISO-only autologin | `archiso-ff1/airootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf` |
 | No autovt | `archiso-ff1/airootfs/etc/systemd/logind.conf.d/10-ff1-no-autovt.conf` |
 | seatd for user units | `archiso-ff1/airootfs/etc/systemd/user.conf.d/10-ff1-seatd.conf` |
+| i2c membership for ddcutil (no uaccess without a session) | `archiso-ff1/airootfs/etc/group`, `etc/gshadow`, `archiso-ff1/packages.x86_64` (`i2c-tools`) |
 | Enabled units | `archiso-ff1/airootfs/etc/systemd/system-preset/90-default.preset` |
 | Plymouth | `archiso-ff1/airootfs/etc/plymouth/plymouthd.conf`, `archiso-ff1/airootfs/usr/share/plymouth/themes/ff1/` |
 | Kiosk side (`cage -s`, VT1 wait, fallback stop, watchdog policy) | ffos-user `users/feralfile/`, `components/feral-watchdog/` |

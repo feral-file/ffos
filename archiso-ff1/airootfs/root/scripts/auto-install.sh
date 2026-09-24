@@ -301,6 +301,15 @@ rm -f primary.ctx ecdsa.pub ecdsa.priv ecdsa.ctx
 
 usermod -aG tss feralfile
 usermod -aG seat feralfile
+# i2c: ddcutil (DDC/CI panel control in feral-controld) needs RW on /dev/i2c-*.
+# The buses are root:i2c 0660 (i2c-tools/ddcutil udev rules) and the group is
+# created by i2c-tools' sysusers entry, but for the logged-in user ddcutil
+# relies on TAG+="uaccess", and since ffos#126 nobody logs in. Membership in
+# i2c is the only grant that works without a session. The image's /etc/group
+# already has it; this is the belt for a root whose group file predates that
+# (groupadd -f is a no-op when the group exists; sysusers may have made it).
+groupadd -f --system i2c
+usermod -aG i2c feralfile
 mkdir -p /etc/udev/rules.d
 echo 'KERNEL=="tpmrm0", GROUP="tss", MODE="0660"' > /etc/udev/rules.d/99-tpm-feralfile.rules
 

@@ -260,6 +260,33 @@ grep -q '^seat:x:[0-9]*:.*feralfile' "$AIROOTFS/etc/group" || {
   printf '/etc/group must put feralfile in the seat group\n' >&2
   exit 1
 }
+# No logind session means no uaccess ACLs (docs rule 6): ddcutil's package
+# rule alone no longer reaches feralfile, and only membership in group i2c
+# (created by i2c-tools' sysusers entry, which also owns the udev rule that
+# makes /dev/i2c-* root:i2c 0660) keeps DDC/CI panel control alive. The
+# membership must exist in the image AND be re-applied by every script that
+# adds feralfile to seat, or an OTA'd root with an older group file loses it.
+grep -q '^i2c:x:[0-9]*:.*feralfile' "$AIROOTFS/etc/group" || {
+  printf '/etc/group must put feralfile in the i2c group (DDC/CI via ddcutil, docs rule 6)\n' >&2
+  exit 1
+}
+grep -q '^i2c:::.*feralfile' "$AIROOTFS/etc/gshadow" || {
+  printf '/etc/gshadow must mirror the i2c group membership\n' >&2
+  exit 1
+}
+for pkg in ddcutil i2c-tools; do
+  grep -q "^$pkg$" archiso-ff1/packages.x86_64 || {
+    printf 'packages.x86_64 must list %s (group i2c and the /dev/i2c-* udev rule come from i2c-tools)\n' "$pkg" >&2
+    exit 1
+  }
+done
+for script in "${root_scripts[@]}"; do
+  grep -q '^usermod -aG seat feralfile$' "$script" || continue
+  grep -q '^usermod -aG i2c feralfile$' "$script" || {
+    printf '%s adds feralfile to seat but not to i2c; keep the two grants together (docs rule 6)\n' "$script" >&2
+    exit 1
+  }
+done
 [[ -f "$AIROOTFS/var/lib/systemd/linger/feralfile" ]] || {
   printf 'missing linger file for feralfile (user manager must start without a login)\n' >&2
   exit 1
