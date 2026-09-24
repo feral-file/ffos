@@ -39,6 +39,11 @@ mesa
 vulkan-radeon
 ethtool
 ddcutil
+# Hard dependency of ddcutil, listed because the image relies on it directly:
+# its sysusers entry creates group i2c and its udev rule makes /dev/i2c-*
+# root:i2c 0660. feralfile is in i2c (etc/group); see
+# docs/BOOT_DISPLAY_AND_CONSOLE.md rule 6.
+i2c-tools
 
 # Boot support
 # amd-ucode.img is also copied to intel-ucode.img at build time for legacy
