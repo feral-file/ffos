@@ -262,9 +262,9 @@ log_info "Total file size to download: $TOTAL_SIZE bytes"
 # permanent. No double quotes in it: the runner's message= regex stops at one.
 #
 # A stale @ota_new deleted above is freed by btrfs's cleaner asynchronously,
-# so wait for it first or the space it held reads as used. Best-effort and
-# bounded: if the sync fails or takes over two minutes, the measurement is
-# merely pessimistic.
+# so wait for the subvolume deletion first. Best-effort and bounded (two
+# minutes). Even after it returns, the freed space can lag in df; the
+# re-check below covers that.
 #
 # Fail direction: if the filesystem cannot be measured, the check is skipped
 # and the update proceeds as it did before this check existed. Refusing on a
@@ -273,15 +273,42 @@ log_info "Total file size to download: $TOTAL_SIZE bytes"
 timeout 120 btrfs subvolume sync "$BTRFS_TOP" >/dev/null 2>&1 || log_info "btrfs subvolume sync failed or timed out; free-space figure may be low"
 PARTIAL_SIZE=$(stat -c %s "$ISO_FILE" 2>/dev/null || echo 0)
 REMAINING_DOWNLOAD=$(( TOTAL_SIZE > PARTIAL_SIZE ? TOTAL_SIZE - PARTIAL_SIZE : 0 ))
-FS_SIZE="" FS_AVAIL=""
-if DF_OUT=$(df --output=size,avail -B1 "$TMP_DIR" 2>/dev/null | tail -n1); then
-  read -r FS_SIZE FS_AVAIL <<<"$DF_OUT" || true
-fi
+# measure_fs sets FS_SIZE/FS_AVAIL in bytes, or leaves them empty.
+measure_fs() {
+  FS_SIZE="" FS_AVAIL=""
+  local df_out
+  if df_out=$(df --output=size,avail -B1 "$TMP_DIR" 2>/dev/null | tail -n1); then
+    read -r FS_SIZE FS_AVAIL <<<"$df_out" || true
+  fi
+}
+measure_fs
 if [[ ! "$FS_SIZE" =~ ^[0-9]+$ || ! "$FS_AVAIL" =~ ^[0-9]+$ ]]; then
   log_info "Could not measure free disk space; skipping the free-space check"
 else
   NEEDED=$(( REMAINING_DOWNLOAD + TOTAL_SIZE * 7 / 2 + 134217728 + FS_SIZE / 20 ))
   log_info "Free-space check: need $NEEDED bytes, have $FS_AVAIL bytes"
+  # Re-measure before refusing. btrfs returns freed space lazily: on an FF1
+  # bench, a stale @ota_new deleted at the top of this script (one pinning
+  # 110 GB) still read as used ~10 s after `btrfs subvolume sync` returned,
+  # and as free ~45 s later. A device that just freed space (that stale
+  # snapshot, the pacman cache, the offline cache evicting) would otherwise
+  # be refused, and the OTA gate latches that as permanent. Poll every 10 s
+  # for up to 120 s and stop as soon as it fits; only the failing path
+  # waits, and the watchdog defers recovery while the lock is held.
+  if (( FS_AVAIL < NEEDED )); then
+    log_info "Free-space check short; waiting up to 120 s for btrfs to return freed space"
+    timeout 60 btrfs filesystem sync "$BTRFS_TOP" >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+      sleep 10
+      measure_fs
+      if [[ ! "$FS_AVAIL" =~ ^[0-9]+$ ]]; then
+        log_info "Could not re-measure free disk space; skipping the free-space check"
+        FS_AVAIL=$NEEDED
+      fi
+      (( FS_AVAIL >= NEEDED )) && break
+    done
+    log_info "Free-space re-check: need $NEEDED bytes, have $FS_AVAIL bytes"
+  fi
   if (( FS_AVAIL < NEEDED )); then
     log_error "Not enough free disk space for the update: need $(( NEEDED / 1048576 )) MiB, have $(( FS_AVAIL / 1048576 )) MiB."
     exit 1
