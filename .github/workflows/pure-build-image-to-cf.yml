@@ -296,11 +296,14 @@ jobs:
           # Why 80 and not more, on an FF1's 127.5 GB disk: this value is the
           # ONLY guard between the cache and the OS. offlinecache never calls
           # statfs — reclaimDiskForCapture's maxDiskBytes/8 floor (10 GB here)
-          # reserves headroom INSIDE the budget, not on the disk — and neither
-          # feral-system-update.sh nor feral-recovery-update.sh checks free
-          # space before downloading. An over-large budget therefore does not
-          # merely stop the cache growing; it makes the OTA die on ENOSPC and
-          # strands the device on its old version, losing remote fixability.
+          # reserves headroom INSIDE the budget, not on the disk.
+          # feral-recovery-update.sh checks no free space before downloading, and
+          # feral-system-update.sh's precheck (ffos#124) only refuses an update
+          # that will not fit. An over-large budget therefore does not merely
+          # stop the cache growing; it makes the OTA refuse to run (or die on
+          # ENOSPC) and strands the device on its old version, losing remote
+          # fixability. That precheck budgets @ota_new from the same 3.4 GB
+          # figure below; keep the two in step.
           # The 47.5 GB left over covers the worst case with ~19 GB spare:
           # OS + user state 4.7, Chromium's uncapped disk cache ~3,
           # @factory_reset once diverged 3.4, a resident @recovery_candidate

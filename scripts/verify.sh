@@ -76,6 +76,16 @@ grep -q -- '--exclude=.*"/home/feralfile/\.cache"' "$OTA_UPDATE_SCRIPT" || {
     "$OTA_UPDATE_SCRIPT" >&2
   exit 1
 }
+log "Checking OTA free-space precheck contract"
+# Free-space precheck (ffos#124): feral-controld's otagate/classify.go
+# (ffos-user) matches this message prefix to classify the failure as
+# permanent. A reworded message would still fail the update, but under
+# whatever the classifier's default happens to be, silently.
+grep -q 'log_error "Not enough free disk space for the update' "$OTA_UPDATE_SCRIPT" || {
+  printf '%s: free-space precheck message must keep the prefix classify.go matches\n' \
+    "$OTA_UPDATE_SCRIPT" >&2
+  exit 1
+}
 # Discovered rather than hardcoded so a new build workflow is covered
 # automatically. The emptiness guard is load-bearing: process substitution
 # discards grep's exit status, so without it a renamed config key would leave

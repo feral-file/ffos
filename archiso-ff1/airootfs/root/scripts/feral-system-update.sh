@@ -218,12 +218,75 @@ TOTAL_SIZE=$(curl -sLI "$ENDPOINT$IMAGE_URL" \
   | awk 'BEGIN{IGNORECASE=1} /^content-length:/ {print $2}' \
   | tail -n1)
 
-if [[ -z "$TOTAL_SIZE" ]]; then
+# Numeric, not just non-empty: it feeds the arithmetic below, where a garbled
+# header would trip the ERR trap as a permanent "EXCEPTION ERR" instead of
+# this transient failure.
+if [[ ! "$TOTAL_SIZE" =~ ^[0-9]+$ ]]; then
   log_error "Failed to retrieve content length for image."
   exit 1
 fi
 
 log_info "Total file size to download: $TOTAL_SIZE bytes"
+
+# --- Free-space precheck (ffos#124) -------------------------------------------
+# Refuse an update that cannot fit, before spending the download on it. A
+# device that runs out mid-update fails at ENOSPC halfway through the rsync
+# into @ota_new, after a 2-4 GB download, and on the way there trips the
+# watchdog's disk handler, which reboots at >95% usage (ffos-user#255).
+#
+# Budget, all on the one btrfs filesystem (/var/tmp and the snapshots share it):
+#   - the rest of the ISO download. $ISO_FILE holds a partial download only
+#     when an earlier run died without its EXIT trap (SIGKILL, power loss);
+#     curl --continue-at resumes it, so only the remainder is new;
+#   - growth of @ota_new: 3.5 ISO sizes. rsync runs without --inplace, so
+#     every changed file is written as a full new copy beside the snapshot's
+#     shared one, and the sfs is xz-compressed while btrfs stores zstd. The
+#     image workflows' disk budget for the offline cache (build-image-to-cf.yml
+#     and its two siblings, offlineCache.maxDiskBytes comment) counts
+#     @ota_new at 3.4 GB for a 1.06 GB ISO; keep the two in step;
+#   - 128 MiB for the boot image extracted into $TMP_DIR at step 7;
+#   - a reserve of 5% of the filesystem, so that, if the growth estimate
+#     holds, usage stays under the watchdog's 95% disk-critical line
+#     (DISK_CRITICAL_THRESHOLD in ffos-user's feral-watchdog/disk.go) for the
+#     whole update. A watchdog that predates the update gate (ffos-user,
+#     ffos#124) would otherwise reboot this update at its peak, and the
+#     post-update root would start inside ffos-user#255's reboot loop. Keep
+#     the two in step.
+#
+# Still an estimate, not a guarantee: a release that rewrites more of the root
+# than the budget assumes can still run out. Erring larger would block updates
+# that would have fit, and the update is the device's way out.
+#
+# Wording is load-bearing: feral-controld's otagate/classify.go matches the
+# "Not enough free disk space for the update" prefix and treats it as
+# permanent. No double quotes in it: the runner's message= regex stops at one.
+#
+# A stale @ota_new deleted above is freed by btrfs's cleaner asynchronously,
+# so wait for it first or the space it held reads as used. Best-effort and
+# bounded: if the sync fails or takes over two minutes, the measurement is
+# merely pessimistic.
+#
+# Fail direction: if the filesystem cannot be measured, the check is skipped
+# and the update proceeds as it did before this check existed. Refusing on a
+# measurement failure would block every update for a reason unrelated to
+# space.
+timeout 120 btrfs subvolume sync "$BTRFS_TOP" >/dev/null 2>&1 || log_info "btrfs subvolume sync failed or timed out; free-space figure may be low"
+PARTIAL_SIZE=$(stat -c %s "$ISO_FILE" 2>/dev/null || echo 0)
+REMAINING_DOWNLOAD=$(( TOTAL_SIZE > PARTIAL_SIZE ? TOTAL_SIZE - PARTIAL_SIZE : 0 ))
+FS_SIZE="" FS_AVAIL=""
+if DF_OUT=$(df --output=size,avail -B1 "$TMP_DIR" 2>/dev/null | tail -n1); then
+  read -r FS_SIZE FS_AVAIL <<<"$DF_OUT" || true
+fi
+if [[ ! "$FS_SIZE" =~ ^[0-9]+$ || ! "$FS_AVAIL" =~ ^[0-9]+$ ]]; then
+  log_info "Could not measure free disk space; skipping the free-space check"
+else
+  NEEDED=$(( REMAINING_DOWNLOAD + TOTAL_SIZE * 7 / 2 + 134217728 + FS_SIZE / 20 ))
+  log_info "Free-space check: need $NEEDED bytes, have $FS_AVAIL bytes"
+  if (( FS_AVAIL < NEEDED )); then
+    log_error "Not enough free disk space for the update: need $(( NEEDED / 1048576 )) MiB, have $(( FS_AVAIL / 1048576 )) MiB."
+    exit 1
+  fi
+fi
 
 # Background progress loop with speed tracking
 PROGRESS_PID=""
