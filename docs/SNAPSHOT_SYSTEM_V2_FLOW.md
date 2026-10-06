@@ -62,7 +62,7 @@ OTA is implemented in `feral-system-update.sh`. High-level sequence:
 1. Mount btrfs top-level (subvolid=0).
 2. Remove any existing `@snapshots/@ota_new`.
 3. Create a writable snapshot: `@snapshots/@` → `@snapshots/@ota_new`.
-4. Download the release ISO and verify its signature.
+4. **Free-space precheck** (ffos#124): refuse the update, before downloading, unless the filesystem has room for the rest of the ISO download, `@ota_new` growth estimated at 3.5 ISO sizes (rsync writes changed files as full new copies; matches the image workflows' disk budget), 128 MiB of boot staging, and a 5% reserve meant to keep usage under feral-watchdog's 95% disk-critical reboot line for the whole update. It is an estimate, not a guarantee. A short first measurement is re-checked every 10 s for up to 120 s before refusing, because btrfs returns freed space (e.g. the stale `@ota_new` deleted in step 2) lazily. The error (`Not enough free disk space for the update: ...`) is classified permanent by feral-controld's OTA gate (`otagate/classify.go`); keep the prefix in step. If the filesystem cannot be measured the check is skipped. Then download the release ISO and verify its signature.
 5. Mount the ISO and its SquashFS; rsync the filesystem into `@ota_new` (with standard exclusions — see [What survives an OTA](#what-survives-an-ota)).
 6. **Stage boot files** into `@ota_new/var/lib/ota_boot_staging` (vmlinuz, initramfs, ucode, loader, EFI). The live `/boot` is not modified yet.
 7. Bind-mount that staging directory as `/boot` inside `@ota_new` and run **`post-extraction.sh`** in chroot (boot entries, mkinitcpio, pacman keys, etc.).
@@ -70,6 +70,8 @@ OTA is implemented in `feral-system-update.sh`. High-level sequence:
 9. Write **`/boot/loader/entries/arch-candidate.conf`** with `rootflags=subvol=@snapshots/@ota_new` (and candidate kernel paths).
 10. Run **`bootctl set-oneshot arch-candidate.conf`** so the next boot uses the candidate entry once.
 11. Reboot.
+
+While the update runs, `feral-updater.sh` (the caller of this script and of the pacman path, `feral-service-update.sh`) holds `/run/feral-updater.lock`. feral-watchdog (ffos-user) reads that lock from `/proc/locks` and defers its reboots and Chromium escalation until it is released, because the update's IO and disk use can trip them and the update ends in its own reboot. It caps one hold at 8 h, so a wedged update cannot disable recovery indefinitely. Keep the lock path, and keep it held across both children until each has requested its reboot. controld's boot OTA gate no longer stops the watchdog around the update.
 
 The btrfs default subvolume remains `@snapshots/@` throughout. Only after a successful boot from `@ota_new` does the subvolume manager promote it (see Post-boot promotion).
 

@@ -20,7 +20,16 @@ else
   UNIQUE_ID="$(date +%s)"
 fi
 
-# Acquire exclusive lock (non-blocking)
+# Acquire exclusive lock (non-blocking).
+#
+# Cross-repo contract (ffos#124): ffos-user's feral-watchdog reads this lock
+# from /proc/locks and defers its reboots and Chromium escalation while it is
+# held, so an update is not killed by recovery actions it provokes itself.
+# That relies on this path and on the lock staying held across both children
+# below, until each has requested its reboot (they get 9>&- only so they do
+# not inherit the fd; this shell keeps it). Moving the lock or releasing it
+# early silently turns the watchdog's gate off. The watchdog caps one hold at
+# 8 h, so a wedged update cannot disable recovery indefinitely.
 exec 9>"$LOCKFILE"
 if ! flock -n 9; then
   log_error "Lock already held by another instance."
