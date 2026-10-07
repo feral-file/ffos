@@ -19,7 +19,9 @@ command -v curl >/dev/null || { echo "curl required" >&2; exit 127; }
 WORK="$(mktemp -d)"
 SERVER_PID=""
 cleanup() {
-  [[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true
+  if [[ -n "$SERVER_PID" ]]; then
+    kill "$SERVER_PID" 2>/dev/null || true
+  fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -100,9 +102,10 @@ run_case() {
   RC=0
   (
     # Called by the sourced helper, which shellcheck does not follow.
-    # shellcheck disable=SC2329
+    # Older shellcheck reports this as SC2317, newer as SC2329.
+    # shellcheck disable=SC2317,SC2329
     log_info() { echo "INFO $1"; }
-    # shellcheck disable=SC2329
+    # shellcheck disable=SC2317,SC2329
     log_error() { echo "ERROR $1"; }
     # shellcheck source=/dev/null
     source "$HELPER"
