@@ -14,6 +14,9 @@ ROOT_DEV="${ROOT_DEV%%\[*}"
 
 log_msg "Factory reset initiated..."
 
+# Revoke before staging or rebooting, even if the candidate boot later fails.
+/usr/local/bin/feral-tailscale reset
+
 sync
 
 # Mount btrfs top-level

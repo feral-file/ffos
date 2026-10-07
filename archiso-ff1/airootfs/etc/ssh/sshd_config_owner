@@ -1,0 +1,22 @@
+# Dedicated owner listener: independent of controld's temporary support sshd.
+# The owner firewall drops this port on every interface except the enrolled
+# computer on tailscale0. The key is restricted to that same source address.
+Port 2222
+PidFile /run/feral-owner-sshd.pid
+AddressFamily inet
+ListenAddress 0.0.0.0
+AllowUsers feralfile
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+AuthorizedKeysFile none
+AuthorizedKeysCommand /usr/local/bin/feral-tailscale authorized-key %u
+AuthorizedKeysCommandUser root
+DisableForwarding yes
+PermitUserRC no
+# Keep sessions in this unit's cgroup, so disconnect kills them with the listener.
+UsePAM no
+SetEnv XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+Subsystem sftp internal-sftp

@@ -1,0 +1,15 @@
+[Unit]
+Description=FF1 owner access firewall and installation check
+RequiresMountsFor=/.snapshots /home/feralfile/.state
+After=btrfs-subvolume-manager.service
+Before=tailscaled.service feral-owner-ssh.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/feral-tailscale boot
+ExecReload=/usr/local/bin/feral-tailscale guard
+# Leave the filtering table in place on stop; removing it would expose access.
+
+[Install]
+WantedBy=multi-user.target
