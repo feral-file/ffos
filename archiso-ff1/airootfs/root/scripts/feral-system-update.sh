@@ -48,87 +48,6 @@ download_file() {
   return 0
 }
 
-# Slow-download mitigation: Cloudflare occasionally serves an extremely slow
-# connection that a fresh connection would fix. Monitor the average download
-# speed over 3-minute windows; if a window averages below the threshold, kill
-# curl and reconnect, resuming from the current offset (--continue-at -).
-# After MAX_SLOW_RETRIES reconnects the download is left to run at whatever
-# speed it gets. Stall detection (< 1KB/s for 60s) still aborts a dead
-# transfer on every attempt.
-SLOW_SPEED_THRESHOLD_KBPS=1024
-SLOW_CHECK_INTERVAL=180
-MAX_SLOW_RETRIES=3
-
-download_file_with_slow_retry() {
-  local url="$1"
-  local output="$2"
-  local label="$3"
-
-  local retries=0
-  local min_window_bytes=$((SLOW_SPEED_THRESHOLD_KBPS * 1024 * SLOW_CHECK_INTERVAL))
-
-  while :; do
-    log_info "Downloading $label"
-
-    curl \
-      --silent \
-      --show-error \
-      --fail \
-      --location \
-      --connect-timeout 15 \
-      --speed-time 60 \
-      --speed-limit 1024 \
-      --continue-at - \
-      "$url" \
-      -o "$output" &
-    local curl_pid=$!
-
-    if (( retries >= MAX_SLOW_RETRIES )); then
-      # Retry budget exhausted: let this attempt run to completion,
-      # however slow it is.
-      if wait "$curl_pid"; then
-        return 0
-      fi
-      log_error "Failed to download $label."
-      return 1
-    fi
-
-    local window_start_size window_elapsed cur_size slow=0
-    window_start_size=$(stat -c %s "$output" 2>/dev/null || echo 0)
-    window_elapsed=0
-
-    while kill -0 "$curl_pid" 2>/dev/null; do
-      sleep 5
-      window_elapsed=$((window_elapsed + 5))
-      if (( window_elapsed < SLOW_CHECK_INTERVAL )); then
-        continue
-      fi
-      cur_size=$(stat -c %s "$output" 2>/dev/null || echo 0)
-      if (( cur_size - window_start_size < min_window_bytes )); then
-        slow=1
-        break
-      fi
-      window_start_size=$cur_size
-      window_elapsed=0
-    done
-
-    if (( slow == 0 )); then
-      # curl exited on its own: success or hard failure.
-      if wait "$curl_pid"; then
-        return 0
-      fi
-      log_error "Failed to download $label."
-      return 1
-    fi
-
-    retries=$((retries + 1))
-    local avg_kbps=$(( (cur_size - window_start_size) / SLOW_CHECK_INTERVAL / 1024 ))
-    log_info "$label download is slow (~${avg_kbps} KB/s avg over ${SLOW_CHECK_INTERVAL}s, threshold ${SLOW_SPEED_THRESHOLD_KBPS} KB/s). Reconnecting and resuming (retry $retries/$MAX_SLOW_RETRIES)..."
-    kill "$curl_pid" 2>/dev/null || true
-    wait "$curl_pid" 2>/dev/null || true
-  done
-}
-
 trap 'code=$?; log_error "EXCEPTION ERR: LINE=$LINENO CMD=\"$BASH_COMMAND\""; exit $code' ERR
 
 if [[ $# -lt 2 || -z "${1:-}" || -z "${2:-}" ]]; then
@@ -138,6 +57,14 @@ fi
 
 IMAGE_URL="$1"
 UNIQUE_ID="$2"
+
+# download_file_with_slow_retry (shared with feral-recovery-update.sh). Sourced
+# after UNIQUE_ID is set because it logs through log_info/log_error.
+if [[ ! -r /root/scripts/ota-download.sh ]]; then
+  log_error "/root/scripts/ota-download.sh missing; cannot download the update"
+  exit 1
+fi
+source /root/scripts/ota-download.sh
 
 CONFIG_FILE="/home/feralfile/ff1-config.json"
 RELEASE_PK="/root/.ff1-release-public-key.pem"
@@ -237,7 +164,10 @@ log_info "Total file size to download: $TOTAL_SIZE bytes"
 # Budget, all on the one btrfs filesystem (/var/tmp and the snapshots share it):
 #   - the rest of the ISO download. $ISO_FILE holds a partial download only
 #     when an earlier run died without its EXIT trap (SIGKILL, power loss);
-#     curl --continue-at resumes it, so only the remainder is new;
+#     curl --continue-at resumes it, so only the remainder is new. (If the
+#     server refused the resume, ota-download.sh would restart from zero and
+#     this under-counts by the partial's size; the distribution Worker honors
+#     Range since ffos#141, so that is a fallback path only.)
 #   - growth of @ota_new: 3.5 ISO sizes. rsync runs without --inplace, so
 #     every changed file is written as a full new copy beside the snapshot's
 #     shared one, and the sfs is xz-compressed while btrfs stores zstd. The
@@ -350,8 +280,10 @@ PROGRESS_PID=""
 ) &
 PROGRESS_PID=$!
 
-# Download the ISO with slow-speed reconnect mitigation; transient failures
-# are retried by download_file_with_slow_retry itself.
+# Download the ISO with slow-speed reconnect mitigation. A failure here is not
+# retried by this script: it exits with "Failed to download OTA image.", which
+# feral-controld's OTA gate classifies as transient and retries by re-running
+# this whole script.
 download_file_with_slow_retry "$ENDPOINT$IMAGE_URL" "$ISO_FILE" "OTA image"
 
 kill "$PROGRESS_PID" 2>/dev/null || true

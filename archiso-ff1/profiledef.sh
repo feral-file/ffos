@@ -27,6 +27,7 @@ file_permissions=(
   ["/root/scripts/feral-service-update.sh"]="0:0:755"
   ["/root/scripts/feral-system-update.sh"]="0:0:755"
   ["/root/scripts/feral-recovery-update.sh"]="0:0:755"
+  ["/root/scripts/ota-download.sh"]="0:0:755"
   ["/root/scripts/post-extraction.sh"]="0:0:755"
   ["/root/scripts/feral-update.sh"]="0:0:755"
   ["/root/scripts/ff1-boot-options.sh"]="0:0:755"
