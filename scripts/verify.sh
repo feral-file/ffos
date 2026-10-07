@@ -26,12 +26,12 @@ mapfile -t package_shell_files < <(find packages -type f -name '*.sh' | sort)
 log "Checking shell syntax"
 # One file per invocation: `bash -n a b` parses only a and treats b as a
 # positional parameter, so a multi-file call silently checks the first file.
-for f in scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
+for f in scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
   bash -n "$f"
 done
 
 log "Running shellcheck"
-shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
 log "Validating GitHub workflow YAML"
 ruby <<'RUBY'
@@ -76,6 +76,27 @@ grep -q -- '--exclude=.*"/home/feralfile/\.cache"' "$OTA_UPDATE_SCRIPT" || {
     "$OTA_UPDATE_SCRIPT" >&2
   exit 1
 }
+log "Checking OTA download helper"
+# ffos#141: both updaters download through the shared ota-download.sh, which
+# restarts from zero when the server refuses a resume. A script that grows its
+# own copy again would silently lose that fallback, and the test below only
+# exercises the shared helper.
+for updater in "$OTA_UPDATE_SCRIPT" archiso-ff1/airootfs/root/scripts/feral-recovery-update.sh; do
+  grep -q '^source /root/scripts/ota-download.sh$' "$updater" || {
+    printf '%s must source /root/scripts/ota-download.sh\n' "$updater" >&2
+    exit 1
+  }
+  if grep -q '^download_file_with_slow_retry()' "$updater"; then
+    printf '%s must not define its own download_file_with_slow_retry\n' "$updater" >&2
+    exit 1
+  fi
+done
+grep -q '"/root/scripts/ota-download.sh"' archiso-ff1/profiledef.sh || {
+  printf 'archiso-ff1/profiledef.sh must list /root/scripts/ota-download.sh in file_permissions\n' >&2
+  exit 1
+}
+./scripts/test-ota-download.sh
+
 log "Checking OTA free-space precheck contract"
 # Free-space precheck (ffos#124): feral-controld's otagate/classify.go
 # (ffos-user) matches this message prefix to classify the failure as
@@ -107,6 +128,36 @@ while IFS= read -r workflow; do
     exit 1
   }
 done <<< "$offline_cache_workflows"
+
+log "Checking image package prefetch"
+# ffos#163: every image workflow downloads its package set with a bounded
+# retry before mkarchiso. The step is inline (build-image-from-tags.yml checks
+# ffos out at an older tag, so it cannot call a new script), so pin that all
+# three carry it, byte-identical, ahead of mkarchiso. A copy that drifts or
+# disappears would bring back one-stall-kills-the-build without any failure.
+prefetch_block() {
+  awk '/^      # ffos#163: pacman gives up/{on=1} on{print} on&&/^          exit 1$/{exit}' "$1"
+}
+reference_prefetch=""
+for workflow in .github/workflows/build-image-to-cf.yml .github/workflows/pure-build-image-to-cf.yml .github/workflows/build-image-from-tags.yml; do
+  block="$(prefetch_block "$workflow")"
+  if [[ -z "$block" ]] || ! grep -q 'name: Prefetch image packages' <<< "$block"; then
+    printf '%s: missing the "Prefetch image packages" step (ffos#163)\n' "$workflow" >&2
+    exit 1
+  fi
+  if [[ -z "$reference_prefetch" ]]; then
+    reference_prefetch="$block"
+  elif [[ "$block" != "$reference_prefetch" ]]; then
+    printf '%s: "Prefetch image packages" differs from build-image-to-cf.yml; keep the three copies identical\n' "$workflow" >&2
+    exit 1
+  fi
+  prefetch_line="$(grep -n 'name: Prefetch image packages' "$workflow" | head -n1 | cut -d: -f1)"
+  mkarchiso_line="$(grep -n 'mkarchiso -v' "$workflow" | head -n1 | cut -d: -f1)"
+  if [[ -z "$mkarchiso_line" ]] || (( prefetch_line > mkarchiso_line )); then
+    printf '%s: "Prefetch image packages" must run before mkarchiso\n' "$workflow" >&2
+    exit 1
+  fi
+done
 
 log "Checking FF1 log-stream image configuration"
 log_stream_workflows="$(grep -rl 'write_json .*controld\.json' .github/workflows | sort || true)"

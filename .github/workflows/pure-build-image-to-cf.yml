@@ -374,6 +374,48 @@ jobs:
           role-to-assume: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
           aws-region: 'ap-northeast-1'
 
+      # ffos#163: pacman gives up on a package after 10 s at under 1 B/s, the
+      # [feralfile] repo has a single Server, and pacman itself never retries,
+      # so one transient stall used to abort mkarchiso after every component
+      # had already built. Download the whole package set here with a bounded
+      # retry instead; mkarchiso's pacstrap runs with -c (the host's
+      # /var/cache/pacman/pkg) and installs from this cache.
+      #
+      # Trust is unchanged: -w only downloads. pacstrap still verifies every
+      # package against SigLevel when it installs, so a corrupt or wrongly
+      # signed file in the cache fails the build exactly as before.
+      #
+      # The empty --dbpath makes pacman resolve the full dependency closure the
+      # way pacstrap does for an empty root; against the container's own
+      # database it would skip anything the build container already has
+      # installed. Partial *.part files are dropped between attempts so a retry
+      # never depends on the server honoring Range.
+      #
+      # Keep this step byte-identical in build-image-to-cf.yml,
+      # pure-build-image-to-cf.yml and build-image-from-tags.yml; scripts/verify.sh
+      # pins that. It is inline rather than a script because
+      # build-image-from-tags.yml checks ffos out at an older tag, where a new
+      # script file would not exist.
+      - name: Prefetch image packages
+        run: |
+          set -euo pipefail
+          mapfile -t pkgs < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' /build/archiso-ff1/packages.x86_64 | grep -v '^$')
+          dbpath="$(mktemp -d)"
+          cachedir="$(pacman-conf CacheDir | head -n1)"
+          for attempt in 1 2 3; do
+            if pacman --config /build/archiso-ff1/pacman.conf --dbpath "$dbpath" \
+                --cachedir "$cachedir" -Syw --noconfirm "${pkgs[@]}"; then
+              exit 0
+            fi
+            find "$cachedir" -maxdepth 1 -name '*.part' -delete
+            if (( attempt < 3 )); then
+              echo "Package download failed (attempt $attempt/3); retrying in $((attempt * 15)) s"
+              sleep $((attempt * 15))
+            fi
+          done
+          echo "::error::Package download failed after 3 attempts; the failing package is in pacman's output above"
+          exit 1
+
       - name: Build, sign and upload ISO Image
         run: |
           cd /build
