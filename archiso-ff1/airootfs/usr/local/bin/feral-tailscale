@@ -4,6 +4,7 @@
 set -euo pipefail
 STATE_DIR=/.snapshots/.tailscale
 ROOT_MARKER=/home/feralfile/.state/tailscale-owner-enabled
+UPDATER_LOCK=/run/feral-updater.lock
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 require_root() { [[ $EUID == 0 ]] || fail 'Run with sudo on the FF1.'; }
@@ -89,15 +90,23 @@ enroll() {
     printf '%s %s\n' "$key_type" "$key_data" | ssh-keygen -lf /dev/stdin >/dev/null || fail 'Invalid SSH public key.'
     [[ ! -f "$STATE_DIR/enabled" ]] || fail 'Already enrolled. Use connect, or disconnect before changing the owner.'
     require_installed_root
-    umask 077
-    mkdir -p "$STATE_DIR" "$(dirname "$ROOT_MARKER")"
-    chmod 700 "$STATE_DIR"
-    printf '%s\n' "$peer" > "$STATE_DIR/owner-ip"
-    printf '%s %s\n' "$key_type" "$key_data" > "$STATE_DIR/owner-key"
-    touch "$ROOT_MARKER"
-    sync
-    touch "$STATE_DIR/enabled"
-    sync
+    # OTA snapshots the root before its download, then preserves that snapshot's
+    # .state directory. Serialize the durable grant with feral-updater.sh so a
+    # candidate cannot miss the marker and erase the new identity at boot.
+    # Scope fd 8 to the writes: failures release it, and browser login cannot
+    # block updates. The caller keeps the independent owner-access lock on fd 9.
+    (
+        flock -n 8 || fail 'FF1 update in progress. Retry enrollment after the update finishes.'
+        umask 077
+        mkdir -p "$STATE_DIR" "$(dirname "$ROOT_MARKER")"
+        chmod 700 "$STATE_DIR"
+        printf '%s\n' "$peer" > "$STATE_DIR/owner-ip"
+        printf '%s %s\n' "$key_type" "$key_data" > "$STATE_DIR/owner-key"
+        touch "$ROOT_MARKER"
+        sync
+        touch "$STATE_DIR/enabled"
+        sync
+    ) 8>"$UPDATER_LOCK"
     connect_owner
 }
 

@@ -2,6 +2,16 @@
 
 set -euo pipefail
 
+# Revocation stops owner SSH and kills its entire service cgroup. Run the
+# reset in its own unit before touching device state, even for direct SSH
+# invocations. Only the unit passes the internal worker argument.
+if [[ $# == 0 ]]; then
+    exec systemctl start --no-block set-factory-boot.service
+elif [[ $# != 1 || $1 != --run-in-service ]]; then
+    printf 'Usage: factory_reset.sh\n' >&2
+    exit 2
+fi
+
 LOG_FILE="/var/log/factory-reset.log"
 
 log_msg() {

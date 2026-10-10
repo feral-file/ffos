@@ -48,6 +48,9 @@ ssh -t feralfile@<ff1-lan-address> \
 ```
 
 The owner completes the Tailscale login URL in their own browser and account.
+If an update is running, enrollment exits before creating a grant; retry after
+the update finishes and the FF1 returns. The updater lock covers only the durable
+grant write, so waiting for browser authentication does not block updates.
 No auth key or enrolled identity goes into an image, repository or shared log.
 If login takes longer than five minutes, finish authentication and run
 `sudo feral-tailscale connect` over LAN to retry. Inspect
@@ -120,6 +123,12 @@ For a lost agent computer, revoke that computer in the Tailscale admin console
 immediately. For transfer, factory-reset the FF1 and remove its old tailnet entry;
 the recipient enrolls afresh. Reset revokes before staging a replacement root,
 so a failed candidate boot cannot restore the old owner's access.
+
+For an explicitly authorized factory reset from owner SSH, use
+`sudo systemctl start --no-block set-factory-boot.service`. The reset continues
+in its own service after revocation closes the SSH session. Direct invocation of
+`sudo /root/scripts/factory_reset.sh` dispatches to the same service. Inspect
+`journalctl -u set-factory-boot.service` locally if reset does not complete.
 
 ## Persistence and failure ordering
 
