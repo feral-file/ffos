@@ -1,8 +1,10 @@
-# Owner access over Tailscale (pilot)
+# Owner access over Tailscale
 
-Status: implementation for a development-image pilot. No production version or
-hardware validation is claimed. Ship through a full FFOS image; installing a
-component package alone cannot deliver these units, firewall rules or reset hooks.
+This optional feature requires a full FFOS image containing `feral-tailscale`.
+Check `command -v feral-tailscale` on the FF1 before enrollment. If it is absent,
+update through the normal firmware release channel to a version that includes
+owner access. A component package alone cannot deliver the required units,
+firewall rules or reset hooks.
 
 ## Behavior and boundaries
 
@@ -33,8 +35,8 @@ network path; the owner's phone running Tailscale does not supply that path.
 
 ## Enroll while local
 
-Install the development image on an explicitly selected pilot FF1 first. On the
-computer that runs the agent, inspect `tailscale ip -4` and use an existing SSH
+Confirm the intended FF1 has the feature installed. On the computer that runs
+the agent, inspect `tailscale ip -4` and use an existing SSH
 key (or generate one without overwriting an existing key). Keep the private key
 on that computer. Confirm the FF1's physical ID and LAN SSH host fingerprint.
 
@@ -68,7 +70,7 @@ does not cancel them. A minimal grant has this shape (replace both addresses):
 
 Merge the relevant grant into the owner's policy; do not replace their whole
 policy. The device allowlist is an additional restriction even on a permissive
-tailnet. Test with an unauthorized peer before calling the pilot ready.
+tailnet. Test with an unauthorized peer before relying on remote access.
 
 For unattended FF1 access, disable key expiry **for this FF1** in the owner's
 Tailscale admin console after enrollment. Node credential expiry is separate
