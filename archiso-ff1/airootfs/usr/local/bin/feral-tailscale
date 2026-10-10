@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# Optional owner access. Identity lives outside root snapshots; the root marker
+# binds it to this installation, so even an older factory image cannot inherit it.
+set -euo pipefail
+STATE_DIR=/.snapshots/.tailscale
+ROOT_MARKER=/home/feralfile/.state/tailscale-owner-enabled
+UPDATER_LOCK=/run/feral-updater.lock
+
+fail() { printf '%s\n' "$*" >&2; exit 1; }
+require_root() { [[ $EUID == 0 ]] || fail 'Run with sudo on the FF1.'; }
+require_installed_root() {
+    [[ $(findmnt -rn -M /.snapshots -o FSTYPE) == btrfs ]] ||
+        fail 'Owner access requires an installed FF1 with /.snapshots mounted.'
+    [[ ! -L "$STATE_DIR" ]] || fail 'Refusing a symlink for owner state.'
+}
+
+# Only the enrolled computer's Tailscale IPv4 address is accepted in this pilot.
+# Strict parsing also makes interpolation into nft input safe.
+validate_peer() {
+    local peer=$1 a b c d octet
+    [[ $peer =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || fail 'Expected a Tailscale IPv4 address.'
+    IFS=. read -r a b c d <<< "$peer"
+    for octet in "$a" "$b" "$c" "$d"; do
+        [[ $octet == 0 || $octet != 0* ]] || fail 'IPv4 octets must not have leading zeros.'
+        (( 10#$octet <= 255 )) || fail 'Invalid IPv4 octet.'
+    done
+    (( a == 100 && b >= 64 && b <= 127 )) || fail 'Expected an address in 100.64.0.0/10.'
+}
+
+# Render one atomic transaction. Other services' tables, including Tailscale's,
+# survive. No established-flow bypass: revocation must stop existing traffic too.
+guard() {
+    local allow=''
+    if [[ -f "$ROOT_MARKER" && -f "$STATE_DIR/enabled" ]]; then
+        local peer
+        peer=$(cat "$STATE_DIR/owner-ip")
+        validate_peer "$peer"
+        allow="iifname \"tailscale0\" ip saddr $peer tcp dport { 1111, 2222 } accept"
+    fi
+    nft -f - <<EOF
+add table inet feral_owner
+flush table inet feral_owner
+table inet feral_owner {
+    chain input {
+        type filter hook input priority -10; policy accept;
+        $allow
+        iifname "tailscale0" drop
+        tcp dport 2222 drop
+    }
+    chain forward {
+        type filter hook forward priority -10; policy accept;
+        iifname "tailscale0" drop
+        oifname "tailscale0" drop
+    }
+}
+EOF
+}
+
+boot() {
+    require_installed_root
+    # A factory root (including one predating this feature) has no marker.
+    # Remove leftover identity before either network service can start.
+    if [[ ! -f "$ROOT_MARKER" ]]; then
+        rm -rf -- "$STATE_DIR"
+    fi
+    guard
+}
+
+connect_owner() {
+    [[ -f "$ROOT_MARKER" && -f "$STATE_DIR/enabled" ]] || fail 'Enroll owner access first.'
+    systemctl start feral-owner-guard.service
+    guard
+    systemctl start tailscaled.service feral-owner-ssh.service
+    # Keep all routing and resolver decisions local to the ordinary FF1 network.
+    # Tailscale SSH is off: owner recovery uses the isolated OpenSSH service.
+    tailscale up --reset --accept-dns=false --accept-routes=false \
+        --advertise-routes= --advertise-exit-node=false --exit-node= \
+        --ssh=false --timeout=5m
+    printf 'Connected. For unattended access, disable key expiry for this FF1 in the Tailscale admin console.\n'
+}
+
+enroll() {
+    local peer=$1 key_file=$2 key_type key_data _comment
+    validate_peer "$peer"
+    [[ -f "$key_file" && $(stat -c %s "$key_file") -le 4096 ]] || fail 'Provide one SSH public key file.'
+    [[ $(wc -l < "$key_file") -le 1 ]] || fail 'Provide one SSH public key, without key options.'
+    read -r key_type key_data _comment < "$key_file" || true
+    case "$key_type" in ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521) ;;
+        *) fail 'Unsupported SSH public key type (or key options supplied).' ;; esac
+    printf '%s %s\n' "$key_type" "$key_data" | ssh-keygen -lf /dev/stdin >/dev/null || fail 'Invalid SSH public key.'
+    [[ ! -f "$STATE_DIR/enabled" ]] || fail 'Already enrolled. Use connect, or disconnect before changing the owner.'
+    require_installed_root
+    # OTA snapshots the root before its download, then preserves that snapshot's
+    # .state directory. Serialize the durable grant with feral-updater.sh so a
+    # candidate cannot miss the marker and erase the new identity at boot.
+    # Scope fd 8 to the writes: failures release it, and browser login cannot
+    # block updates. The caller keeps the independent owner-access lock on fd 9.
+    (
+        flock -n 8 || fail 'FF1 update in progress. Retry enrollment after the update finishes.'
+        umask 077
+        mkdir -p "$STATE_DIR" "$(dirname "$ROOT_MARKER")"
+        chmod 700 "$STATE_DIR"
+        printf '%s\n' "$peer" > "$STATE_DIR/owner-ip"
+        printf '%s %s\n' "$key_type" "$key_data" > "$STATE_DIR/owner-key"
+        touch "$ROOT_MARKER"
+        sync
+        touch "$STATE_DIR/enabled"
+        sync
+    ) 8>"$UPDATER_LOCK"
+    connect_owner
+}
+
+# Called by OpenSSH as root, so daemon state remains mode 700 and public keys
+# need not be exposed through feralfile's writable home or root snapshots.
+authorized_key() {
+    [[ $1 == feralfile && -f "$ROOT_MARKER" && -f "$STATE_DIR/enabled" ]] || return 0
+    local peer
+    peer=$(cat "$STATE_DIR/owner-ip")
+    validate_peer "$peer"
+    printf 'from="%s",restrict,pty %s\n' "$peer" "$(cat "$STATE_DIR/owner-key")"
+}
+
+reset_access() {
+    require_installed_root
+    # The authoritative off switch is durable BEFORE stopping services. Failed
+    # logout cannot keep local access alive or let an older snapshot restore it.
+    rm -f -- "$ROOT_MARKER" "$STATE_DIR/enabled"
+    sync
+    guard
+    timeout 10 tailscale logout || printf 'Tailnet logout unavailable; removing local identity. Remove the device in the Tailscale admin console too.\n' >&2
+    systemctl stop feral-owner-ssh.service tailscaled.service
+    rm -rf -- "$STATE_DIR"
+    sync
+}
+
+main() {
+    require_root
+    case "${1:-}" in
+        authorized-key) [[ $# == 2 ]] || fail 'Expected a username.'; authorized_key "$2"; return ;;
+        guard) [[ $# == 1 ]] || fail 'Unexpected argument.'; require_installed_root; guard; return ;;
+    esac
+    # Start boot cleanup before taking its lock. Starting this dependency while
+    # holding the lock would deadlock a first enrollment on a fresh installation.
+    case "${1:-}" in
+        enroll|connect) require_installed_root; systemctl start feral-owner-guard.service ;;
+    esac
+    # Enrollment, boot cleanup and reset cannot race. Guard/key reads don't take
+    # this lock: systemctl starts them while enrollment holds it.
+    exec 9>/run/feral-owner-access.lock
+    flock -x 9
+    case "${1:-}" in
+        enroll) [[ $# == 3 ]] || fail 'Usage: feral-tailscale enroll <computer-tailscale-ipv4> <ssh-public-key-file>'; enroll "$2" "$3" ;;
+        connect) [[ $# == 1 ]] || fail 'Unexpected argument.'; require_installed_root; connect_owner ;;
+        boot) [[ $# == 1 ]] || fail 'Unexpected argument.'; boot ;;
+        reset) [[ $# == 1 ]] || fail 'Unexpected argument.'; reset_access ;;
+        disconnect)
+            [[ $# == 1 ]] || fail 'Unexpected argument.'
+            # Survive closing the owner SSH session executing this command.
+            systemd-run --unit=feral-owner-disconnect --collect --on-active=2s \
+                /usr/local/bin/feral-tailscale reset
+            printf 'Disconnect scheduled; this SSH connection will close.\n'
+            ;;
+        status)
+            [[ $# == 1 ]] || fail 'Unexpected argument.'
+            if [[ -f "$ROOT_MARKER" && -f "$STATE_DIR/enabled" ]]; then
+                printf 'Owner computer: %s\n' "$(cat "$STATE_DIR/owner-ip")"
+                tailscale status
+            else
+                printf 'Owner access is disabled.\n'
+            fi
+            ;;
+        *) fail 'Usage: feral-tailscale {enroll <computer-ipv4> <public-key-file>|connect|status|disconnect}' ;;
+    esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then main "$@"; fi

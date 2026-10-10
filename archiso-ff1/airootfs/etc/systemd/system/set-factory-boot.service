@@ -3,4 +3,4 @@ Description=Set systemd-boot to factory_reset.conf on next boot
 
 [Service]
 Type=simple
-ExecStart=/root/scripts/factory_reset.sh
+ExecStart=/root/scripts/factory_reset.sh --run-in-service

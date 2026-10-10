@@ -45,3 +45,8 @@ enable clean-shutdown-marker.service
 enable seatd.service
 enable feral-kiosk-startup.service
 enable getty@.service tty1 tty2
+
+# Presets restore the service links after OTA; conditions keep enrollment opt-in.
+enable feral-owner-guard.service
+enable tailscaled.service
+enable feral-owner-ssh.service
