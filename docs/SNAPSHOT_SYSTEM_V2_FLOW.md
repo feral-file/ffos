@@ -27,6 +27,7 @@ btrfs top-level (subvolid=0)
 ├── @log                       # bind-mounted as /var/log
 ├── @pkg                       # bind-mounted as /var/cache/pacman/pkg
 └── @snapshots
+    ├── .tailscale             # optional owner access; outside root snapshots
     ├── @                      # default subvolume; live root filesystem
     ├── @factory_reset         # factory reset image (from initial install)
     ├── @recovery_candidate    # optional; newer recovery image from recovery update
@@ -321,3 +322,10 @@ The one-shot mechanism uses `bootctl set-oneshot arch-candidate.conf`, so the ne
                                     │    orphans   │
                                     └──────────────┘
 ```
+
+## Optional owner access
+
+Tailscale identity is stored outside the root snapshots and is erased by both
+factory-reset paths. Its installation marker rides the existing `.state` OTA
+exclusion. See [owner access](OWNER_TAILSCALE.md#persistence-and-failure-ordering)
+for revocation ordering and the development-image validation requirements.

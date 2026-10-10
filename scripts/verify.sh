@@ -33,6 +33,12 @@ done
 log "Running shellcheck"
 shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
+log "Checking owner Tailscale integration"
+bash -n archiso-ff1/airootfs/usr/local/bin/feral-tailscale
+bash -n scripts/test-owner-firewall.sh
+shellcheck -x archiso-ff1/airootfs/usr/local/bin/feral-tailscale scripts/test-owner-firewall.sh
+python3 scripts/test-owner-tailscale.py
+
 log "Validating GitHub workflow YAML"
 ruby <<'RUBY'
 require "yaml"

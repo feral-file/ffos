@@ -108,3 +108,5 @@ feral-player
 
 # HTTP server to serve feral-player static
 darkhttpd
+# Optional, individually enrolled owner access. Never enroll an image.
+tailscale
