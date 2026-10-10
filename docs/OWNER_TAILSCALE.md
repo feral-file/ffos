@@ -1,9 +1,12 @@
 # Owner access over Tailscale
 
 This optional feature requires a full FFOS image containing `feral-tailscale`.
-Check `command -v feral-tailscale` on the FF1 before enrollment. If it is absent,
-update through the normal firmware release channel to a version that includes
-owner access. A component package alone cannot deliver the required units,
+Check `command -v feral-tailscale` on the FF1 before enrollment. The helper
+is supplied by the full image, not the Tailscale package. Its presence alone
+is not proof of a complete installation; confirm the `feral-owner-guard`,
+`feral-owner-ssh` and `tailscaled` system units are loaded too. If support is
+absent, check the normal firmware release channel for availability. Enrollment
+waits until a full image containing the feature is published and installed. A component package alone cannot deliver the required units,
 firewall rules or reset hooks.
 
 ## Behavior and boundaries
