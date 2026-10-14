@@ -2,6 +2,16 @@
 
 set -euo pipefail
 
+# Revocation stops owner SSH and kills its entire service cgroup. Run the
+# reset in its own unit before touching device state, even for direct SSH
+# invocations. Only the unit passes the internal worker argument.
+if [[ $# == 0 ]]; then
+    exec systemctl start --no-block set-factory-boot.service
+elif [[ $# != 1 || $1 != --run-in-service ]]; then
+    printf 'Usage: factory_reset.sh\n' >&2
+    exit 2
+fi
+
 LOG_FILE="/var/log/factory-reset.log"
 
 log_msg() {
@@ -13,6 +23,20 @@ ROOT_DEV=$(findmnt / -no SOURCE)
 ROOT_DEV="${ROOT_DEV%%\[*}"
 
 log_msg "Factory reset initiated..."
+
+# Revoke before staging or rebooting, even if the candidate boot later fails.
+# A failed revoke must not abort the reset: controld has already cleared the
+# claim, and this runs on every FF1, enrolled or not. The budget covers a
+# brief lock wait and the 10 s logout, so a slow tailscaled stop can also land
+# in the fallback; -k reaps a helper stuck past SIGTERM. force-reset reaches the
+# same end state without the lock: markers removed, deny-all guard, both
+# services stopped, identity erased.
+if ! timeout -k 5 60 /usr/local/bin/feral-tailscale reset; then
+    log_msg "Warning: owner access revoke failed; forcing it without the owner lock."
+    if ! /usr/local/bin/feral-tailscale force-reset; then
+        log_msg "Warning: forced owner access revoke was incomplete; continuing the reset."
+    fi
+fi
 
 sync
 
