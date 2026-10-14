@@ -195,6 +195,16 @@ run_hook() {
     return 1
   fi
 
+  # Owner identity is outside every root snapshot. Revoke before restoring a
+  # factory root, including one built before owner access existed. Failure to
+  # erase must abort this reset instead of reporting a completed ownership wipe.
+  if ! rm -rf /run/rollback/@snapshots/.tailscale; then
+    echo "[btrfs-rollback] ERROR: failed to erase owner access" >> "$LOG"
+    umount /run/rollback
+    return 1
+  fi
+  sync
+
   local source_snap="@snapshots/@factory_reset"
 
   if [[ ! -d "/run/rollback/$source_snap" ]]; then

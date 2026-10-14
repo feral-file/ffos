@@ -1,0 +1,19 @@
+[Unit]
+Description=FF1 persistent owner SSH over Tailscale
+Requires=feral-owner-guard.service
+Wants=tailscaled.service
+After=feral-owner-guard.service tailscaled.service
+RequiresMountsFor=/.snapshots
+ConditionPathExists=/.snapshots/.tailscale/enabled
+
+[Service]
+Type=simple
+ExecStartPre=/usr/local/bin/feral-tailscale guard
+ExecStartPre=/usr/bin/ssh-keygen -A
+ExecStart=/usr/bin/sshd -D -e -f /etc/ssh/sshd_config_owner
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
