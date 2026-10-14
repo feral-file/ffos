@@ -147,8 +147,28 @@ reset_access
 '''.replace('$2_UNUSED', str(self.path)))
         calls = (self.path / 'calls').read_text()
         self.assertNotIn('tailscale logout', calls)
-        self.assertIn('systemctl stop feral-owner-ssh.service tailscaled.service', calls)
+        self.assertIn('systemctl stop tailscaled.service', calls)
+        self.assertIn('systemctl stop feral-owner-ssh.service', calls)
         self.assertNotIn('admin console', result.stderr)
+
+    def test_reset_erases_identity_before_stopping_owner_ssh(self):
+        # Stopping owner SSH kills its cgroup, which includes a reset run from
+        # an owner SSH session. The identity must already be gone by then.
+        self.run_helper('''
+enroll 100.100.1.2 "$2/key.pub"
+printf secret > "$STATE_DIR/tailscaled.state"
+systemctl() {
+    [[ $1 == is-active ]] && return 0
+    if [[ $* == "stop feral-owner-ssh.service" ]]; then
+        [[ -e $STATE_DIR ]] && { printf 'identity still present at owner SSH stop\\n' >&2; exit 75; }
+    fi
+    printf 'systemctl %s\\n' "$*" >> "$2_UNUSED/calls"
+}
+reset_access
+'''.replace('$2_UNUSED', str(self.path)))
+        calls = (self.path / 'calls').read_text()
+        self.assertIn('systemctl stop feral-owner-ssh.service', calls)
+        self.assertFalse((self.path / 'state').exists())
 
     def test_reset_with_identity_warns_when_daemon_is_down(self):
         # The warning is the owner's only sign the node key is still in their tailnet.

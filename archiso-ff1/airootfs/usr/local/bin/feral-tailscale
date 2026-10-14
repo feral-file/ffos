@@ -145,9 +145,13 @@ reset_access() {
     elif [[ -f "$STATE_DIR/tailscaled.state" ]]; then
         printf 'Tailscale is not running, so it cannot log out; removing local identity. Remove the device in the Tailscale admin console too.\n' >&2
     fi
-    systemctl stop feral-owner-ssh.service tailscaled.service
+    # Erase identity before stopping owner SSH: that stop kills its whole
+    # cgroup, including this script when it runs from an owner SSH session,
+    # and a node key left behind would be reused by the next enrollment.
+    systemctl stop tailscaled.service
     rm -rf -- "$STATE_DIR"
     sync
+    systemctl stop feral-owner-ssh.service
 }
 
 # Lock-free fallback for factory_reset.sh when reset_access fails or does not
@@ -207,7 +211,8 @@ main() {
             [[ $# == 1 ]] || fail 'Unexpected argument.'
             if [[ -f "$ROOT_MARKER" && -f "$STATE_DIR/enabled" ]]; then
                 printf 'Owner computer: %s\n' "$(cat "$STATE_DIR/owner-ip")"
-                tailscale status
+                # Bounded: this runs under the owner-access lock a reset waits on.
+                timeout 10 tailscale status
             else
                 printf 'Owner access is disabled.\n'
             fi
