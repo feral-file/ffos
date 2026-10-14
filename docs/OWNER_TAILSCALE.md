@@ -127,7 +127,12 @@ admin console. Enrollment after disconnect requires local access again.
 For a lost agent computer, revoke that computer in the Tailscale admin console
 immediately. For transfer, factory-reset the FF1 and remove its old tailnet entry;
 the recipient enrolls afresh. Reset revokes before staging a replacement root,
-so a failed candidate boot cannot restore the old owner's access.
+so a failed candidate boot cannot restore the old owner's access. A revoke that
+fails or does not finish within 60 s does not abort the reset:
+the script falls back to `feral-tailscale force-reset`, which takes no lock and
+best-effort removes the markers, applies the deny-all guard, stops both owner
+services and erases the identity, then continues. Enrollment releases that lock
+before waiting on browser login, so a pending login never delays a reset.
 
 For an explicitly authorized factory reset from owner SSH, use
 `sudo systemctl start --no-block set-factory-boot.service`. The reset continues

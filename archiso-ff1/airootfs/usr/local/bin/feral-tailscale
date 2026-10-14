@@ -71,6 +71,14 @@ connect_owner() {
     systemctl start feral-owner-guard.service
     guard
     systemctl start tailscaled.service feral-owner-ssh.service
+    # Release the owner-access lock before waiting on browser login, which can
+    # take the full 5 min timeout. A factory reset takes this lock and must not
+    # wait behind an unattended login: it runs under controld's 2 min
+    # stuck-reset latch, and holding the lock through login let that latch
+    # give up while the reset still rebooted the device minutes later. A reset
+    # that runs now removes the marker, stops tailscaled and erases state, so
+    # this login just fails.
+    exec 9>&-
     # Keep all routing and resolver decisions local to the ordinary FF1 network.
     # Tailscale SSH is off: owner recovery uses the isolated OpenSSH service.
     tailscale up --reset --accept-dns=false --accept-routes=false \
@@ -94,7 +102,8 @@ enroll() {
     # .state directory. Serialize the durable grant with feral-updater.sh so a
     # candidate cannot miss the marker and erase the new identity at boot.
     # Scope fd 8 to the writes: failures release it, and browser login cannot
-    # block updates. The caller keeps the independent owner-access lock on fd 9.
+    # block updates. The caller holds the independent owner-access lock on fd 9
+    # until connect_owner releases it before the login wait.
     (
         flock -n 8 || fail 'FF1 update in progress. Retry enrollment after the update finishes.'
         umask 077
@@ -127,10 +136,39 @@ reset_access() {
     rm -f -- "$ROOT_MARKER" "$STATE_DIR/enabled"
     sync
     guard
-    timeout 10 tailscale logout || printf 'Tailnet logout unavailable; removing local identity. Remove the device in the Tailscale admin console too.\n' >&2
+    # Only a running daemon can log out. With no node identity there is nothing
+    # to warn about (every reset of a never-enrolled FF1); with an identity and
+    # no daemon, the warning leaves a journal record that the node key may
+    # still be listed in the owner's tailnet.
+    if systemctl is-active --quiet tailscaled.service; then
+        timeout 10 tailscale logout || printf 'Tailnet logout unavailable; removing local identity. Remove the device in the Tailscale admin console too.\n' >&2
+    elif [[ -f "$STATE_DIR/tailscaled.state" ]]; then
+        printf 'Tailscale is not running, so it cannot log out; removing local identity. Remove the device in the Tailscale admin console too.\n' >&2
+    fi
     systemctl stop feral-owner-ssh.service tailscaled.service
     rm -rf -- "$STATE_DIR"
     sync
+}
+
+# Lock-free fallback for factory_reset.sh when reset_access fails or does not
+# finish in time. Same end state, but every step is best-effort and no step
+# waits on the lock: the reset must still cut live access (the device is
+# changing hands) and must erase identity itself. The app reset boots the
+# restored root as a candidate, not through the initramfs rollback hook, and
+# that root (@factory_reset or @recovery_candidate) may predate owner access,
+# with no boot cleanup to erase a leftover node key.
+force_reset() {
+    local rc=0
+    rm -f -- "$ROOT_MARKER" "$STATE_DIR/enabled" || rc=1
+    sync || :
+    # The marker is gone, so this renders deny-all for tailscale0.
+    guard || rc=1
+    # Bounded: this fallback may run because a stop was already slow, and the
+    # whole reset has to finish inside controld's 2 min stuck-reset latch.
+    timeout 20 systemctl stop feral-owner-ssh.service tailscaled.service || rc=1
+    rm -rf -- "$STATE_DIR" || rc=1
+    sync || :
+    return "$rc"
 }
 
 main() {
@@ -138,14 +176,19 @@ main() {
     case "${1:-}" in
         authorized-key) [[ $# == 2 ]] || fail 'Expected a username.'; authorized_key "$2"; return ;;
         guard) [[ $# == 1 ]] || fail 'Unexpected argument.'; require_installed_root; guard; return ;;
+        force-reset) [[ $# == 1 ]] || fail 'Unexpected argument.'; force_reset; return ;;
     esac
     # Start boot cleanup before taking its lock. Starting this dependency while
     # holding the lock would deadlock a first enrollment on a fresh installation.
     case "${1:-}" in
         enroll|connect) require_installed_root; systemctl start feral-owner-guard.service ;;
     esac
-    # Enrollment, boot cleanup and reset cannot race. Guard/key reads don't take
-    # this lock: systemctl starts them while enrollment holds it.
+    # This lock serializes enrollment up to the login wait, boot cleanup and
+    # reset. connect releases it before the browser-login wait, so a reset (or
+    # a second connect) may run during login by design: a reset stops
+    # tailscaled and the login fails; two `tailscale up` calls are harmless.
+    # Guard/key reads don't take this lock: systemctl starts them while
+    # enrollment holds it.
     exec 9>/run/feral-owner-access.lock
     flock -x 9
     case "${1:-}" in
