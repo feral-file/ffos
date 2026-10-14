@@ -102,7 +102,8 @@ enroll() {
     # .state directory. Serialize the durable grant with feral-updater.sh so a
     # candidate cannot miss the marker and erase the new identity at boot.
     # Scope fd 8 to the writes: failures release it, and browser login cannot
-    # block updates. The caller keeps the independent owner-access lock on fd 9.
+    # block updates. The caller holds the independent owner-access lock on fd 9
+    # until connect_owner releases it before the login wait.
     (
         flock -n 8 || fail 'FF1 update in progress. Retry enrollment after the update finishes.'
         umask 077
@@ -135,23 +136,27 @@ reset_access() {
     rm -f -- "$ROOT_MARKER" "$STATE_DIR/enabled"
     sync
     guard
-    # Only a running daemon can log out. Skipping it when tailscaled is down
-    # keeps every factory reset of a never-enrolled FF1 from printing the
-    # admin-console warning below.
+    # Only a running daemon can log out. With no node identity there is nothing
+    # to warn about (every reset of a never-enrolled FF1); with an identity and
+    # no daemon, the warning leaves a journal record that the node key may
+    # still be listed in the owner's tailnet.
     if systemctl is-active --quiet tailscaled.service; then
         timeout 10 tailscale logout || printf 'Tailnet logout unavailable; removing local identity. Remove the device in the Tailscale admin console too.\n' >&2
+    elif [[ -f "$STATE_DIR/tailscaled.state" ]]; then
+        printf 'Tailscale is not running, so it cannot log out; removing local identity. Remove the device in the Tailscale admin console too.\n' >&2
     fi
     systemctl stop feral-owner-ssh.service tailscaled.service
     rm -rf -- "$STATE_DIR"
     sync
 }
 
-# Lock-free fallback for factory_reset.sh when reset_access fails or cannot get
-# the owner lock in time. Same end state, but every step is best-effort and no
-# step waits on the lock: the reset must still cut live access (the device is
-# changing hands) and must erase identity itself, because a reset sourced from
-# @recovery_candidate boots a root that still carries the marker, so the boot
-# guard would keep the old node key for a later enrollment to reuse.
+# Lock-free fallback for factory_reset.sh when reset_access fails or does not
+# finish in time. Same end state, but every step is best-effort and no step
+# waits on the lock: the reset must still cut live access (the device is
+# changing hands) and must erase identity itself. The app reset boots the
+# restored root as a candidate, not through the initramfs rollback hook, and
+# that root (@factory_reset or @recovery_candidate) may predate owner access,
+# with no boot cleanup to erase a leftover node key.
 force_reset() {
     local rc=0
     rm -f -- "$ROOT_MARKER" "$STATE_DIR/enabled" || rc=1
@@ -178,17 +183,14 @@ main() {
     case "${1:-}" in
         enroll|connect) require_installed_root; systemctl start feral-owner-guard.service ;;
     esac
-    # Enrollment, boot cleanup and reset cannot race. Guard/key reads don't take
-    # this lock: systemctl starts them while enrollment holds it.
+    # This lock serializes enrollment up to the login wait, boot cleanup and
+    # reset. connect releases it before the browser-login wait, so a reset (or
+    # a second connect) may run during login by design: a reset stops
+    # tailscaled and the login fails; two `tailscale up` calls are harmless.
+    # Guard/key reads don't take this lock: systemctl starts them while
+    # enrollment holds it.
     exec 9>/run/feral-owner-access.lock
-    # Holders release this lock within seconds (connect drops it before the
-    # login wait). Reset still bounds its wait so a wedged holder fails the
-    # call, and factory_reset.sh falls back, instead of stalling a reset.
-    if [[ ${1:-} == reset ]]; then
-        flock -x -w 30 9 || fail 'Owner access is busy; could not take its lock.'
-    else
-        flock -x 9
-    fi
+    flock -x 9
     case "${1:-}" in
         enroll) [[ $# == 3 ]] || fail 'Usage: feral-tailscale enroll <computer-tailscale-ipv4> <ssh-public-key-file>'; enroll "$2" "$3" ;;
         connect) [[ $# == 1 ]] || fail 'Unexpected argument.'; require_installed_root; connect_owner ;;
