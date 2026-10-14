@@ -130,6 +130,52 @@ boot
         self.assertTrue((self.path / 'state').exists())
         self.assertNotIn('ip saddr', (self.path / 'rules').read_text())
 
+    def test_login_wait_does_not_hold_owner_lock(self):
+        # A factory reset takes the owner lock; an unattended browser login
+        # (up to 5 min) must not keep it waiting.
+        self.run_helper('''
+exec 9>"$2/owner.lock"
+flock -x 9
+tailscale() { flock -n "$2_UNUSED/owner.lock" true || exit 74; }
+enroll 100.100.1.2 "$2/key.pub"
+'''.replace('$2_UNUSED', str(self.path)))
+
+    def test_reset_skips_logout_when_daemon_is_down(self):
+        result = self.run_helper('''
+systemctl() { [[ $1 == is-active ]] && return 3; printf 'systemctl %s\\n' "$*" >> "$2_UNUSED/calls"; }
+reset_access
+'''.replace('$2_UNUSED', str(self.path)))
+        calls = (self.path / 'calls').read_text()
+        self.assertNotIn('tailscale logout', calls)
+        self.assertIn('systemctl stop feral-owner-ssh.service tailscaled.service', calls)
+        self.assertNotIn('admin console', result.stderr)
+
+    def test_force_reset_revokes_without_the_owner_lock(self):
+        # factory_reset.sh's fallback: an owner lock held forever must not stop
+        # it, and it must cut access and erase identity, not just the marker.
+        self.run_helper('''
+enroll 100.100.1.2 "$2/key.pub"
+printf secret > "$STATE_DIR/tailscaled.state"
+exec 9>"$2/owner.lock"
+flock -x 9
+force_reset
+''')
+        self.assertFalse((self.path / 'state').exists())
+        self.assertFalse((self.path / 'root/owner-enabled').exists())
+        self.assertNotIn('ip saddr', (self.path / 'rules').read_text())
+        self.assertIn('systemctl stop feral-owner-ssh.service tailscaled.service', (self.path / 'calls').read_text())
+
+    def test_force_reset_keeps_going_after_a_failed_step(self):
+        result = self.run_helper('''
+enroll 100.100.1.2 "$2/key.pub"
+systemctl() { return 1; }
+nft() { return 1; }
+force_reset
+''', check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.path / 'state').exists())
+        self.assertFalse((self.path / 'root/owner-enabled').exists())
+
     def test_reenrollment_requires_disconnect(self):
         self.run_helper('enroll 100.100.1.2 "$2/key.pub"')
         r = self.run_helper('enroll 100.100.1.3 "$2/key.pub"', check=False)
@@ -192,6 +238,22 @@ class ImageWiring(unittest.TestCase):
         self.assertLess(reset.index('/usr/local/bin/feral-tailscale reset'), reset.index('btrfs subvolume snapshot'))
         hook = (ROOT / 'archiso-ff1/airootfs/etc/initcpio/hooks/btrfs-rollback').read_text()
         self.assertLess(hook.index('rm -rf /run/rollback/@snapshots/.tailscale'), hook.index('btrfs subvolume set-default'))
+
+    def test_failed_revoke_falls_back_without_aborting_reset(self):
+        # The reset runs on every FF1 after controld has cleared the claim. A
+        # failed revoke forces the lock-free revoke, and neither may abort it.
+        reset = (ROOT / 'archiso-ff1/airootfs/root/scripts/factory_reset.sh').read_text()
+        revoke = reset.index('if ! timeout 60 /usr/local/bin/feral-tailscale reset; then')
+        force = reset.index('if ! /usr/local/bin/feral-tailscale force-reset; then')
+        self.assertLess(revoke, force)
+        self.assertLess(force, reset.index('btrfs subvolume snapshot'))
+        helper = HELPER.read_text()
+        self.assertIn("force-reset) [[ $# == 1 ]] || fail 'Unexpected argument.'; force_reset; return ;;", helper)
+        self.assertLess(helper.index('force-reset)'), helper.index('exec 9>/run/feral-owner-access.lock'))
+
+    def test_only_reset_bounds_its_owner_lock_wait(self):
+        helper = HELPER.read_text()
+        self.assertIn("if [[ ${1:-} == reset ]]; then\n        flock -x -w 30 9 ||", helper)
 
     def test_daemons_require_guard_and_optional_enrollment(self):
         units = ROOT / 'archiso-ff1/airootfs/etc/systemd/system'
