@@ -103,6 +103,29 @@ grep -q '"/root/scripts/ota-download.sh"' archiso-ff1/profiledef.sh || {
 }
 ./scripts/test-ota-download.sh
 
+log "Checking the installers' re-flash evidence carry"
+# ffos-user#404: both installers must read the old root before wipefs and
+# write it back only after the @factory_reset snapshot (so a factory reset
+# still clears it). A reorder would either read a wiped disk or bake the old
+# evidence into the snapshot, and neither fails anywhere but on a device.
+shellcheck archiso-ff1/airootfs/root/scripts/ff1-preserve-evidence.sh scripts/test-preserve-evidence.sh
+grep -q '"/root/scripts/ff1-preserve-evidence.sh"' archiso-ff1/profiledef.sh || {
+  printf 'archiso-ff1/profiledef.sh must list /root/scripts/ff1-preserve-evidence.sh in file_permissions\n' >&2
+  exit 1
+}
+for installer in archiso-ff1/airootfs/root/scripts/install-to-disk.sh archiso-ff1/airootfs/root/scripts/auto-install.sh; do
+  stash_line=$(grep -n '^ff1_stash_evidence_from_disk ' "$installer" | head -n1 | cut -d: -f1)
+  wipe_line=$(grep -n '^wipefs ' "$installer" | head -n1 | cut -d: -f1)
+  snap_line=$(grep -n 'btrfs subvolume snapshot -r /mnt /mnt/.snapshots/@factory_reset' "$installer" | head -n1 | cut -d: -f1)
+  restore_line=$(grep -n '^ff1_restore_evidence ' "$installer" | head -n1 | cut -d: -f1)
+  if [[ -z "$stash_line" || -z "$wipe_line" || -z "$snap_line" || -z "$restore_line" ]] ||
+    (( stash_line > wipe_line || restore_line < snap_line )); then
+    printf '%s: evidence must be stashed before wipefs and restored after the factory-reset snapshot\n' "$installer" >&2
+    exit 1
+  fi
+done
+./scripts/test-preserve-evidence.sh
+
 log "Checking OTA free-space precheck contract"
 # Free-space precheck (ffos#124): feral-controld's otagate/classify.go
 # (ffos-user) matches this message prefix to classify the failure as

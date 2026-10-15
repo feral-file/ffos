@@ -130,6 +130,26 @@ Accepted residual risks (decided in issue #122):
 - A broken kernel or initramfs takes the gesture down with it; that failure
   class has no self-service recovery (unchanged from before).
 
+### Re-flash from USB (installer)
+
+Both installers (`install-to-disk.sh`, interactive, and `auto-install.sh`)
+erase the target disk. Before `wipefs` they mount the previous install's root
+read-only, if there is one, and copy its diagnostic evidence into RAM:
+`~/.logs` (the netlog ring and component logs) and the vmagent spool
+`~/.state/vmagent_queue` (metrics the device could not ship while offline).
+The copy is capped at 400 MiB, taken in that order, and a path that does not
+fit is skipped (ffos-user#404). The installer writes it into the new root
+after the `@factory_reset` snapshot is taken, so the first factory reset
+still clears it. The installer never copies Wi-Fi profiles, identity, or keys,
+and a missing or unreadable old root never stops an install. Helper:
+`archiso-ff1/airootfs/root/scripts/ff1-preserve-evidence.sh`, pinned by
+`scripts/test-preserve-evidence.sh`.
+
+Support runbook: before re-flashing a device that dropped offline, plug in
+working Ethernet and leave it running for a few minutes if possible. A device
+that comes back online flushes its spool and uploads its logs, which is
+better evidence than the copy the installer carries over.
+
 ### Command Processing Flow
 
 ```mermaid
