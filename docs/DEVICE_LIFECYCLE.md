@@ -130,6 +130,33 @@ Accepted residual risks (decided in issue #122):
 - A broken kernel or initramfs takes the gesture down with it; that failure
   class has no self-service recovery (unchanged from before).
 
+### Re-flash from USB (installer)
+
+Both installers (`install-to-disk.sh`, interactive, and `auto-install.sh`)
+erase the target disk. Before `wipefs` they mount the previous install's root
+read-only, if there is one, and copy its diagnostic evidence into RAM:
+the netlog ring (`~/.logs/netlog`), the rest of `~/.logs` (component logs),
+and the vmagent spool `~/.state/vmagent_queue` (metrics the device could not
+ship while offline). The copy is capped at 400 MiB and taken in that order; a
+path that does not fit is skipped, and a partly unreadable one is kept in part
+(ffos-user#404). The installer writes it into the new root
+after the `@factory_reset` snapshot is taken, so the first factory reset
+still clears it. The installer never copies Wi-Fi profiles, identity, or keys,
+and a missing or unreadable old root never stops an install.
+
+The logs do name networks (SSIDs) and record device activity, so they must
+not reach a new owner. The interactive installer asks whether to keep them;
+answer **n** when the device is going to someone else (refurbished or
+returned units). `auto-install.sh` has no prompt and always keeps them, so a
+unit re-flashed with it for a new owner must be factory reset afterwards. Helper:
+`archiso-ff1/airootfs/root/scripts/ff1-preserve-evidence.sh`, pinned by
+`scripts/test-preserve-evidence.sh`.
+
+Support runbook: before re-flashing a device that dropped offline, plug in
+working Ethernet and leave it running for a few minutes if possible. A device
+that comes back online flushes its spool and uploads its logs, which is
+better evidence than the copy the installer carries over.
+
 ### Command Processing Flow
 
 ```mermaid
