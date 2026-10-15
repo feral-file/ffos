@@ -5,8 +5,11 @@
 #   - both evidence paths round-trip into the new root, contents intact, and
 #     the stashed copy wins over what the image shipped at the same path;
 #   - nothing outside the evidence paths is copied (Wi-Fi profiles stay put);
-#   - a path over the remaining budget is skipped and the rest still kept;
-#   - a root with no evidence, or no root at all, returns 0 under set -e.
+#   - a path over the remaining budget is skipped and the rest still kept, and
+#     the netlog ring is kept ahead of (and apart from) the rest of ~/.logs;
+#   - a partial copy keeps what it read;
+#   - a root with no evidence, or no root at all, returns 0 under set -e;
+#   - FF1_EVIDENCE_KEEP=0 keeps nothing.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -72,6 +75,31 @@ out="$(FF1_EVIDENCE_MAX_BYTES=1024 ff1_stash_evidence "$old" "$stash")"
 [[ ! -e "$stash/home/feralfile/.state/vmagent_queue" ]] || fail "an over-budget spool must be skipped"
 grep -q "vmagent_queue.*skipping it" <<<"$out" || fail "the skip must be logged: $out"
 
+# Priority (#170 review): ~/.logs ballooned by rotated controld backups is
+# over budget, but the netlog ring, kept first and on its own, survives, and
+# the skipped ~/.logs is not restored from the directory the stash made for it.
+rm -rf "$stash" "$new"
+mkdir -p "$old/home/feralfile/.logs/backup/controld" "$new/home/feralfile"
+head -c 8192 /dev/zero > "$old/home/feralfile/.logs/backup/controld/controld.log.1"
+FF1_EVIDENCE_MAX_BYTES=2048 ff1_stash_evidence "$old" "$stash" >/dev/null
+ff1_restore_evidence "$stash" "$new" >/dev/null
+[[ "$(cat "$new/home/feralfile/.logs/netlog/ring.0")" == ring-old ]] || fail "the netlog ring must survive an over-budget .logs"
+[[ ! -e "$new/home/feralfile/.logs/controld.log" ]] || fail "an over-budget .logs must not be restored"
+rm -rf "$old/home/feralfile/.logs/backup"
+
+# A partial copy is kept (one unreadable file must not discard the rest).
+# Root reads everything, so this case only runs unprivileged.
+if (( EUID != 0 )); then
+  rm -rf "$stash" "$new"
+  echo "unreadable" > "$old/home/feralfile/.logs/broken.log"
+  chmod 000 "$old/home/feralfile/.logs/broken.log"
+  out="$(ff1_stash_evidence "$old" "$stash")"
+  chmod 644 "$old/home/feralfile/.logs/broken.log"
+  rm -f "$old/home/feralfile/.logs/broken.log"
+  [[ "$(cat "$stash/home/feralfile/.logs/controld.log")" == controld ]] || fail "a partial copy must keep what it read"
+  grep -q "\.logs only in part" <<<"$out" || fail "the partial copy must be logged: $out"
+fi
+
 # Nothing to keep, nothing stashed: every call returns 0 and touches nothing.
 rm -rf "$stash" "$new"
 mkdir -p "$WORK/empty" "$new"
@@ -80,5 +108,10 @@ ff1_restore_evidence "$stash" "$new" >/dev/null || fail "restore of an empty sta
 ff1_restore_evidence "$WORK/no-such-stash" "$new" >/dev/null || fail "restore without a stash must return 0"
 ff1_stash_evidence_from_disk "$WORK/not-a-block-device" "$stash" >/dev/null || fail "a non-device root must return 0"
 [[ -z "$(ls -A "$new")" ]] || fail "an empty stash must not write into the new root"
+
+# The operator's "no" (FF1_EVIDENCE_KEEP=0) stops the stash before it looks at
+# the disk at all.
+out="$(FF1_EVIDENCE_KEEP=0 ff1_stash_evidence_from_disk "$WORK/not-a-block-device" "$stash")"
+grep -q "not keeping" <<<"$out" || fail "FF1_EVIDENCE_KEEP=0 must skip the stash: $out"
 
 echo "test-preserve-evidence: ok"

@@ -114,6 +114,11 @@ grep -q '"/root/scripts/ff1-preserve-evidence.sh"' archiso-ff1/profiledef.sh || 
   exit 1
 }
 for installer in archiso-ff1/airootfs/root/scripts/install-to-disk.sh archiso-ff1/airootfs/root/scripts/auto-install.sh; do
+  # Exactly one call each, so the line order below is the whole story.
+  if [[ "$(grep -c 'ff1_stash_evidence_from_disk ' "$installer")" != 1 || "$(grep -c 'ff1_restore_evidence ' "$installer")" != 1 ]]; then
+    printf '%s: expected exactly one ff1_stash_evidence_from_disk and one ff1_restore_evidence call\n' "$installer" >&2
+    exit 1
+  fi
   stash_line=$(grep -n '^ff1_stash_evidence_from_disk ' "$installer" | head -n1 | cut -d: -f1)
   wipe_line=$(grep -n '^wipefs ' "$installer" | head -n1 | cut -d: -f1)
   snap_line=$(grep -n 'btrfs subvolume snapshot -r /mnt /mnt/.snapshots/@factory_reset' "$installer" | head -n1 | cut -d: -f1)

@@ -68,7 +68,7 @@ fi
 source /root/scripts/ff1-preserve-evidence.sh
 EVIDENCE_STASH=/run/ff1-evidence
 echo
-echo "Keeping diagnostic logs from the previous install, if any..."
+echo "Keeping diagnostic logs from the previous install, if any (a factory reset clears them)..."
 ff1_stash_evidence_from_disk "$ROOT_PART" "$EVIDENCE_STASH"
 
 echo

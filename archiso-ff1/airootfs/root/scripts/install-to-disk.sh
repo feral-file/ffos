@@ -63,6 +63,14 @@ select opt in "${options[@]}"; do
         echo "You selected: $TARGET_DISK"
         read -rp "⚠️  ALL DATA WILL BE ERASED. Proceed? [y/N]: " confirm
         [[ "$confirm" != [yY] ]] && echo "Aborted." && exit 1
+        # The one exception to "ALL DATA" (ffos-user#404). They hold network
+        # names and device activity, so a unit going to a new owner must not
+        # keep them.
+        echo
+        echo "The previous install's diagnostic logs (network and component logs,"
+        echo "no Wi-Fi passwords) can be kept for support. A factory reset clears them."
+        read -rp "Keep them? Answer n if this device is going to someone else. [Y/n]: " keep_logs
+        [[ "$keep_logs" == [nN] ]] && FF1_EVIDENCE_KEEP=0
         break
     fi
 done
