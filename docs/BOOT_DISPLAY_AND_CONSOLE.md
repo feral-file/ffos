@@ -24,7 +24,9 @@ hardware.
    `~/.bash_profile` rail. The user manager starts at
    boot because `/var/lib/systemd/linger/feralfile` ships in the image. The
    `getty@tty1` drop-in is conditioned on `archisobasedir` (live ISO only:
-   installer and soak test keep their root/soaktest autologin), and that
+   the installer, soak-test and factory-check entries keep their autologin;
+   the factory check runs ffos-user's `/home/feralfile/scripts/factory-check.sh`
+   as root), and that
    condition is the *only* thing keeping getty off tty1: the startup unit
    deliberately has no `Conflicts=getty@tty1.service`, because systemd
    resolves `Conflicts=` while building the boot transaction, before any
