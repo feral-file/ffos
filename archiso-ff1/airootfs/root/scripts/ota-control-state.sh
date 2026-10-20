@@ -33,11 +33,21 @@
 # the three paths: nothing is stopped and nothing is copied. controld is
 # stopped only if at least one of them exists live.
 #
-# The two knobs take their values from the environment only so that
+# Cross-repo contract with feral-watchdog (ffos-user): while this script has
+# controld stopped it holds the marker FF1_CONTROLD_OTA_STOP_MARKER
+# (/run/feral-controld-ota-stop, root-owned, 0644, empty). The watchdog
+# suppresses its "controld inactive" report only while that marker exists AND
+# /run/feral-updater.lock is held. The marker is created immediately before
+# the stop, removed by restore_controld_if_stopped once controld is started
+# again, and never removed after arming: the reboot clears /run. Keep the
+# path in step with the watchdog.
+#
+# The knobs take their values from the environment only so that
 # scripts/test-ota-control-state.sh can point them at a fake root; nothing on
 # a device sets them.
 FF1_CONTROL_STATE_DIR="${FF1_CONTROL_STATE_DIR:-/home/feralfile/.state/control}"
 FF1_CONTROL_USER="${FF1_CONTROL_USER:-feralfile}"
+FF1_CONTROLD_OTA_STOP_MARKER="${FF1_CONTROLD_OTA_STOP_MARKER:-/run/feral-controld-ota-stop}"
 
 # 1 while this script has stopped feral-controld and owes it a restart.
 CONTROLD_RESTART_PENDING=0
@@ -90,6 +100,7 @@ carry_control_state() {
     log_info "Stopping feral-controld to freeze control state..."
     # Set before the stop: a stop that half-succeeds still owes a restart.
     CONTROLD_RESTART_PENDING=1
+    set_controld_stop_marker
     if ! controld_systemctl stop feral-controld.service; then
       # The user manager can be unreachable while controld is already gone
       # (e.g. it crashed); only a still-running writer makes the copy unsafe.
@@ -170,6 +181,22 @@ carry_control_state() {
   return 0
 }
 
+# set_controld_stop_marker: create the watchdog marker atomically (temp file
+# in the same directory, then rename), empty and 0644. Best-effort: without
+# it the watchdog reports controld inactive during the stop window, which is
+# noise, not a reason to fail the update.
+set_controld_stop_marker() {
+  local tmp
+  if tmp=$(mktemp "$FF1_CONTROLD_OTA_STOP_MARKER.XXXXXX") \
+    && chmod 0644 "$tmp" \
+    && mv -f -- "$tmp" "$FF1_CONTROLD_OTA_STOP_MARKER"; then
+    return 0
+  fi
+  [[ -n "${tmp:-}" ]] && rm -f -- "$tmp"
+  log_error "Failed to create $FF1_CONTROLD_OTA_STOP_MARKER; feral-watchdog may report controld inactive during the update."
+  return 0
+}
+
 # restore_controld_if_stopped: start feral-controld again if this script
 # stopped it and still owes the restart. Safe to call more than once.
 restore_controld_if_stopped() {
@@ -178,7 +205,13 @@ restore_controld_if_stopped() {
   log_info "Update did not arm the candidate; restarting feral-controld"
   # --no-block, as ffos-user's .start-services.sh does: controld is
   # Type=notify and can fail before READY; this exit path must not hang on it.
-  controld_systemctl start --no-block feral-controld.service \
-    || log_error "Failed to restart feral-controld."
+  if controld_systemctl start --no-block feral-controld.service; then
+    rm -f -- "$FF1_CONTROLD_OTA_STOP_MARKER"
+  else
+    # controld really is down now: drop the marker too, so the watchdog
+    # reports it instead of suppressing a genuine failure.
+    log_error "Failed to restart feral-controld."
+    rm -f -- "$FF1_CONTROLD_OTA_STOP_MARKER"
+  fi
   return 0
 }

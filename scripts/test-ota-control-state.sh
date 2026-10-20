@@ -20,6 +20,8 @@
 #   - a candidate entry that is a symlink to a directory outside: the link is
 #     replaced, the target is untouched;
 #   - a candidate .state that is a symlink out of the candidate: refused;
+#   - the feral-watchdog marker: present (empty, 0644) during the stop,
+#     removed on restore, never created when nothing is live;
 # and that feral-system-update.sh wires it in where it must: sourced before
 # the EXIT trap, called after post-extraction and right before
 # `bootctl set-oneshot`, restart owed until the candidate is armed.
@@ -43,6 +45,9 @@ mkdir -p "$WORK/bin"
 cat > "$WORK/bin/runuser" <<'EOF'
 #!/bin/sh
 echo "$*" >> "$STUB_DIR/calls"
+case "$*" in
+  *" stop "*) [ -e "$STUB_DIR/run/feral-controld-ota-stop" ] && echo "marker-at-stop" >> "$STUB_DIR/marker" ;;
+esac
 case "$*" in
   *" stop "*) exit "$(cat "$STUB_DIR/stop_rc")" ;;
 esac
@@ -71,6 +76,7 @@ LIVE="$WORK/live/home/feralfile/.state/control"
 CAND="$WORK/btrfs/@snapshots/@ota_new"
 # The helper appends the live path to the candidate root, as on a device.
 DEST="$CAND$LIVE"
+MARKER="$WORK/run/feral-controld-ota-stop"
 TOMB="$LIVE.retired"
 DEST_TOMB="$CAND$TOMB"
 LIVE_NEW="$LIVE.new"
@@ -78,7 +84,8 @@ DEST_NEW="$CAND$LIVE_NEW"
 
 # reset_case: stale candidate copy from the "OTA start", fresh live state.
 reset_case() {
-  rm -rf "$WORK/live" "$WORK/btrfs" "$WORK/calls" "$WORK/outside" "$WORK/outside"
+  rm -rf "$WORK/live" "$WORK/btrfs" "$WORK/calls" "$WORK/outside" "$WORK/run" "$WORK/marker"
+  mkdir -p "$WORK/run"
   : > "$WORK/calls"
   echo 0 > "$WORK/stop_rc"
   echo 1 > "$WORK/pgrep_rc"
@@ -103,6 +110,7 @@ run_helper() {
     log_error() { echo "ERROR $1"; }
     export PATH="$WORK/bin:$PATH"
     export FF1_CONTROL_STATE_DIR="$LIVE"
+    export FF1_CONTROLD_OTA_STOP_MARKER="$MARKER"
     # shellcheck source=/dev/null
     source "$HELPER"
     local fn_rc=0
@@ -270,6 +278,35 @@ run_helper carry_control_state "$CAND"
 grep -q "^ERROR Update candidate .state resolves outside the candidate root" "$WORK/out" || fail "state link: refusal not logged"
 [[ "$(ls "$WORK/outside")" == victim ]] || fail "state link: wrote outside the candidate"
 grep -qx "PENDING 1" "$WORK/out" || fail "state link: restart not owed after refusal"
+
+echo "== feral-watchdog stop marker"
+reset_case
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "marker: rc=$RC"; }
+grep -qx marker-at-stop "$WORK/marker" 2>/dev/null || fail "marker: not present when controld was stopped"
+[[ -f "$MARKER" && ! -s "$MARKER" ]] || fail "marker: must stay (empty) after the carry, until restore or reboot"
+[[ -n "$(find "$MARKER" -perm 644)" ]] || fail "marker: mode must be 0644"
+[[ -z "$(find "$WORK/run" -name 'feral-controld-ota-stop.*')" ]] || fail "marker: temp file left behind"
+# Restore after a carry (one shell, as the update script does) removes it.
+reset_case
+run_helper eval 'carry_control_state "$CAND" && restore_controld_if_stopped'
+(( RC == 0 )) || fail "marker restore: rc=$RC"
+grep -qxF -- "$start_line" "$WORK/calls" || fail "marker restore: controld not started"
+[[ ! -e "$MARKER" ]] || fail "marker: not removed on restore"
+# Refused stop: the abort path (EXIT trap -> restore) removes it.
+reset_case
+echo 1 > "$WORK/stop_rc"
+echo 0 > "$WORK/pgrep_rc"
+run_helper eval 'carry_control_state "$CAND" || { restore_controld_if_stopped; false; }'
+(( RC != 0 )) || fail "marker refuse: carry should have refused"
+grep -qx marker-at-stop "$WORK/marker" 2>/dev/null || fail "marker refuse: not present at the stop attempt"
+[[ ! -e "$MARKER" ]] || fail "marker: not removed after a refused stop"
+# Nothing live: no marker.
+reset_case
+rm -rf "$LIVE"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || fail "marker absent: rc=$RC"
+[[ ! -e "$MARKER" ]] || fail "marker: created with nothing live"
 
 echo "== feral-system-update.sh wiring"
 line_of() { grep -nF -- "$1" "$UPDATE" | head -n1 | cut -d: -f1; }

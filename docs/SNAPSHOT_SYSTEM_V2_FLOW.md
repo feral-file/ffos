@@ -135,7 +135,20 @@ the reboot, because writes it accepted then would be dropped by the candidate
 boot; for the same reason nothing after arming is allowed to abort the script
 (errexit and the ERR trap are switched off, cleanup is best-effort) and a
 failed `systemctl reboot` falls back to `systemctl reboot --force`, then
-`reboot -f`. `scripts/test-ota-control-state.sh` (run by
+`reboot -f`.
+
+**Contract with feral-watchdog (ffos-user): `/run/feral-controld-ota-stop`.**
+Immediately before stopping controld, the step creates this marker (empty,
+root-owned, mode 0644, written to a temp file and renamed into place).
+feral-watchdog suppresses its "controld inactive" report only while the
+marker exists **and** `/run/feral-updater.lock` is held, so the deliberate
+stop is not reported as an outage while a real one still is. The marker is
+removed by the restore path once controld has been started again (also after
+a refused stop, and also if that start fails, so a genuine failure is still
+reported). It is never removed after arming: controld stays stopped until the
+reboot, and the reboot clears `/run`. If the marker cannot be created the
+update continues (the cost is a spurious report). Keep the path in step with
+the watchdog. `scripts/test-ota-control-state.sh` (run by
 `scripts/verify.sh`) pins the helper and its placement.
 
 Factory reset and reflash **erase** all three (`control/`, `control.new/`,
