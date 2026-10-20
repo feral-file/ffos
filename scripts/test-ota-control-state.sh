@@ -2,6 +2,8 @@
 # Single-quoted $VARs below are literal script text or are expanded inside
 # run_helper's subshell, never by this shell.
 # shellcheck disable=SC2016
+# PATH is extended inside the (...) runners on purpose, so stubs never leak.
+# shellcheck disable=SC2030,SC2031
 # Pins archiso-ff1/airootfs/root/scripts/ota-control-state.sh (feral-file#3551,
 # F9) against a fake running root and a fake @ota_new, with runuser and pgrep
 # stubbed so no systemd is needed:
@@ -21,7 +23,16 @@
 #     replaced, the target is untouched;
 #   - a candidate .state that is a symlink out of the candidate: refused;
 #   - the feral-watchdog marker: present (empty, 0644) during the stop,
-#     removed on restore, never created when nothing is live;
+#     removed on restore (also when the start fails), never created when
+#     nothing is live;
+#   - a stat error other than ENOENT (stubbed EIO): the carry fails and the
+#     candidate copy is NOT treated as stale;
+#   - live side: a symlinked live .state is refused before the stop; a
+#     symlinked live entry is refused with the restart owed;
+#   - downgrade guard: a candidate without ota-control-state.sh is refused
+#     only when live state exists, before anything is stopped;
+#   - the arming block: a failed bootctl set-oneshot clears the oneshot and
+#     leaves the restart owed; a successful one clears it;
 # and that feral-system-update.sh wires it in where it must: sourced before
 # the EXIT trap, called after post-extraction and right before
 # `bootctl set-oneshot`, restart owed until the candidate is armed.
@@ -34,8 +45,11 @@ UPDATE="$SCRIPTS/feral-system-update.sh"
 
 command -v rsync >/dev/null || { echo "rsync required" >&2; exit 127; }
 
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+WORK_TMP="$(mktemp -d)"
+[[ -n "$WORK_TMP" && -d "$WORK_TMP" ]] || { echo "mktemp failed" >&2; exit 1; }
+trap 'rm -rf -- "$WORK_TMP"' EXIT
+# Physical path: the helper requires the live .state to resolve to itself.
+WORK="$(cd -- "$WORK_TMP" && pwd -P)"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
@@ -50,6 +64,7 @@ case "$*" in
 esac
 case "$*" in
   *" stop "*) exit "$(cat "$STUB_DIR/stop_rc")" ;;
+  *" start "*) exit "$(cat "$STUB_DIR/start_rc")" ;;
 esac
 exit 0
 EOF
@@ -58,14 +73,29 @@ cat > "$WORK/bin/pgrep" <<'EOF'
 echo "pgrep $*" >> "$STUB_DIR/calls"
 exit "$(cat "$STUB_DIR/pgrep_rc")"
 EOF
-chmod +x "$WORK/bin/runuser" "$WORK/bin/pgrep"
-# The helper uses GNU `realpath -m`. On a non-GNU host (macOS) shim it so the
-# test runs locally too; CI (Ubuntu) and the image use the real one.
+# stat: real stat, except for the one path named in $STUB_DIR/stat_eio,
+# which fails the way an I/O error does.
+REAL_STAT="$(command -v stat)"
+cat > "$WORK/bin/stat" <<EOF
+#!/bin/sh
+for a in "\$@"; do
+  if [ -s "\$STUB_DIR/stat_eio" ] && [ "\$a" = "\$(cat "\$STUB_DIR/stat_eio")" ]; then
+    echo "stat: cannot statx '\$a': Input/output error" >&2
+    exit 1
+  fi
+done
+exec "$REAL_STAT" "\$@"
+EOF
+chmod +x "$WORK/bin/runuser" "$WORK/bin/pgrep" "$WORK/bin/stat"
+# The helper uses GNU `realpath -m` / `-e`. On a non-GNU host (macOS) shim it
+# so the test runs locally too; CI (Ubuntu) and the image use the real one.
 if ! realpath -m -- / >/dev/null 2>&1; then
   cat > "$WORK/bin/realpath" <<'EOF2'
 #!/bin/sh
-[ "$1" = "-m" ] && shift
+mode=""
+case "$1" in -m|-e) mode="$1"; shift ;; esac
 [ "$1" = "--" ] && shift
+if [ "$mode" = "-e" ] && [ ! -e "$1" ]; then exit 1; fi
 exec python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"
 EOF2
   chmod +x "$WORK/bin/realpath"
@@ -84,10 +114,12 @@ DEST_NEW="$CAND$LIVE_NEW"
 
 # reset_case: stale candidate copy from the "OTA start", fresh live state.
 reset_case() {
-  rm -rf "$WORK/live" "$WORK/btrfs" "$WORK/calls" "$WORK/outside" "$WORK/run" "$WORK/marker"
+  rm -rf "$WORK/live" "$WORK/btrfs" "$WORK/calls" "$WORK/outside" "$WORK/run" "$WORK/marker" "$WORK/elsewhere"
   mkdir -p "$WORK/run"
   : > "$WORK/calls"
+  : > "$WORK/stat_eio"
   echo 0 > "$WORK/stop_rc"
+  echo 0 > "$WORK/start_rc"
   echo 1 > "$WORK/pgrep_rc"
   mkdir -p "$DEST"
   echo '{"v":1,"gen":1,"controllers":["revoked-later"]}' > "$DEST/grants.json"
@@ -119,6 +151,10 @@ run_helper() {
     exit "$fn_rc"
   ) > "$WORK/out" 2>&1 || RC=$?
 }
+
+# line_of TEXT: first line number of TEXT in feral-system-update.sh, or
+# empty; never fails, so callers' own diagnostics fire.
+line_of() { grep -nF -- "$1" "$UPDATE" | head -n1 | cut -d: -f1 || true; }
 
 stop_line="-u feralfile -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user stop feral-controld.service"
 start_line="${stop_line/ stop / start --no-block }"
@@ -308,8 +344,121 @@ run_helper carry_control_state "$CAND"
 (( RC == 0 )) || fail "marker absent: rc=$RC"
 [[ ! -e "$MARKER" ]] || fail "marker: created with nothing live"
 
+echo "== restart fails"
+reset_case
+echo 1 > "$WORK/start_rc"
+run_helper eval 'carry_control_state "$CAND" && restore_controld_if_stopped'
+(( RC == 0 )) || { cat "$WORK/out"; fail "start fails: rc=$RC"; }
+grep -qxF -- "$start_line" "$WORK/calls" || fail "start fails: start not attempted"
+grep -q "^ERROR Failed to restart feral-controld" "$WORK/out" || fail "start fails: not logged"
+[[ ! -e "$MARKER" ]] || fail "start fails: marker kept, would hide a real outage"
+
+echo "== stat error other than ENOENT"
+reset_case
+echo stale-tomb > "$DEST_TOMB"
+printf '%s\n' "$TOMB" > "$WORK/stat_eio"
+run_helper carry_control_state "$CAND"
+(( RC != 0 )) || fail "eio: unreadable live tombstone treated as absent"
+grep -q "^ERROR Cannot stat control state path $TOMB" "$WORK/out" || { cat "$WORK/out"; fail "eio: not logged"; }
+grep -qx stale-tomb "$DEST_TOMB" || fail "eio: candidate tombstone removed on a stat error"
+[[ ! -s "$WORK/calls" ]] || fail "eio: stopped controld before classifying"
+grep -qx "PENDING 0" "$WORK/out" || fail "eio: restart owed without a stop"
+# Same for the candidate side.
+reset_case
+echo stale-tomb > "$DEST_TOMB"
+printf '%s\n' "$DEST_TOMB" > "$WORK/stat_eio"
+run_helper carry_control_state "$CAND"
+(( RC != 0 )) || fail "eio cand: candidate stat error ignored"
+grep -qx stale-tomb "$DEST_TOMB" || fail "eio cand: candidate tombstone touched"
+
+echo "== live side symlinks"
+reset_case
+mkdir -p "$WORK/elsewhere"
+mv "$WORK/live/home/feralfile/.state" "$WORK/elsewhere/.state"
+ln -s "$WORK/elsewhere/.state" "$WORK/live/home/feralfile/.state"
+run_helper carry_control_state "$CAND"
+(( RC != 0 )) || fail "live link: carried through a symlinked live .state"
+grep -q "^ERROR Live control state parent" "$WORK/out" || { cat "$WORK/out"; fail "live link: refusal not logged"; }
+[[ ! -s "$WORK/calls" ]] || fail "live link: stopped controld before refusing"
+grep -qx stale "$DEST/left-over.tmp" || fail "live link: candidate modified"
+reset_case
+mkdir -p "$WORK/elsewhere"
+echo secret > "$WORK/elsewhere/secret"
+ln -s "$WORK/elsewhere/secret" "$TOMB"
+run_helper carry_control_state "$CAND"
+(( RC != 0 )) || fail "live entry link: carried a symlinked live entry"
+grep -q "^ERROR Live control state $TOMB is a symlink" "$WORK/out" || { cat "$WORK/out"; fail "live entry link: refusal not logged"; }
+grep -qx "PENDING 1" "$WORK/out" || fail "live entry link: restart not owed after the stop"
+[[ ! -e "$DEST_TOMB" ]] || fail "live entry link: tombstone written to the candidate"
+
+echo "== downgrade guard"
+refusal="ERROR Refusing update: target image cannot carry controller state (no /root/scripts/ota-control-state.sh); a downgrade below secure-control support would lose or resurrect controller grants."
+reset_case
+run_helper refuse_update_without_carry "$CAND"
+(( RC != 0 )) || fail "downgrade: candidate without the carry accepted while state is live"
+grep -qxF -- "$refusal" "$WORK/out" || { cat "$WORK/out"; fail "downgrade: classify.go message changed"; }
+[[ ! -s "$WORK/calls" ]] || fail "downgrade: touched controld"
+grep -qx "PENDING 0" "$WORK/out" || fail "downgrade: restart owed without a stop"
+# Tombstone alone counts as live state.
+reset_case
+rm -rf "$LIVE"
+echo tomb > "$TOMB"
+run_helper refuse_update_without_carry "$CAND"
+(( RC != 0 )) || fail "downgrade: tombstone-only device accepted"
+# Candidate that carries: accepted.
+reset_case
+mkdir -p "$CAND/root/scripts"
+: > "$CAND/root/scripts/ota-control-state.sh"
+run_helper refuse_update_without_carry "$CAND"
+(( RC == 0 )) || fail "downgrade: candidate with the carry refused"
+# No live state: any image is fine.
+reset_case
+rm -rf "$LIVE"
+run_helper refuse_update_without_carry "$CAND"
+(( RC == 0 )) || fail "downgrade: refused with no live state"
+
+echo "== arming block"
+# Run the real block from feral-system-update.sh (from the signal trap to the
+# flag clear) with bootctl stubbed, the way the script runs it.
+arm_block() {
+  local from to
+  from=$(line_of "trap '' TERM INT HUP")
+  to=$(line_of 'CONTROLD_RESTART_PENDING=0')
+  [[ -n "$from" && -n "$to" ]] || fail "arming: block markers not found"
+  sed -n "${from},${to}p" "$UPDATE"
+}
+cat > "$WORK/bin/bootctl" <<'EOF'
+#!/bin/sh
+echo "bootctl [$*]" >> "$STUB_DIR/calls"
+[ "$2" = "arch-candidate.conf" ] && exit "$(cat "$STUB_DIR/bootctl_rc")"
+exit 0
+EOF
+chmod +x "$WORK/bin/bootctl"
+run_arm() {
+  : > "$WORK/calls"
+  RC=0
+  (
+    # shellcheck disable=SC2317,SC2329
+    log_error() { echo "ERROR $1"; }
+    export PATH="$WORK/bin:$PATH"
+    CONTROLD_RESTART_PENDING=1
+    trap 'echo "PENDING $CONTROLD_RESTART_PENDING"' EXIT
+    eval "$(arm_block)"
+  ) > "$WORK/out" 2>&1 || RC=$?
+}
+echo 1 > "$WORK/bootctl_rc"
+run_arm
+(( RC != 0 )) || fail "arming: a failed set-oneshot did not abort"
+grep -qx "PENDING 1" "$WORK/out" || { cat "$WORK/out"; fail "arming: restart not owed after a failed set-oneshot"; }
+grep -qxF "bootctl [set-oneshot ]" "$WORK/calls" || { cat "$WORK/calls"; fail "arming: oneshot not cleared after failure"; }
+echo 0 > "$WORK/bootctl_rc"
+run_arm
+(( RC == 0 )) || { cat "$WORK/out"; fail "arming: rc=$RC on success"; }
+grep -qx "PENDING 0" "$WORK/out" || fail "arming: restart still owed after arming"
+! grep -qxF "bootctl [set-oneshot ]" "$WORK/calls" || fail "arming: oneshot cleared after success"
+grep -qxF "trap '' TERM INT HUP" <(arm_block) || fail "arming: signals not ignored around set-oneshot"
+
 echo "== feral-system-update.sh wiring"
-line_of() { grep -nF -- "$1" "$UPDATE" | head -n1 | cut -d: -f1; }
 src=$(line_of 'source /root/scripts/ota-control-state.sh')
 trap_line=$(line_of 'trap cleanup EXIT')
 restore=$(line_of '  restore_controld_if_stopped')
@@ -325,11 +474,19 @@ done
 (( src < trap_line )) || fail "wiring: helper must be sourced before the EXIT trap"
 (( cleanup_def < restore && restore < trap_line )) || fail "wiring: cleanup must call restore_controld_if_stopped"
 (( postx < carry )) || fail "wiring: carry must run after post-extraction"
-(( carry < arm )) || fail "wiring: carry must run before bootctl set-oneshot"
-# Nothing but comments/blank lines between the carry and the arming.
-if sed -n "$((carry + 1)),$((arm - 1))p" "$UPDATE" | grep -vqE '^[[:space:]]*(#|$)'; then
-  fail "wiring: carry_control_state must be the last step before bootctl set-oneshot"
+sigs=$(line_of "trap '' TERM INT HUP")
+rsync_main=$(line_of '"$SFS_MOUNT"/ "$NEW_ROOT"/')
+guard=$(line_of 'if ! refuse_update_without_carry "$NEW_ROOT"; then')
+for v in sigs rsync_main guard; do
+  [[ -n "${!v}" ]] || fail "wiring: $v not found in feral-system-update.sh"
+done
+(( rsync_main < guard && guard < postx && guard < carry )) || fail "wiring: downgrade guard must follow the image rsync and precede the carry"
+(( carry < sigs && sigs < arm )) || fail "wiring: carry, then ignore signals, then bootctl set-oneshot"
+# Nothing but comments/blank lines between the carry and the arming block.
+if sed -n "$((carry + 1)),$((sigs - 1))p" "$UPDATE" | grep -vqE '^[[:space:]]*(#|$)'; then
+  fail "wiring: carry_control_state must be the last step before arming"
 fi
+(( arm == sigs + 1 )) || fail "wiring: bootctl set-oneshot must directly follow the signal trap"
 (( arm < clear && clear < reboot )) || fail "wiring: restart must stay owed until the candidate is armed"
 # After arming nothing may abort: errexit and the ERR trap go off right
 # after the flag is cleared, and the reboot has forced fallbacks.

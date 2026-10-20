@@ -374,6 +374,15 @@ rsync -aAX --delete --info=progress2 \
   --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed","/home/feralfile/.cache","/home/feralfile/.config/chromium","/home/feralfile/.logs","/home/feralfile/.state"} \
   "$SFS_MOUNT"/ "$NEW_ROOT"/
 
+# Downgrade guard (feral-file#3551): a device holding controller state must
+# not move to an image that cannot carry it across ITS next OTA (that image's
+# own feral-system-update.sh decides then). refuse_update_without_carry logs
+# a permanent-class message for otagate/classify.go. controld has not been
+# stopped yet, so this exit owes no restart.
+if ! refuse_update_without_carry "$NEW_ROOT"; then
+  exit 1
+fi
+
 log_progress "90" "Preparing boot files..."
 
 # --- Step 7: Stage boot files (don't touch live /boot yet) --------------------
@@ -457,7 +466,17 @@ chmod 644 /boot/loader/entries/arch-candidate.conf
 # Any failure aborts before arming and the EXIT trap restarts controld.
 carry_control_state "$BTRFS_TOP/@snapshots/@ota_new"
 
-bootctl set-oneshot arch-candidate.conf
+# Arming must not be cut in half by a signal: with the oneshot set but the
+# script killed before it clears the restart flag, the EXIT path would
+# restart controld on a device whose next boot drops its writes.
+trap '' TERM INT HUP
+if ! bootctl set-oneshot arch-candidate.conf; then
+  log_error "Failed to arm the update candidate (bootctl set-oneshot)."
+  # Best-effort: make sure no half-written oneshot survives, then take the
+  # abort path, which restarts controld.
+  bootctl set-oneshot '' || true
+  exit 1
+fi
 # Armed: from here the next boot is the candidate, holding the state copied
 # above. Restarting controld now (even if the reboot request below failed)
 # would accept writes that boot would drop, so it stays stopped until reboot.

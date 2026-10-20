@@ -199,6 +199,44 @@ while IFS= read -r workflow; do
   fi
 done <<< "$log_stream_workflows"
 
+log "Checking controld.json secure-control release gate"
+# feral-file#3551: an image must not enable secure control (controld.json
+# .control) unless its ffos ref carries controller state across a full-image
+# OTA. Each image workflow strips .control after the controld.json overlay
+# when ota-control-state.sh is missing from the checked-out ffos ref
+# (build-image-from-tags.yml can build an older tag). Pin that the gate is
+# present, identical in all three, and placed after the overlay.
+control_gate_block() {
+  awk '/^          # feral-file#3551 release ordering:/{on=1} on{print} on&&/^          # end feral-file#3551 control gate$/{exit}' "$1"
+}
+reference_gate=""
+for workflow in .github/workflows/build-image-to-cf.yml .github/workflows/pure-build-image-to-cf.yml .github/workflows/build-image-from-tags.yml; do
+  block="$(control_gate_block "$workflow")"
+  if [[ -z "$block" ]] \
+    || ! grep -Fq 'if [ -f /build/archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]; then' <<< "$block" \
+    || ! grep -Fq "jq 'del(.control)'" <<< "$block" \
+    || ! grep -Fq 'end feral-file#3551 control gate' <<< "$block"; then
+    printf '%s: missing or incomplete controld.json control gate (feral-file#3551)\n' "$workflow" >&2
+    exit 1
+  fi
+  if [[ -z "$reference_gate" ]]; then
+    reference_gate="$block"
+  elif [[ "$block" != "$reference_gate" ]]; then
+    printf '%s: controld.json control gate differs from build-image-to-cf.yml; keep the three copies identical\n' "$workflow" >&2
+    exit 1
+  fi
+  overlay_line="$(grep -n 'write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json"' "$workflow" | head -n1 | cut -d: -f1)"
+  gate_line="$(grep -n '^          # feral-file#3551 release ordering:' "$workflow" | head -n1 | cut -d: -f1)"
+  if [[ -z "$overlay_line" ]] || (( gate_line < overlay_line )); then
+    printf '%s: controld.json control gate must run after the controld.json overlay\n' "$workflow" >&2
+    exit 1
+  fi
+done
+[[ -f archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]] || {
+  printf 'archiso-ff1/airootfs/root/scripts/ota-control-state.sh missing: the image workflows would strip .control from every build\n' >&2
+  exit 1
+}
+
 log "Checking agent ISO build guard"
 # AGENTS.md "Release guardrail: ISO image builds": the pre-shell hook that
 # blocks release/Production ISO dispatches and escalates staging, wired for

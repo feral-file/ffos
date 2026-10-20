@@ -48,6 +48,9 @@
 FF1_CONTROL_STATE_DIR="${FF1_CONTROL_STATE_DIR:-/home/feralfile/.state/control}"
 FF1_CONTROL_USER="${FF1_CONTROL_USER:-feralfile}"
 FF1_CONTROLD_OTA_STOP_MARKER="${FF1_CONTROLD_OTA_STOP_MARKER:-/run/feral-controld-ota-stop}"
+# Where this helper lives in an image; its absence in a candidate marks an
+# image that predates the carry (see refuse_update_without_carry).
+FF1_CONTROL_CARRY_SCRIPT=/root/scripts/ota-control-state.sh
 
 # 1 while this script has stopped feral-controld and owes it a restart.
 CONTROLD_RESTART_PENDING=0
@@ -77,23 +80,95 @@ control_state_paths() {
   printf '%s\n' "$FF1_CONTROL_STATE_DIR" "$FF1_CONTROL_STATE_DIR.new" "$FF1_CONTROL_STATE_DIR.retired"
 }
 
+# control_path_state PATH: print "present" or "absent" for PATH, without
+# following a final symlink. Only ENOENT counts as absent: any other stat
+# failure (EIO, EACCES, ENOTDIR, ...) is logged and returns 1, because
+# treating an unreadable grant store or tombstone as "gone" would delete the
+# candidate's copy and boot the update unlocked.
+control_path_state() {
+  local err
+  if err=$(LC_ALL=C stat -- "$1" 2>&1 >/dev/null); then
+    echo present
+    return 0
+  fi
+  case "$err" in
+    *"No such file or directory"*) echo absent; return 0 ;;
+  esac
+  # To stderr: callers capture stdout. The updater units append both
+  # streams to the same log.
+  log_error "Cannot stat control state path $1: $err" >&2
+  return 1
+}
+
+# control_state_any_live: 0 if any live control-state path exists, 1 if
+# none does, 2 (after logging) if one cannot be classified.
+control_state_any_live() {
+  local path st any=1
+  while IFS= read -r path; do
+    st=$(control_path_state "$path") || return 2
+    [[ "$st" == present ]] && any=0
+  done < <(control_state_paths)
+  return "$any"
+}
+
+# refuse_update_without_carry CANDIDATE_ROOT: 0 if the update may proceed,
+# 1 (after logging) if it must be refused. The candidate image must contain
+# this helper whenever live control state exists: an image without it (a
+# downgrade to a pre-#3551 release) runs the OLD feral-system-update.sh on its
+# next OTA, which drops control state written during that OTA, and it may
+# still receive a current controld through the package rail. Called after the
+# image is rsynced into the candidate and BEFORE carry_control_state, so
+# controld has not been stopped and no restart is owed.
+#
+# Wording is load-bearing: feral-controld's otagate/classify.go (ffos-user)
+# matches the prefix "Refusing update: target image cannot carry controller
+# state" and treats it as permanent. No double quotes in it: the runner's
+# message= regex stops at one.
+refuse_update_without_carry() {
+  local candidate_root="$1" st rc=0
+  st=$(control_path_state "$candidate_root$FF1_CONTROL_CARRY_SCRIPT") || return 1
+  [[ "$st" == present ]] && return 0
+  control_state_any_live || rc=$?
+  case "$rc" in
+    1) return 0 ;;
+    0) log_error "Refusing update: target image cannot carry controller state (no $FF1_CONTROL_CARRY_SCRIPT); a downgrade below secure-control support would lose or resurrect controller grants."
+       return 1 ;;
+    *) return 1 ;;
+  esac
+}
+
 # carry_control_state CANDIDATE_ROOT: freeze the live control state and make
 # CANDIDATE_ROOT (the @ota_new subvolume) mirror it, path by path (see
 # control_state_paths). Returns non-zero, after logging, on any failure; the
-# caller must not arm the candidate then.
+# caller must not arm the candidate then (the EXIT path then restores
+# controld if it was stopped).
 carry_control_state() {
   local candidate_root="$1"
-  local path dest any_live=0 any_candidate=0
+  local path dest st dst any_live=0 any_candidate=0
   local -a paths
   mapfile -t paths < <(control_state_paths)
 
   for path in "${paths[@]}"; do
-    [[ -e "$path" || -L "$path" ]] && any_live=1
-    [[ -e "$candidate_root$path" || -L "$candidate_root$path" ]] && any_candidate=1
+    st=$(control_path_state "$path") || return 1
+    [[ "$st" == present ]] && any_live=1
+    st=$(control_path_state "$candidate_root$path") || return 1
+    [[ "$st" == present ]] && any_candidate=1
   done
   if (( !any_live && !any_candidate )); then
     log_info "No control state to carry into the candidate"
     return 0
+  fi
+
+  # Live side: the source must be the real .state, not a symlink feralfile
+  # pointed elsewhere (root would otherwise copy whatever it names into the
+  # candidate). Checked before the stop, so a refusal here owes no restart.
+  local live_parent live_real
+  live_parent=$(dirname -- "$FF1_CONTROL_STATE_DIR")
+  if (( any_live )); then
+    if ! live_real=$(realpath -e -- "$live_parent") || [[ "$live_real" != "$live_parent" ]]; then
+      log_error "Live control state parent $live_parent does not resolve to itself; refusing to carry control state."
+      return 1
+    fi
   fi
 
   if (( any_live )); then
@@ -112,16 +187,19 @@ carry_control_state() {
     fi
   fi
 
-  # Every write and rm below lands under the candidate's .state. feralfile
-  # owns that directory tree, so a symlink in it (planted, or left by a bug)
-  # would aim root's rm -rf / rsync elsewhere. Resolve the parent once and
-  # refuse unless it stays inside the candidate root. realpath -m resolves
-  # the components that exist, so a symlinked ancestor of a missing .state is
-  # caught too. Per-entry symlinks are handled below: each destination entry
-  # is removed (rm never follows a link) before anything is written to it.
+  # Candidate side: every write and rm below lands under the candidate's
+  # .state, which feralfile owns, so a symlink in it (planted, or left by a
+  # bug) would aim root's rm -rf / rsync elsewhere. Resolve the parent once
+  # and refuse unless it stays inside the candidate root. realpath -m
+  # resolves the components that exist, so a symlinked ancestor of a missing
+  # .state is caught too. Entries themselves: a stale entry is removed with
+  # rm (which never follows a link), the tombstone is always removed before
+  # it is copied, and a directory entry is removed first when it is a
+  # symlink or not a directory; a real directory is updated in place by
+  # rsync --delete, which does not follow symlinks inside it.
   local root_real state_real
   if ! root_real=$(realpath -m -- "$candidate_root") \
-    || ! state_real=$(realpath -m -- "$candidate_root$(dirname -- "$FF1_CONTROL_STATE_DIR")"); then
+    || ! state_real=$(realpath -m -- "$candidate_root$live_parent"); then
     log_error "Could not resolve the update candidate .state directory."
     return 1
   fi
@@ -132,11 +210,13 @@ carry_control_state() {
 
   for path in "${paths[@]}"; do
     dest="$candidate_root$path"
-    if [[ ! -e "$path" && ! -L "$path" ]]; then
+    st=$(control_path_state "$path") || return 1
+    if [[ "$st" == absent ]]; then
       # The candidate inherited whatever existed when the update began; a copy
       # of something gone now would resurrect it (a deleted grant store, or a
       # finished reset's tombstone).
-      if [[ -e "$dest" || -L "$dest" ]]; then
+      dst=$(control_path_state "$dest") || return 1
+      if [[ "$dst" == present ]]; then
         log_info "Removing stale $path from the update candidate (absent on the running system)"
         rm -rf -- "$dest" || {
           log_error "Failed to remove stale control state from the update candidate."
@@ -145,32 +225,37 @@ carry_control_state() {
       fi
       continue
     fi
+    # Re-checked right before the copy: controld never creates symlinks
+    # here, so one is tampering, and rsync would carry or follow it.
+    if [[ -L "$path" ]]; then
+      log_error "Live control state $path is a symlink; refusing to carry it."
+      return 1
+    fi
     log_info "Copying live $path into the update candidate..."
-    # A directory replacing a file (or the reverse) is not something rsync
-    # will do in place, and a symlinked entry would redirect the write, so
-    # clear a mismatched or symlinked candidate entry first.
-    #
-    # --checksum, not rsync's size+mtime quick check: grants.json is
-    # rewritten at the same size on every request, with 1 s mtime
-    # resolution, so a write in the same second as the start snapshot would
-    # otherwise be skipped and the candidate keep the stale counter.
-    if [[ -d "$path" && ! -L "$path" ]]; then
+    if [[ -d "$path" ]]; then
       if [[ -e "$dest" || -L "$dest" ]] && [[ ! -d "$dest" || -L "$dest" ]]; then
         rm -f -- "$dest" || { log_error "Failed to copy control state into the update candidate."; return 1; }
       fi
+      # --checksum, not rsync's size+mtime quick check: grants.json is
+      # rewritten at the same size on every request, with 1 s mtime
+      # resolution, so a write in the same second as the start snapshot
+      # would otherwise be skipped and the candidate keep the stale counter.
+      #
       # .state already exists in the candidate (the start snapshot has it,
       # and post-extraction.sh creates it); mkdir -p only covers the
       # impossible case, and feral-kiosk-startup.service chowns
       # /home/feralfile at every boot.
-      if ! mkdir -p "$dest" \
+      if [[ -L "$path" ]] || ! mkdir -p "$dest" \
         || ! rsync -a --checksum --delete "$path"/ "$dest"/; then
         log_error "Failed to copy control state into the update candidate."
         return 1
       fi
     else
+      # Removed first, so the copy is always fresh (no quick check to fool)
+      # and never lands through a symlink.
       rm -rf -- "$dest" || { log_error "Failed to copy control state into the update candidate."; return 1; }
-      if ! mkdir -p "$(dirname "$dest")" \
-        || ! rsync -a --checksum "$path" "$dest"; then
+      if [[ -L "$path" ]] || ! mkdir -p "$(dirname "$dest")" \
+        || ! rsync -a "$path" "$dest"; then
         log_error "Failed to copy control state into the update candidate."
         return 1
       fi

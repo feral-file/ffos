@@ -350,6 +350,23 @@ jobs:
                 staticServerAddr: "127.0.0.1:8082",
                 missPolicy: "fail_closed"
               }' 600
+          # feral-file#3551 release ordering: an image may enable secure control
+          # only if its ffos ref carries controller state across a full-image
+          # OTA (ota-control-state.sh, called by feral-system-update.sh).
+          # Without it the image's own updater would drop or resurrect grants
+          # on its next OTA, so strip .control from the overlay result. This
+          # matters most for build-image-from-tags.yml, whose ffos_ref can be
+          # an older tag. Keep the three image workflows identical
+          # (scripts/verify.sh pins it).
+          controld_json=/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json
+          if [ -f /build/archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]; then
+            echo "controld.json: ffos ref has ota-control-state.sh; keeping .control as configured"
+          else
+            echo "::warning::controld.json: ffos ref lacks ota-control-state.sh; forcing del(.control) (secure control stays off)"
+            stripped="$(jq 'del(.control)' "$controld_json")"
+            printf '%s\n' "$stripped" > "$controld_json"
+          fi
+          # end feral-file#3551 control gate
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'
