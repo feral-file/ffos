@@ -450,7 +450,8 @@ chmod 644 /boot/loader/entries/arch-candidate.conf
 # Control state (feral-file#3551, F9): the candidate's .state is the snapshot
 # taken at step 3, before the download, so grant approvals/revocations and
 # replay-counter advances made since then would be lost on promotion. Stop
-# feral-controld and copy the live directory in here, as the last step before
+# feral-controld and mirror the live control/, control.new/ and the reset
+# tombstone control.retired into the candidate here, as the last step before
 # arming: everything slow or fallible (download, rsync, post-extraction, boot
 # staging) is done, so controld is down only for the seconds until reboot.
 # Any failure aborts before arming and the EXIT trap restarts controld.

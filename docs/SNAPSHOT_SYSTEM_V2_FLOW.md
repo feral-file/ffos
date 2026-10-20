@@ -69,7 +69,7 @@ OTA is implemented in `feral-system-update.sh`. High-level sequence:
 7. Bind-mount that staging directory as `/boot` inside `@ota_new` and run **`post-extraction.sh`** in chroot (boot entries, mkinitcpio, pacman keys, etc.).
 8. Copy the staged kernel and initrd into **`/boot/candidate/`** on the live ESP, so the current known-good kernel remains at `/boot/` and the new one sits alongside.
 9. Write **`/boot/loader/entries/arch-candidate.conf`** with `rootflags=subvol=@snapshots/@ota_new` (and candidate kernel paths).
-10. **Carry control state** (feral-file#3551): if `/home/feralfile/.state/control` exists, stop the `feral-controld` user unit and mirror the live directory into `@ota_new` (see [What survives an OTA](#what-survives-an-ota)).
+10. **Carry control state** (feral-file#3551): if any of `/home/feralfile/.state/control/`, `control.new/` or `control.retired` exists, stop the `feral-controld` user unit; make `@ota_new` mirror the live system for all three (see [What survives an OTA](#what-survives-an-ota)).
 11. Run **`bootctl set-oneshot arch-candidate.conf`** so the next boot uses the candidate entry once.
 12. Reboot.
 
@@ -93,34 +93,46 @@ deletes the old `@`, that removal is permanent. Device state therefore survives
 | `/var/lib/systemd/random-seed` | Per-device entropy seed. |
 | `/home/feralfile/.cache` | Protected for feral-controld's offline artwork blob store at `offlineCache.rootDir` (itself bounded by `maxDiskBytes`, 80 GB). Expensive to rebuild — every item re-downloads and software artworks re-capture through headless Chromium. The whole XDG cache directory inherits this protection; see below. |
 | `/home/feralfile/.config/chromium` | Kiosk browser profile. |
-| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version` and controld's owner-set records: the device name and the DP-1 signature verification mode (`signature-verification.json`, `silent`/`notify`/`strict`). Losing the latter would silently drop an owner's `strict` choice back to the `notify` default on every update. `.state/control` is carried live; see below. |
+| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version` and controld's owner-set records: the device name and the DP-1 signature verification mode (`signature-verification.json`, `silent`/`notify`/`strict`). Losing the latter would silently drop an owner's `strict` choice back to the `notify` default on every update. `.state/control`, `control.new` and `control.retired` are carried live; see below. |
 
-**`.state` is the copy from the start of the OTA, except `.state/control`.**
+**`.state` is the copy from the start of the OTA, except controld's control state.**
 The exclusion protects the `.state` that `@ota_new` inherited from the
 snapshot taken at step 3, before the download. Anything written to `.state`
 during the download and install is lost on promotion. For
 `/home/feralfile/.state/control` (feral-controld's controller grants and
 replay counters, ffos-user `docs/ff1-control-v1.md` section 8) that would
 bring back a controller revoked during the update and make an accepted
-request replayable again. So step 10 carries that directory **live**: as the
-last step before arming, `carry_control_state`
-(`root/scripts/ota-control-state.sh`) stops the `feral-controld` user unit
-(through `runuser -u feralfile ... systemctl --user`) so nothing writes to it
-again, then copies the live directory over the candidate's with
-`rsync -a --delete` (mode and ownership kept). If the directory is absent on
-the running system, nothing is stopped and any copy inherited by the candidate
-is removed. If the update fails after the stop and before the candidate is
+request replayable again. Two siblings belong to the same state:
+`.state/control.new/` (a new identity mid-creation, renamed into `control/`
+atomically) and `.state/control.retired`, the factory-reset tombstone.
+Factory reset writes the tombstone durably *before* deleting `control/`, and
+while it exists controld forces a locked policy. Carrying it keeps a reset
+that was interrupted by the update locked afterwards; losing it would let the
+candidate come up with `control/` gone and no lock, as a fresh device.
+
+So step 10 carries all three **live**: as the last step before arming,
+`carry_control_state` (`root/scripts/ota-control-state.sh`) stops the
+`feral-controld` user unit (through `runuser -u feralfile ... systemctl
+--user`) if any of the three exists on the running system, so nothing writes
+to them again. Then, for each path, the candidate mirrors the live system:
+a live path is copied in with `rsync -a` (`--delete` for the directories;
+mode and ownership kept), and a path absent on the running system is removed
+from the candidate (a stale copy from the start snapshot would resurrect a
+deleted grant store or a finished reset's tombstone). When none of the three
+exists live or in the candidate, nothing is touched. If the update fails after the stop and before the candidate is
 armed, the EXIT trap starts controld again. After arming, controld stays
 stopped until the reboot, because writes it accepted then would be dropped by
 the candidate boot. `scripts/test-ota-control-state.sh` (run by
 `scripts/verify.sh`) pins the helper and its placement.
 
-Factory reset and reflash **erase** `.state/control`: factory reset (and the
+Factory reset and reflash **erase** all three (`control/`, `control.new/`,
+`control.retired`): factory reset (and the
 initramfs `btrfs-rollback` hook) replaces the whole root with `@factory_reset`
 / `@recovery_candidate`, a recovery candidate is rebuilt from the ISO with no
 `.state` exclusion, and the installer creates no control state, so none of
-those roots ever holds it. ffos-user's factory reset also deletes the
-directory itself before starting the reset unit. The reflash evidence
+those roots ever holds it. ffos-user's factory reset also writes the
+tombstone and deletes `control/` itself before starting the reset unit; the
+root a completed reset boots has no tombstone. The reflash evidence
 preserver (`ff1-preserve-evidence.sh`, ffos#170) copies only `.logs` and
 `.state/vmagent_queue`.
 

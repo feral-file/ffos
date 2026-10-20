@@ -13,6 +13,9 @@
 #   - stop fails while controld still runs: refused, candidate untouched,
 #     restart still owed;
 #   - stop fails with no controld process: the copy proceeds;
+#   - reset tombstone (control.retired) live: carried, controld stopped;
+#   - tombstone absent live but present in the candidate: removed;
+#   - tombstone plus control.new/ live, control/ gone: all three mirrored;
 # and that feral-system-update.sh wires it in where it must: sourced before
 # the EXIT trap, called after post-extraction and right before
 # `bootctl set-oneshot`, restart owed until the candidate is armed.
@@ -53,6 +56,10 @@ LIVE="$WORK/live/home/feralfile/.state/control"
 CAND="$WORK/btrfs/@snapshots/@ota_new"
 # The helper appends the live path to the candidate root, as on a device.
 DEST="$CAND$LIVE"
+TOMB="$LIVE.retired"
+DEST_TOMB="$CAND$TOMB"
+LIVE_NEW="$LIVE.new"
+DEST_NEW="$CAND$LIVE_NEW"
 
 # reset_case: stale candidate copy from the "OTA start", fresh live state.
 reset_case() {
@@ -149,6 +156,55 @@ echo 1 > "$WORK/pgrep_rc"
 run_helper carry_control_state "$CAND"
 (( RC == 0 )) || { cat "$WORK/out"; fail "gone: rc=$RC"; }
 diff -r "$LIVE" "$DEST" >/dev/null || fail "gone: candidate differs from live state"
+
+echo "== tombstone live (reset in progress)"
+reset_case
+rm -rf "$LIVE"
+printf '{"v":1,"retiredAt":"x"}\n' > "$TOMB"
+chmod 600 "$TOMB"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "tomb: rc=$RC"; }
+grep -qxF -- "$stop_line" "$WORK/calls" || fail "tomb: controld not stopped for a live tombstone"
+cmp -s "$TOMB" "$DEST_TOMB" || fail "tomb: tombstone not carried"
+[[ -n "$(find "$DEST_TOMB" -perm 600)" ]] || fail "tomb: tombstone mode not kept"
+[[ ! -e "$DEST" ]] || fail "tomb: candidate kept control/ that the reset already deleted"
+
+echo "== tombstone absent live, present in candidate"
+reset_case
+echo stale-tomb > "$DEST_TOMB"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "stale tomb: rc=$RC"; }
+[[ ! -e "$DEST_TOMB" ]] || fail "stale tomb: candidate kept a tombstone the live system no longer has"
+diff -r "$LIVE" "$DEST" >/dev/null || fail "stale tomb: control/ not carried"
+# Candidate-only leftovers with nothing live: removed without touching controld.
+reset_case
+rm -rf "$LIVE"
+echo stale-tomb > "$DEST_TOMB"
+mkdir -p "$DEST_NEW"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || fail "stale only: rc=$RC"
+[[ ! -e "$DEST_TOMB" && ! -e "$DEST_NEW" && ! -e "$DEST" ]] || fail "stale only: candidate kept state the live system no longer has"
+[[ ! -s "$WORK/calls" ]] || fail "stale only: touched controld with no live state"
+
+echo "== tombstone plus directories"
+reset_case
+printf 'tomb\n' > "$TOMB"
+mkdir -p "$LIVE_NEW"
+echo '{"v":1,"gen":2}' > "$LIVE_NEW/identity.json"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "both: rc=$RC"; }
+cmp -s "$TOMB" "$DEST_TOMB" || fail "both: tombstone not carried"
+diff -r "$LIVE" "$DEST" >/dev/null || fail "both: control/ not carried"
+diff -r "$LIVE_NEW" "$DEST_NEW" >/dev/null || fail "both: control.new/ not carried"
+[[ "$(grep -cxF -- "$stop_line" "$WORK/calls")" -eq 1 ]] || fail "both: expected exactly one stop"
+# Type flip: a candidate directory where the live tombstone is a file.
+reset_case
+rm -rf "$LIVE"
+printf 'tomb\n' > "$TOMB"
+mkdir -p "$DEST_TOMB/odd"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "flip: rc=$RC"; }
+cmp -s "$TOMB" "$DEST_TOMB" || fail "flip: tombstone not carried over a candidate directory"
 
 echo "== feral-system-update.sh wiring"
 line_of() { grep -nF -- "$1" "$UPDATE" | head -n1 | cut -d: -f1; }
