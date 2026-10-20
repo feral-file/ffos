@@ -116,9 +116,10 @@ control_state_any_live() {
 # this helper whenever live control state exists: an image without it (a
 # downgrade to a pre-#3551 release) runs the OLD feral-system-update.sh on its
 # next OTA, which drops control state written during that OTA, and it may
-# still receive a current controld through the package rail. Called after the
-# image is rsynced into the candidate and BEFORE carry_control_state, so
-# controld has not been stopped and no restart is owed.
+# still receive a current controld through the package rail. Called with the
+# mounted image's SquashFS root, before it is rsynced into the candidate (a
+# refusal then skips the rsync) and BEFORE carry_control_state, so controld
+# has not been stopped and no restart is owed.
 #
 # Wording is load-bearing: feral-controld's otagate/classify.go (ffos-user)
 # matches the prefix "Refusing update: target image cannot carry controller
@@ -135,6 +136,32 @@ refuse_update_without_carry() {
        return 1 ;;
     *) return 1 ;;
   esac
+}
+
+# check_controld_stoppable: 0 if carry_control_state will be able to stop
+# feral-controld (or there is no live state, so it will not need to), 1 after
+# logging otherwise. Run before the download: carry_control_state hits the
+# same condition only after the full download and rsync, and otagate retries
+# that message (transient) by re-running this whole script. Mirrors the
+# carry's stop handling: an unreachable user manager matters only while a
+# feral-controld process still runs.
+#
+# Wording: the message keeps the "Could not stop feral-controld" prefix that
+# otagate/classify.go matches. No double quotes in it.
+check_controld_stoppable() {
+  local rc=0
+  control_state_any_live || rc=$?
+  case "$rc" in
+    1) return 0 ;;
+    0) ;;
+    *) return 1 ;;
+  esac
+  controld_systemctl show -p ActiveState feral-controld.service >/dev/null && return 0
+  if pgrep -u "$FF1_CONTROL_USER" -x feral-controld >/dev/null; then
+    log_error "Could not stop feral-controld: its user manager is unreachable while it runs; not downloading an update that could not be armed."
+    return 1
+  fi
+  return 0
 }
 
 # carry_control_state CANDIDATE_ROOT: freeze the live control state and make
@@ -278,7 +305,9 @@ set_controld_stop_marker() {
     return 0
   fi
   [[ -n "${tmp:-}" ]] && rm -f -- "$tmp"
-  log_error "Failed to create $FF1_CONTROLD_OTA_STOP_MARKER; feral-watchdog may report controld inactive during the update."
+  # log_info, not log_error: otagate (ffos-user) fails the run on the first
+  # [ERROR] line, and this one does not stop the update.
+  log_info "Warning: failed to create $FF1_CONTROLD_OTA_STOP_MARKER; feral-watchdog may report controld inactive during the update."
   return 0
 }
 

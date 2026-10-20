@@ -149,6 +149,12 @@ fi
 mkdir -p "$NEW_ROOT"
 mount -o compress=zstd,noatime,subvol=@snapshots/@ota_new "$ROOT_DEV" "$NEW_ROOT"
 
+# Control state (feral-file#3551): refuse now, not after the download, when
+# the carry could not stop feral-controld. No-op without control state.
+if ! check_controld_stoppable; then
+  exit 1
+fi
+
 # --- Step 4: Download and extract new iso ------------------------------------
 log_progress "10" "Downloading new iso..."
 mkdir -p "$TMP_DIR"
@@ -336,6 +342,17 @@ log_info "Mounting SquashFS: $SFS_PATH"
 mkdir -p "$SFS_MOUNT"
 mount -t squashfs -o loop "$SFS_PATH" "$SFS_MOUNT"
 
+# Downgrade guard (feral-file#3551): a device holding controller state must
+# not move to an image that cannot carry it across ITS next OTA (that image's
+# own feral-system-update.sh decides then). Checked on the mounted image,
+# before the rsync into @ota_new, so a refusal does not pay for it.
+# refuse_update_without_carry logs a permanent-class message for
+# otagate/classify.go. controld has not been stopped yet, so this exit owes
+# no restart.
+if ! refuse_update_without_carry "$SFS_MOUNT"; then
+  exit 1
+fi
+
 log_progress "85" "Installing update to new snapshot..."
 
 # --- Step 6: Rsync selective update to NEW snapshot ---------------------------
@@ -373,15 +390,6 @@ log_info "Syncing filesystem into '@snapshots/@ota_new' snapshot..."
 rsync -aAX --delete --info=progress2 \
   --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed","/home/feralfile/.cache","/home/feralfile/.config/chromium","/home/feralfile/.logs","/home/feralfile/.state"} \
   "$SFS_MOUNT"/ "$NEW_ROOT"/
-
-# Downgrade guard (feral-file#3551): a device holding controller state must
-# not move to an image that cannot carry it across ITS next OTA (that image's
-# own feral-system-update.sh decides then). refuse_update_without_carry logs
-# a permanent-class message for otagate/classify.go. controld has not been
-# stopped yet, so this exit owes no restart.
-if ! refuse_update_without_carry "$NEW_ROOT"; then
-  exit 1
-fi
 
 log_progress "90" "Preparing boot files..."
 

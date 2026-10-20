@@ -29,13 +29,19 @@
 #     candidate copy is NOT treated as stale;
 #   - live side: a symlinked live .state is refused before the stop; a
 #     symlinked live entry is refused with the restart owed;
+#   - the marker cannot be created: logged without [ERROR] (otagate treats
+#     any [ERROR] line as the run's failure) and the carry proceeds;
 #   - downgrade guard: a candidate without ota-control-state.sh is refused
 #     only when live state exists, before anything is stopped;
+#   - pre-download stop check: refused only when live state exists, the user
+#     manager is unreachable and controld still runs; nothing is stopped;
 #   - the arming block: a failed bootctl set-oneshot clears the oneshot and
 #     leaves the restart owed; a successful one clears it;
 # and that feral-system-update.sh wires it in where it must: sourced before
-# the EXIT trap, called after post-extraction and right before
-# `bootctl set-oneshot`, restart owed until the candidate is armed.
+# the EXIT trap, the stop check before the download, the downgrade guard on
+# the mounted image before its rsync, the carry after post-extraction and
+# right before `bootctl set-oneshot`, restart owed until the candidate is
+# armed.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -65,6 +71,7 @@ esac
 case "$*" in
   *" stop "*) exit "$(cat "$STUB_DIR/stop_rc")" ;;
   *" start "*) exit "$(cat "$STUB_DIR/start_rc")" ;;
+  *" show "*) exit "$(cat "$STUB_DIR/show_rc")" ;;
 esac
 exit 0
 EOF
@@ -120,6 +127,7 @@ reset_case() {
   : > "$WORK/stat_eio"
   echo 0 > "$WORK/stop_rc"
   echo 0 > "$WORK/start_rc"
+  echo 0 > "$WORK/show_rc"
   echo 1 > "$WORK/pgrep_rc"
   mkdir -p "$DEST"
   echo '{"v":1,"gen":1,"controllers":["revoked-later"]}' > "$DEST/grants.json"
@@ -344,6 +352,15 @@ run_helper carry_control_state "$CAND"
 (( RC == 0 )) || fail "marker absent: rc=$RC"
 [[ ! -e "$MARKER" ]] || fail "marker: created with nothing live"
 
+# Marker cannot be created: not an [ERROR] line, and the carry goes on.
+reset_case
+rm -rf "$WORK/run"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "marker fails: rc=$RC"; }
+grep -q "^INFO Warning: failed to create $MARKER" "$WORK/out" || { cat "$WORK/out"; fail "marker fails: not logged"; }
+! grep -q "^ERROR" "$WORK/out" || { cat "$WORK/out"; fail "marker fails: logged as an error, which otagate treats as terminal"; }
+diff -r "$LIVE" "$DEST" >/dev/null || fail "marker fails: carry did not complete"
+
 echo "== restart fails"
 reset_case
 echo 1 > "$WORK/start_rc"
@@ -417,6 +434,33 @@ rm -rf "$LIVE"
 run_helper refuse_update_without_carry "$CAND"
 (( RC == 0 )) || fail "downgrade: refused with no live state"
 
+echo "== pre-download stop check"
+reset_case
+run_helper check_controld_stoppable
+(( RC == 0 )) || { cat "$WORK/out"; fail "stoppable: refused with a reachable user manager"; }
+grep -q "show -p ActiveState feral-controld.service" "$WORK/calls" || fail "stoppable: user manager not probed"
+! grep -q " stop " "$WORK/calls" || fail "stoppable: stopped controld"
+reset_case
+echo 1 > "$WORK/show_rc"
+echo 0 > "$WORK/pgrep_rc"
+run_helper check_controld_stoppable
+(( RC != 0 )) || fail "stoppable: accepted an unreachable manager with controld running"
+grep -q "^ERROR Could not stop feral-controld" "$WORK/out" || { cat "$WORK/out"; fail "stoppable: classify.go prefix changed"; }
+grep -qx "PENDING 0" "$WORK/out" || fail "stoppable: restart owed without a stop"
+# Unreachable manager but no controld process: the carry would continue too.
+reset_case
+echo 1 > "$WORK/show_rc"
+run_helper check_controld_stoppable
+(( RC == 0 )) || fail "stoppable: refused with no controld running"
+# No live state: nothing to stop, no probe.
+reset_case
+rm -rf "$LIVE"
+echo 1 > "$WORK/show_rc"
+echo 0 > "$WORK/pgrep_rc"
+run_helper check_controld_stoppable
+(( RC == 0 )) || fail "stoppable: refused with no live state"
+[[ ! -s "$WORK/calls" ]] || fail "stoppable: probed with no live state"
+
 echo "== arming block"
 # Run the real block from feral-system-update.sh (from the signal trap to the
 # flag clear) with bootctl stubbed, the way the script runs it.
@@ -476,11 +520,15 @@ done
 (( postx < carry )) || fail "wiring: carry must run after post-extraction"
 sigs=$(line_of "trap '' TERM INT HUP")
 rsync_main=$(line_of '"$SFS_MOUNT"/ "$NEW_ROOT"/')
-guard=$(line_of 'if ! refuse_update_without_carry "$NEW_ROOT"; then')
-for v in sigs rsync_main guard; do
+guard=$(line_of 'if ! refuse_update_without_carry "$SFS_MOUNT"; then')
+sfs_mount=$(line_of 'mount -t squashfs -o loop "$SFS_PATH" "$SFS_MOUNT"')
+stoppable=$(line_of 'if ! check_controld_stoppable; then')
+download=$(line_of 'download_file_with_slow_retry "$ENDPOINT$IMAGE_URL" "$ISO_FILE" "OTA image"')
+for v in sigs rsync_main guard sfs_mount stoppable download; do
   [[ -n "${!v}" ]] || fail "wiring: $v not found in feral-system-update.sh"
 done
-(( rsync_main < guard && guard < postx && guard < carry )) || fail "wiring: downgrade guard must follow the image rsync and precede the carry"
+(( trap_line < stoppable && stoppable < download )) || fail "wiring: stop check must run before the download, under the EXIT trap"
+(( sfs_mount < guard && guard < rsync_main && guard < carry )) || fail "wiring: downgrade guard must check the mounted image before its rsync and precede the carry"
 (( carry < sigs && sigs < arm )) || fail "wiring: carry, then ignore signals, then bootctl set-oneshot"
 # Nothing but comments/blank lines between the carry and the arming block.
 if sed -n "$((carry + 1)),$((sigs - 1))p" "$UPDATE" | grep -vqE '^[[:space:]]*(#|$)'; then

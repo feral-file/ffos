@@ -159,17 +159,26 @@ script stops owing controld a restart. If `bootctl set-oneshot` fails, the
 script clears any oneshot best-effort (`bootctl set-oneshot ''`) and takes
 the abort path, which restarts controld.
 
-**Downgrade guard.** Right after the image is rsynced into `@ota_new`
-(before post-extraction, and before controld is touched), the running
-script refuses the update if the candidate has no
+**Downgrade guard.** Right after the image's SquashFS is mounted (before
+it is rsynced into `@ota_new`, and before controld is touched), the running
+script refuses the update if the image has no
 `/root/scripts/ota-control-state.sh` while any of the three control paths
-exists live. That image would run its own, older updater on the next OTA
+exists live. The download is still spent: a channel moved back to a release
+without the carry costs every device with control state one download per
+updater run until the channel moves forward. That image would run its own, older updater on the next OTA
 and lose or resurrect the state. The log line is
 `Refusing update: target image cannot carry controller state (no /root/scripts/ota-control-state.sh); a downgrade below secure-control support would lose or resurrect controller grants.`
 and feral-controld's `otagate/classify.go` treats the
 `Refusing update: target image cannot carry controller state` prefix as
 permanent; keep the two in step. Nothing has been stopped at that point, so
 the exit owes no restart.
+
+**Pre-download stop check.** Before the download, when control state exists
+live, the script asks feralfile's user manager for controld's state
+(`systemctl --user show`); if the manager does not answer while a
+feral-controld process still runs, the carry could not stop it, so the
+script fails now with the same `Could not stop feral-controld` prefix
+(transient in `otagate/classify.go`) instead of after a full download.
 
 **Contract with feral-watchdog (ffos-user): `/run/feral-controld-ota-stop`.**
 Immediately before stopping controld, the step creates this marker (empty,
@@ -181,7 +190,8 @@ removed by the restore path once controld has been started again (also after
 a refused stop, and also if that start fails, so a genuine failure is still
 reported). It is never removed after arming: controld stays stopped until the
 reboot, and the reboot clears `/run`. If the marker cannot be created the
-update continues (the cost is a spurious report). Keep the path in step with
+update continues (the cost is a spurious report); that line is logged at
+`[INFO]`, because otagate fails the run on any `[ERROR]` line. Keep the path in step with
 the watchdog. Accepted gap: after arming, `feral-updater.sh` releases the
 lock as soon as `systemctl reboot` returns, while shutdown is still running,
 so the watchdog may emit one "controld inactive" report during that final
