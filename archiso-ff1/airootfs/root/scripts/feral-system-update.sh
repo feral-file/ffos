@@ -66,6 +66,15 @@ if [[ ! -r /root/scripts/ota-download.sh ]]; then
 fi
 source /root/scripts/ota-download.sh
 
+# carry_control_state / restore_controld_if_stopped (feral-file#3551): carries
+# feral-controld's controller grants and replay counters live into the
+# candidate. Sourced before the EXIT trap below, which calls into it.
+if [[ ! -r /root/scripts/ota-control-state.sh ]]; then
+  log_error "/root/scripts/ota-control-state.sh missing; cannot carry control state"
+  exit 1
+fi
+source /root/scripts/ota-control-state.sh
+
 CONFIG_FILE="/home/feralfile/ff1-config.json"
 RELEASE_PK="/root/.ff1-release-public-key.pem"
 ISO_MOUNT="/mnt/ota-iso"
@@ -79,6 +88,10 @@ BTRFS_TOP="/mnt/btrfs-top"
 cleanup() {
   trap - ERR
   cd /
+
+  # An exit before the candidate is armed must not leave feral-controld
+  # stopped by carry_control_state. No-op unless it stopped it.
+  restore_controld_if_stopped
   
   # Kill progress monitor if still running
   if [[ -n "${PROGRESS_PID:-}" ]]; then
@@ -434,7 +447,21 @@ EOF
 
 chmod 644 /boot/loader/entries/arch-candidate.conf
 
+# Control state (feral-file#3551, F9): the candidate's .state is the snapshot
+# taken at step 3, before the download, so grant approvals/revocations and
+# replay-counter advances made since then would be lost on promotion. Stop
+# feral-controld and copy the live directory in here, as the last step before
+# arming: everything slow or fallible (download, rsync, post-extraction, boot
+# staging) is done, so controld is down only for the seconds until reboot.
+# Any failure aborts before arming and the EXIT trap restarts controld.
+carry_control_state "$BTRFS_TOP/@snapshots/@ota_new"
+
 bootctl set-oneshot arch-candidate.conf
+# Armed: from here the next boot is the candidate, holding the state copied
+# above. Restarting controld now (even if the reboot request below failed)
+# would accept writes that boot would drop, so it stays stopped until reboot.
+# shellcheck disable=SC2034 # read by restore_controld_if_stopped (sourced)
+CONTROLD_RESTART_PENDING=0
 
 log_info "Candidate boot entry created. Btrfs default unchanged."
 sync

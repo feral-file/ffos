@@ -69,8 +69,9 @@ OTA is implemented in `feral-system-update.sh`. High-level sequence:
 7. Bind-mount that staging directory as `/boot` inside `@ota_new` and run **`post-extraction.sh`** in chroot (boot entries, mkinitcpio, pacman keys, etc.).
 8. Copy the staged kernel and initrd into **`/boot/candidate/`** on the live ESP, so the current known-good kernel remains at `/boot/` and the new one sits alongside.
 9. Write **`/boot/loader/entries/arch-candidate.conf`** with `rootflags=subvol=@snapshots/@ota_new` (and candidate kernel paths).
-10. Run **`bootctl set-oneshot arch-candidate.conf`** so the next boot uses the candidate entry once.
-11. Reboot.
+10. **Carry control state** (feral-file#3551): if `/home/feralfile/.state/control` exists, stop the `feral-controld` user unit and mirror the live directory into `@ota_new` (see [What survives an OTA](#what-survives-an-ota)).
+11. Run **`bootctl set-oneshot arch-candidate.conf`** so the next boot uses the candidate entry once.
+12. Reboot.
 
 While the update runs, `feral-updater.sh` (the caller of this script and of the pacman path, `feral-service-update.sh`) holds `/run/feral-updater.lock`. feral-watchdog (ffos-user) reads that lock from `/proc/locks` and defers its reboots and Chromium escalation until it is released, because the update's IO and disk use can trip them and the update ends in its own reboot. It caps one hold at 8 h, so a wedged update cannot disable recovery indefinitely. Keep the lock path, and keep it held across both children until each has requested its reboot. controld's boot OTA gate no longer stops the watchdog around the update.
 
@@ -92,7 +93,40 @@ deletes the old `@`, that removal is permanent. Device state therefore survives
 | `/var/lib/systemd/random-seed` | Per-device entropy seed. |
 | `/home/feralfile/.cache` | Protected for feral-controld's offline artwork blob store at `offlineCache.rootDir` (itself bounded by `maxDiskBytes`, 80 GB). Expensive to rebuild — every item re-downloads and software artworks re-capture through headless Chromium. The whole XDG cache directory inherits this protection; see below. |
 | `/home/feralfile/.config/chromium` | Kiosk browser profile. |
-| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version` and controld's owner-set records: the device name and the DP-1 signature verification mode (`signature-verification.json`, `silent`/`notify`/`strict`). Losing the latter would silently drop an owner's `strict` choice back to the `notify` default on every update. |
+| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version` and controld's owner-set records: the device name and the DP-1 signature verification mode (`signature-verification.json`, `silent`/`notify`/`strict`). Losing the latter would silently drop an owner's `strict` choice back to the `notify` default on every update. `.state/control` is carried live; see below. |
+
+**`.state` is the copy from the start of the OTA, except `.state/control`.**
+The exclusion protects the `.state` that `@ota_new` inherited from the
+snapshot taken at step 3, before the download. Anything written to `.state`
+during the download and install is lost on promotion. For
+`/home/feralfile/.state/control` (feral-controld's controller grants and
+replay counters, ffos-user `docs/ff1-control-v1.md` section 8) that would
+bring back a controller revoked during the update and make an accepted
+request replayable again. So step 10 carries that directory **live**: as the
+last step before arming, `carry_control_state`
+(`root/scripts/ota-control-state.sh`) stops the `feral-controld` user unit
+(through `runuser -u feralfile ... systemctl --user`) so nothing writes to it
+again, then copies the live directory over the candidate's with
+`rsync -a --delete` (mode and ownership kept). If the directory is absent on
+the running system, nothing is stopped and any copy inherited by the candidate
+is removed. If the update fails after the stop and before the candidate is
+armed, the EXIT trap starts controld again. After arming, controld stays
+stopped until the reboot, because writes it accepted then would be dropped by
+the candidate boot. `scripts/test-ota-control-state.sh` (run by
+`scripts/verify.sh`) pins the helper and its placement.
+
+Factory reset and reflash **erase** `.state/control`: factory reset (and the
+initramfs `btrfs-rollback` hook) replaces the whole root with `@factory_reset`
+/ `@recovery_candidate`, a recovery candidate is rebuilt from the ISO with no
+`.state` exclusion, and the installer creates no control state, so none of
+those roots ever holds it. ffos-user's factory reset also deletes the
+directory itself before starting the reset unit. The reflash evidence
+preserver (`ff1-preserve-evidence.sh`, ffos#170) copies only `.logs` and
+`.state/vmagent_queue`.
+
+As with the cache below, the running system's script decides: the first OTA
+that ships this step still runs the old script, which is harmless because
+firmware without this step has no control state.
 
 `/home/feralfile/.cache` is excluded as a whole directory rather than as
 `.cache/offline-artworks`, because rsync only protects paths it is told to
