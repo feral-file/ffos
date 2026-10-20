@@ -63,11 +63,41 @@ select opt in "${options[@]}"; do
         echo "You selected: $TARGET_DISK"
         read -rp "⚠️  ALL DATA WILL BE ERASED. Proceed? [y/N]: " confirm
         [[ "$confirm" != [yY] ]] && echo "Aborted." && exit 1
+        # The one exception to "ALL DATA" (ffos-user#404). They hold network
+        # names and device activity, so a unit going to a new owner must not
+        # keep them.
+        echo
+        echo "The previous install's diagnostic logs (network and component logs,"
+        echo "no Wi-Fi passwords) can be kept for support. A factory reset clears them."
+        read -rp "Keep them? Answer n if this device is going to someone else. [Y/n]: " keep_logs
+        [[ "$keep_logs" == [nN] ]] && FF1_EVIDENCE_KEEP=0
         break
     fi
 done
 
 # ─── Partition and format ──────────────────────────────────────────────
+if [[ "$TARGET_DISK" =~ [0-9]$ ]]; then
+  PART_SUFFIX="p"
+else
+  PART_SUFFIX=""
+fi
+
+BOOT_PART="${TARGET_DISK}${PART_SUFFIX}1"
+ROOT_PART="${TARGET_DISK}${PART_SUFFIX}2"
+
+# ─── Keep the previous install's evidence (ffos-user#404) ──────────────
+# Read before wipefs destroys it; written back after the factory-reset
+# snapshot, so a later factory reset still clears it.
+if [[ ! -r /root/scripts/ff1-preserve-evidence.sh ]]; then
+    echo "ERROR: /root/scripts/ff1-preserve-evidence.sh missing; refusing to wipe without it" >&2
+    exit 1
+fi
+source /root/scripts/ff1-preserve-evidence.sh
+EVIDENCE_STASH=/run/ff1-evidence
+echo
+echo "Keeping diagnostic logs from the previous install, if any..."
+ff1_stash_evidence_from_disk "$ROOT_PART" "$EVIDENCE_STASH"
+
 echo
 echo "Partitioning $TARGET_DISK..."
 
@@ -78,15 +108,6 @@ parted -s "$TARGET_DISK" set 1 esp on
 parted -s "$TARGET_DISK" mkpart primary btrfs 513MiB 100%
 
 sleep 1  # Wait for kernel to re-read partition table
-
-if [[ "$TARGET_DISK" =~ [0-9]$ ]]; then
-  PART_SUFFIX="p"
-else
-  PART_SUFFIX=""
-fi
-
-BOOT_PART="${TARGET_DISK}${PART_SUFFIX}1"
-ROOT_PART="${TARGET_DISK}${PART_SUFFIX}2"
 
 echo "Formatting EFI boot partition: $BOOT_PART"
 mkfs.fat -F32 "$BOOT_PART"
@@ -322,6 +343,10 @@ if btrfs subvolume snapshot -r /mnt /mnt/.snapshots/@factory_reset; then
 else
   echo "❌ Error: Failed to create factory reset snapshot."
 fi
+
+echo
+echo "Restoring diagnostic logs from the previous install, if any..."
+ff1_restore_evidence "$EVIDENCE_STASH" /mnt
 
 # ─── Post-install cleanup and prompt ───────────────────────────────────
 sleep 5
