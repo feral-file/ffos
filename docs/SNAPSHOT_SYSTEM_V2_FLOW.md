@@ -115,14 +115,27 @@ So step 10 carries all three **live**: as the last step before arming,
 `feral-controld` user unit (through `runuser -u feralfile ... systemctl
 --user`) if any of the three exists on the running system, so nothing writes
 to them again. Then, for each path, the candidate mirrors the live system:
-a live path is copied in with `rsync -a` (`--delete` for the directories;
-mode and ownership kept), and a path absent on the running system is removed
-from the candidate (a stale copy from the start snapshot would resurrect a
-deleted grant store or a finished reset's tombstone). When none of the three
-exists live or in the candidate, nothing is touched. If the update fails after the stop and before the candidate is
-armed, the EXIT trap starts controld again. After arming, controld stays
-stopped until the reboot, because writes it accepted then would be dropped by
-the candidate boot. `scripts/test-ota-control-state.sh` (run by
+a live path is copied in with `rsync -a --checksum` (`--delete` for the
+directories; mode and ownership kept), and a path absent on the running
+system is removed from the candidate (a stale copy from the start snapshot
+would resurrect a deleted grant store or a finished reset's tombstone). When
+none of the three exists live or in the candidate, nothing is touched.
+`--checksum` matters: `grants.json` is rewritten at the same size on every
+request and mtimes have 1 s resolution, so rsync's default size+mtime quick
+check could skip a write made in the same second as the start snapshot.
+The candidate's `.state` is owned by feralfile, so before any write or `rm`
+the step checks that it resolves (`realpath -m`) inside the candidate root
+and refuses otherwise, and it removes each destination entry (never
+following a symlink) before writing it.
+
+If the update fails after the stop and before the candidate is armed, the
+EXIT trap starts controld again (`start --no-block`, as `.start-services.sh`
+does for this Type=notify unit). After arming, controld stays stopped until
+the reboot, because writes it accepted then would be dropped by the candidate
+boot; for the same reason nothing after arming is allowed to abort the script
+(errexit and the ERR trap are switched off, cleanup is best-effort) and a
+failed `systemctl reboot` falls back to `systemctl reboot --force`, then
+`reboot -f`. `scripts/test-ota-control-state.sh` (run by
 `scripts/verify.sh`) pins the helper and its placement.
 
 Factory reset and reflash **erase** all three (`control/`, `control.new/`,
@@ -139,6 +152,17 @@ preserver (`ff1-preserve-evidence.sh`, ffos#170) copies only `.logs` and
 As with the cache below, the running system's script decides: the first OTA
 that ships this step still runs the old script, which is harmless because
 firmware without this step has no control state.
+
+**Release-ordering constraint.** That "harmless" holds only while no image
+without this carry step ever runs with secure control on. No image that
+lacks it may ship with `control.enabled=true` in its `controld.json`,
+including images rebuilt from older tags with `build-image-from-tags.yml`:
+such a device would create control state and lose it (or resurrect revoked
+grants) on its next full-image OTA, because the old script decides. Older
+images that get a newer controld through the package rail
+(`feral-service-update.sh`) are safe: `controld.json` is written only at
+image build, so their controld never has control enabled and never creates
+control state.
 
 `/home/feralfile/.cache` is excluded as a whole directory rather than as
 `.cache/offline-artworks`, because rsync only protects paths it is told to

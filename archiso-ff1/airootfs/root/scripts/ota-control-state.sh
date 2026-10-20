@@ -101,6 +101,24 @@ carry_control_state() {
     fi
   fi
 
+  # Every write and rm below lands under the candidate's .state. feralfile
+  # owns that directory tree, so a symlink in it (planted, or left by a bug)
+  # would aim root's rm -rf / rsync elsewhere. Resolve the parent once and
+  # refuse unless it stays inside the candidate root. realpath -m resolves
+  # the components that exist, so a symlinked ancestor of a missing .state is
+  # caught too. Per-entry symlinks are handled below: each destination entry
+  # is removed (rm never follows a link) before anything is written to it.
+  local root_real state_real
+  if ! root_real=$(realpath -m -- "$candidate_root") \
+    || ! state_real=$(realpath -m -- "$candidate_root$(dirname -- "$FF1_CONTROL_STATE_DIR")"); then
+    log_error "Could not resolve the update candidate .state directory."
+    return 1
+  fi
+  if [[ "$state_real" != "$root_real"/* ]]; then
+    log_error "Update candidate .state resolves outside the candidate root; refusing to write control state."
+    return 1
+  fi
+
   for path in "${paths[@]}"; do
     dest="$candidate_root$path"
     if [[ ! -e "$path" && ! -L "$path" ]]; then
@@ -118,7 +136,13 @@ carry_control_state() {
     fi
     log_info "Copying live $path into the update candidate..."
     # A directory replacing a file (or the reverse) is not something rsync
-    # will do in place, so clear a mismatched candidate entry first.
+    # will do in place, and a symlinked entry would redirect the write, so
+    # clear a mismatched or symlinked candidate entry first.
+    #
+    # --checksum, not rsync's size+mtime quick check: grants.json is
+    # rewritten at the same size on every request, with 1 s mtime
+    # resolution, so a write in the same second as the start snapshot would
+    # otherwise be skipped and the candidate keep the stale counter.
     if [[ -d "$path" && ! -L "$path" ]]; then
       if [[ -e "$dest" || -L "$dest" ]] && [[ ! -d "$dest" || -L "$dest" ]]; then
         rm -f -- "$dest" || { log_error "Failed to copy control state into the update candidate."; return 1; }
@@ -128,16 +152,14 @@ carry_control_state() {
       # impossible case, and feral-kiosk-startup.service chowns
       # /home/feralfile at every boot.
       if ! mkdir -p "$dest" \
-        || ! rsync -a --delete "$path"/ "$dest"/; then
+        || ! rsync -a --checksum --delete "$path"/ "$dest"/; then
         log_error "Failed to copy control state into the update candidate."
         return 1
       fi
     else
-      if [[ -d "$dest" && ! -L "$dest" ]]; then
-        rm -rf -- "$dest" || { log_error "Failed to copy control state into the update candidate."; return 1; }
-      fi
+      rm -rf -- "$dest" || { log_error "Failed to copy control state into the update candidate."; return 1; }
       if ! mkdir -p "$(dirname "$dest")" \
-        || ! rsync -a "$path" "$dest"; then
+        || ! rsync -a --checksum "$path" "$dest"; then
         log_error "Failed to copy control state into the update candidate."
         return 1
       fi
@@ -154,7 +176,9 @@ restore_controld_if_stopped() {
   [[ "${CONTROLD_RESTART_PENDING:-0}" == 1 ]] || return 0
   CONTROLD_RESTART_PENDING=0
   log_info "Update did not arm the candidate; restarting feral-controld"
-  controld_systemctl start feral-controld.service \
+  # --no-block, as ffos-user's .start-services.sh does: controld is
+  # Type=notify and can fail before READY; this exit path must not hang on it.
+  controld_systemctl start --no-block feral-controld.service \
     || log_error "Failed to restart feral-controld."
   return 0
 }

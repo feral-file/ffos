@@ -16,6 +16,10 @@
 #   - reset tombstone (control.retired) live: carried, controld stopped;
 #   - tombstone absent live but present in the candidate: removed;
 #   - tombstone plus control.new/ live, control/ gone: all three mirrored;
+#   - same size, same mtime, different content: still replaced (--checksum);
+#   - a candidate entry that is a symlink to a directory outside: the link is
+#     replaced, the target is untouched;
+#   - a candidate .state that is a symlink out of the candidate: refused;
 # and that feral-system-update.sh wires it in where it must: sourced before
 # the EXIT trap, called after post-extraction and right before
 # `bootctl set-oneshot`, restart owed until the candidate is armed.
@@ -50,6 +54,17 @@ echo "pgrep $*" >> "$STUB_DIR/calls"
 exit "$(cat "$STUB_DIR/pgrep_rc")"
 EOF
 chmod +x "$WORK/bin/runuser" "$WORK/bin/pgrep"
+# The helper uses GNU `realpath -m`. On a non-GNU host (macOS) shim it so the
+# test runs locally too; CI (Ubuntu) and the image use the real one.
+if ! realpath -m -- / >/dev/null 2>&1; then
+  cat > "$WORK/bin/realpath" <<'EOF2'
+#!/bin/sh
+[ "$1" = "-m" ] && shift
+[ "$1" = "--" ] && shift
+exec python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"
+EOF2
+  chmod +x "$WORK/bin/realpath"
+fi
 export STUB_DIR="$WORK"
 
 LIVE="$WORK/live/home/feralfile/.state/control"
@@ -63,7 +78,7 @@ DEST_NEW="$CAND$LIVE_NEW"
 
 # reset_case: stale candidate copy from the "OTA start", fresh live state.
 reset_case() {
-  rm -rf "$WORK/live" "$WORK/btrfs" "$WORK/calls"
+  rm -rf "$WORK/live" "$WORK/btrfs" "$WORK/calls" "$WORK/outside" "$WORK/outside"
   : > "$WORK/calls"
   echo 0 > "$WORK/stop_rc"
   echo 1 > "$WORK/pgrep_rc"
@@ -98,7 +113,7 @@ run_helper() {
 }
 
 stop_line="-u feralfile -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user stop feral-controld.service"
-start_line="${stop_line/ stop / start }"
+start_line="${stop_line/ stop / start --no-block }"
 
 echo "== live state present"
 reset_case
@@ -206,6 +221,56 @@ run_helper carry_control_state "$CAND"
 (( RC == 0 )) || { cat "$WORK/out"; fail "flip: rc=$RC"; }
 cmp -s "$TOMB" "$DEST_TOMB" || fail "flip: tombstone not carried over a candidate directory"
 
+echo "== same size and mtime, different content"
+reset_case
+echo '{"v":1,"gen":1,"controllers":[],"hi":7}' > "$LIVE/grants.json"
+echo '{"v":1,"gen":1,"controllers":[],"hi":6}' > "$DEST/grants.json"
+touch -r "$LIVE/grants.json" "$DEST/grants.json"
+echo tomb-new > "$TOMB"
+echo tomb-old > "$DEST_TOMB"
+touch -r "$TOMB" "$DEST_TOMB"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "checksum: rc=$RC"; }
+cmp -s "$LIVE/grants.json" "$DEST/grants.json" || fail "checksum: same-size same-mtime grants.json skipped (quick check)"
+cmp -s "$TOMB" "$DEST_TOMB" || fail "checksum: same-size same-mtime tombstone skipped (quick check)"
+
+echo "== candidate entries that are symlinks"
+reset_case
+mkdir -p "$WORK/outside"
+echo keep > "$WORK/outside/victim"
+rm -rf "$DEST"
+ln -s "$WORK/outside" "$DEST"
+echo tomb > "$TOMB"
+ln -s "$WORK/outside/victim" "$DEST_TOMB"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "dest link: rc=$RC"; }
+[[ -d "$DEST" && ! -L "$DEST" ]] || fail "dest link: control/ still a symlink"
+diff -r "$LIVE" "$DEST" >/dev/null || fail "dest link: control/ not carried"
+[[ -f "$DEST_TOMB" && ! -L "$DEST_TOMB" ]] || fail "dest link: tombstone still a symlink"
+if [[ "$(ls "$WORK/outside")" != victim ]] || ! grep -qx keep "$WORK/outside/victim"; then
+  fail "dest link: wrote through a candidate symlink"
+fi
+# Stale removal through a link removes the link only.
+reset_case
+mkdir -p "$WORK/outside" && echo keep > "$WORK/outside/victim"
+rm -rf "$LIVE" "$DEST"
+ln -s "$WORK/outside" "$DEST"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || fail "stale link: rc=$RC"
+[[ ! -e "$DEST" && ! -L "$DEST" ]] || fail "stale link: link kept"
+grep -qx keep "$WORK/outside/victim" || fail "stale link: followed the link"
+
+echo "== candidate .state is a symlink out of the candidate"
+reset_case
+rm -rf "$WORK/outside" && mkdir -p "$WORK/outside" && echo keep > "$WORK/outside/victim"
+rm -rf "$(dirname "$DEST")"
+ln -s "$WORK/outside" "$(dirname "$DEST")"
+run_helper carry_control_state "$CAND"
+(( RC != 0 )) || fail "state link: wrote through a symlinked .state"
+grep -q "^ERROR Update candidate .state resolves outside the candidate root" "$WORK/out" || fail "state link: refusal not logged"
+[[ "$(ls "$WORK/outside")" == victim ]] || fail "state link: wrote outside the candidate"
+grep -qx "PENDING 1" "$WORK/out" || fail "state link: restart not owed after refusal"
+
 echo "== feral-system-update.sh wiring"
 line_of() { grep -nF -- "$1" "$UPDATE" | head -n1 | cut -d: -f1; }
 src=$(line_of 'source /root/scripts/ota-control-state.sh')
@@ -229,6 +294,15 @@ if sed -n "$((carry + 1)),$((arm - 1))p" "$UPDATE" | grep -vqE '^[[:space:]]*(#|
   fail "wiring: carry_control_state must be the last step before bootctl set-oneshot"
 fi
 (( arm < clear && clear < reboot )) || fail "wiring: restart must stay owed until the candidate is armed"
+# After arming nothing may abort: errexit and the ERR trap go off right
+# after the flag is cleared, and the reboot has forced fallbacks.
+[[ "$(sed -n "$((clear + 1)),$((clear + 6))p" "$UPDATE" | grep -cxE 'set \+e|trap - ERR')" -eq 2 ]] \
+  || fail "wiring: set +e and trap - ERR must follow the post-arm flag clear"
+grep -qxF 'cleanup || true' "$UPDATE" || fail "wiring: post-arm cleanup must be non-fatal"
+force=$(line_of 'systemctl reboot --force || reboot -f')
+if [[ -z "$force" ]] || (( force < clear )); then
+  fail "wiring: reboot must fall back to --force and reboot -f"
+fi
 grep -qF '"/root/scripts/ota-control-state.sh"' "$ROOT_DIR/archiso-ff1/profiledef.sh" \
   || fail "wiring: profiledef.sh must list /root/scripts/ota-control-state.sh"
 

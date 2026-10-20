@@ -463,6 +463,11 @@ bootctl set-oneshot arch-candidate.conf
 # would accept writes that boot would drop, so it stays stopped until reboot.
 # shellcheck disable=SC2034 # read by restore_controld_if_stopped (sourced)
 CONTROLD_RESTART_PENDING=0
+# For the same reason nothing after arming may abort: an exit here would leave
+# the device up with controld stopped and no reboot coming. Everything below
+# is best-effort, and the reboot falls back to forced forms.
+set +e
+trap - ERR
 
 log_info "Candidate boot entry created. Btrfs default unchanged."
 sync
@@ -470,10 +475,13 @@ sync
 # --- Step 10: Clean up and reboot ---------------------------------------------
 log_progress "99" "Cleaning up..."
 log_info "Cleaning up mounts and temporary data..."
-cleanup
+cleanup || true
 trap - EXIT
 
 log_progress "100" "Update complete! Restarting device..."
 log_info "OTA update complete. Candidate boot entry created for @snapshots/@ota_new. Rebooting now..."
 sync
-systemctl reboot
+if ! systemctl reboot; then
+  log_error "systemctl reboot failed; forcing the reboot into the armed candidate"
+  systemctl reboot --force || reboot -f
+fi
