@@ -26,12 +26,12 @@ mapfile -t package_shell_files < <(find packages -type f -name '*.sh' | sort)
 log "Checking shell syntax"
 # One file per invocation: `bash -n a b` parses only a and treats b as a
 # positional parameter, so a multi-file call silently checks the first file.
-for f in scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
+for f in scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
   bash -n "$f"
 done
 
 log "Running shellcheck"
-shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-ota-control-state.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/airootfs/root/scripts/ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
 log "Checking owner Tailscale integration"
 bash -n archiso-ff1/airootfs/usr/local/bin/feral-tailscale
@@ -102,6 +102,14 @@ grep -q '"/root/scripts/ota-download.sh"' archiso-ff1/profiledef.sh || {
   exit 1
 }
 ./scripts/test-ota-download.sh
+
+log "Checking OTA control-state carry"
+# feral-file#3551 (F9): the candidate's .state is the snapshot from the start
+# of the OTA, so feral-controld's grants and replay counters must be copied in
+# live, with controld stopped, right before the candidate is armed. A dropped
+# call or a reordering would silently resurrect revoked controllers after an
+# update. The test pins the helper and that wiring.
+./scripts/test-ota-control-state.sh
 
 log "Checking OTA free-space precheck contract"
 # Free-space precheck (ffos#124): feral-controld's otagate/classify.go
@@ -190,6 +198,73 @@ while IFS= read -r workflow; do
     exit 1
   fi
 done <<< "$log_stream_workflows"
+
+log "Checking controld.json secure-control release gate"
+# feral-file#3551: an image must not enable secure control (controld.json
+# .control) unless its ffos ref carries controller state across a full-image
+# OTA and its ffos-user ref carries the protocol. Each image workflow strips
+# .control after the controld.json overlay when ota-control-state.sh is
+# missing from the checked-out ffos ref or components/feral-controld/control
+# from the ffos-user ref (build-image-from-tags.yml can build older tags),
+# and fails when the ffos-user checkout is missing.
+# Pin that the gate is present, identical in all three, and placed after the
+# overlay.
+control_gate_block() {
+  awk '/^          # feral-file#3551 release ordering:/{on=1} on{print} on&&/^          # end feral-file#3551 control gate$/{exit}' "$1"
+}
+reference_gate=""
+for workflow in .github/workflows/build-image-to-cf.yml .github/workflows/pure-build-image-to-cf.yml .github/workflows/build-image-from-tags.yml; do
+  block="$(control_gate_block "$workflow")"
+  # The $GITHUB_WORKSPACE below is workflow text matched literally.
+  # shellcheck disable=SC2016
+  if [[ -z "$block" ]] \
+    || ! grep -Fq 'if [ ! -d "$GITHUB_WORKSPACE/ffos-user/components" ]; then' <<< "$block" \
+    || ! grep -Fq 'elif [ ! -f /build/archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]; then' <<< "$block" \
+    || ! grep -Fq 'elif [ ! -d "$GITHUB_WORKSPACE/ffos-user/components/feral-controld/control" ]; then' <<< "$block" \
+    || ! grep -Fq "jq 'del(.control)'" <<< "$block" \
+    || ! grep -Fq 'end feral-file#3551 control gate' <<< "$block"; then
+    printf '%s: missing or incomplete controld.json control gate (feral-file#3551)\n' "$workflow" >&2
+    exit 1
+  fi
+  if [[ -z "$reference_gate" ]]; then
+    reference_gate="$block"
+  elif [[ "$block" != "$reference_gate" ]]; then
+    printf '%s: controld.json control gate differs from build-image-to-cf.yml; keep the three copies identical\n' "$workflow" >&2
+    exit 1
+  fi
+  overlay_line="$(grep -n 'write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json"' "$workflow" | head -n1 | cut -d: -f1)"
+  gate_line="$(grep -n '^          # feral-file#3551 release ordering:' "$workflow" | head -n1 | cut -d: -f1)"
+  if [[ -z "$overlay_line" ]] || (( gate_line < overlay_line )); then
+    printf '%s: controld.json control gate must run after the controld.json overlay\n' "$workflow" >&2
+    exit 1
+  fi
+done
+[[ -f archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]] || {
+  printf 'archiso-ff1/airootfs/root/scripts/ota-control-state.sh missing: the image workflows would strip .control from every build\n' >&2
+  exit 1
+}
+
+log "Checking feral-controld protocol capability marker"
+# feral-file#3551: the device's package rail and OTA guard install a
+# feral-controld where control state exists only when it provides
+# feral-controld-control-v1. Every workflow that generates the Go component
+# PKGBUILD must add that marker exactly when the ffos-user checkout carries
+# components/feral-controld/control/, or the first protocol release could
+# never be installed (and a pre-protocol build could slip through).
+for workflow in .github/workflows/build-components.yaml .github/workflows/manual-build-components.yaml .github/workflows/build-image-from-tags.yml; do
+  # The $COMP/$WORKDIR below are workflow text matched literally.
+  # shellcheck disable=SC2016
+  if ! grep -Fq "CONTROL_PROVIDES=\"provides=('feral-controld-control-v1')\"" "$workflow" \
+    || ! grep -Eq '^ +if \[ "\$COMP" = "feral-controld" \] && \[ -d ("\$WORKDIR/control"|control) \]; then$' "$workflow" \
+    || ! grep -Eq '^ +\$\{CONTROL_PROVIDES\}$' "$workflow"; then
+    printf '%s: Go PKGBUILD must add the feral-controld-control-v1 marker for a protocol checkout (feral-file#3551)\n' "$workflow" >&2
+    exit 1
+  fi
+done
+grep -Fq 'FF1_CONTROLD_MARKER="feral-controld-control-v1"' archiso-ff1/airootfs/root/scripts/ota-control-state.sh || {
+  printf 'ota-control-state.sh: FF1_CONTROLD_MARKER must match the marker the component builds emit\n' >&2
+  exit 1
+}
 
 log "Checking agent ISO build guard"
 # AGENTS.md "Release guardrail: ISO image builds": the pre-shell hook that
