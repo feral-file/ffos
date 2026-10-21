@@ -162,7 +162,7 @@ refuse_update_without_carry() {
     log_error "$refusal (no $FF1_CONTROL_CARRY_SCRIPT); a downgrade below secure-control support would lose or resurrect controller grants."
     return 1
   fi
-  if ! pacman --dbpath "$candidate_root/var/lib/pacman" -Qi feral-controld 2>/dev/null | controld_marker_in; then
+  if ! LC_ALL=C pacman --dbpath "$candidate_root/var/lib/pacman" -Qi feral-controld 2>/dev/null | controld_marker_in; then
     log_error "$refusal (its feral-controld does not provide $FF1_CONTROLD_MARKER); a controld without the protocol would reopen this device."
     return 1
   fi
@@ -238,7 +238,11 @@ carry_control_state() {
       # The user manager can be unreachable while controld is already gone
       # (e.g. it crashed); only a still-running writer makes the copy unsafe.
       if pgrep -u "$FF1_CONTROL_USER" -x feral-controld >/dev/null; then
-        log_error "Could not stop feral-controld; refusing to arm the update with control state that may still change."
+        # Distinct from check_controld_stoppable's transient prefix: this
+        # runs after the full download, the pre-download check already passed,
+        # so the condition is not momentary and a retry would only download
+        # the image again. otagate classifies this message as permanent.
+        log_error "Control state carry failed: feral-controld did not stop; refusing to arm the update with control state that may still change."
         return 1
       fi
       log_info "feral-controld stop reported failure but no feral-controld process is running; continuing"

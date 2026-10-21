@@ -175,6 +175,8 @@ jobs:
             # OTA guard require before installing feral-controld where controller
             # state exists. Only a checkout that carries the protocol earns it; the
             # version input is operator-typed and proves nothing.
+            # LOCKSTEP: ffos-user pins components/feral-controld/control/ with a
+            # test; renaming it must change this check in the same release.
             CONTROL_PROVIDES=""
             if [ "$COMP" = "feral-controld" ] && [ -d control ]; then
               CONTROL_PROVIDES="provides=('feral-controld-control-v1')"

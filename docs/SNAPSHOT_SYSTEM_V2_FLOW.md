@@ -144,20 +144,36 @@ side: before any write or `rm`, the candidate's `.state` must resolve
 link; the tombstone entry is always removed before it is copied; a directory
 entry is removed first if it is a symlink or not a directory, and a real
 directory is updated in place by `rsync --delete`, which does not follow
-symlinks inside it.
+symlinks inside it. These checks guard against bugs and stray links, not
+against feralfile itself: feralfile has passwordless sudo, and a
+check-then-copy window remains, so they are not a privilege boundary.
 
 If the update fails after the stop and before the candidate is armed, the
 EXIT trap starts controld again (`start --no-block`, as `.start-services.sh`
 does for this Type=notify unit). After arming, controld stays stopped until
 the reboot, because writes it accepted then would be dropped by the candidate
 boot; for the same reason nothing after arming is allowed to abort the script
-(errexit and the ERR trap are switched off, cleanup is best-effort) and a
-failed `systemctl reboot` falls back to `systemctl reboot --force`, then
-`reboot -f`. Arming itself runs with `TERM`, `INT` and `HUP` ignored, so a
+(errexit and the ERR trap are switched off, cleanup is best-effort) and, on
+a device whose controld was stopped, a failed `systemctl reboot` falls back
+to `systemctl reboot --force`, then `reboot -f` (a device without control
+state reports the failed reboot and stays up, as before). Arming itself runs with `TERM`, `INT` and `HUP` ignored, so a
 signal cannot land between `bootctl set-oneshot` and the point where the
 script stops owing controld a restart. If `bootctl set-oneshot` fails, the
-script clears any oneshot best-effort (`bootctl set-oneshot ''`) and takes
-the abort path, which restarts controld.
+script clears any oneshot (`bootctl set-oneshot ''`) and takes the abort
+path, which restarts controld, only when that clear succeeds. If the clear
+fails too, the candidate may still be armed, so with controld stopped the
+script continues to the reboot as if armed (logging both failures).
+
+If the carry's own stop fails after the download (the pre-download check
+passed), it logs `Control state carry failed: feral-controld did not stop`,
+which otagate classifies as permanent: the condition is not momentary and a
+retry would only download the image again.
+
+Accepted gap: nothing restarts controld if the script is killed with
+SIGKILL after the stop, or if every reboot form fails after arming.
+`Restart=always` does not undo an explicit stop and feral-watchdog only
+reports it, so the device stays up without controld (its provisioning and
+control path) until it is power-cycled.
 
 **Downgrade guard.** Right after the image's SquashFS is mounted (before
 it is rsynced into `@ota_new`, and before controld is touched), the running
@@ -241,8 +257,9 @@ and can then run a current controld via the package rail, with the old
 updater deciding its next OTA. That is why the downgrade guard above
 refuses such an update. The package rail itself holds `feral-controld`
 back when control state exists live and the repository build does not
-provide `feral-controld-control-v1` (or cannot be read); the other packages
-still update.
+provide `feral-controld-control-v1` (or cannot be read), or when a control
+path cannot be classified (stat error: counts as present, §8.1); the other
+packages still update.
 
 <a id="controld-capability-marker"></a>**Controld capability marker.** The
 component builds (`build-components.yaml`, `manual-build-components.yaml`,
@@ -262,6 +279,11 @@ built with a higher number would otherwise pass. Runbook consequences:
   equal one and installs a lower one with a warning.
 - Once a device has run a control-enabled release, it cannot OTA to an image
   without the carry step or the marker except through a factory reset.
+- Packages and images built before the marker existed carry the protocol
+  but not the marker. Before any control-enabled image ships on a channel,
+  rebuild and push `feral-controld` on that channel from a marker-emitting
+  workflow; otherwise devices that already hold control state (lab and
+  staging) hold controld on the package rail and refuse those images.
 
 `/home/feralfile/.cache` is excluded as a whole directory rather than as
 `.cache/offline-artworks`, because rsync only protects paths it is told to

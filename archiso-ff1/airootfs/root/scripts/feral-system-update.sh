@@ -480,14 +480,22 @@ carry_control_state "$BTRFS_TOP/@snapshots/@ota_new"
 trap '' TERM INT HUP
 if ! bootctl set-oneshot arch-candidate.conf; then
   log_error "Failed to arm the update candidate (bootctl set-oneshot)."
-  # Best-effort: make sure no half-written oneshot survives, then take the
-  # abort path, which restarts controld.
-  bootctl set-oneshot '' || true
-  exit 1
+  # Clear any half-written oneshot. Only a confirmed clear makes the abort
+  # path (which restarts controld) safe; if the clear fails too the
+  # candidate may still be armed, so with controld stopped fall through and
+  # reboot, exactly as after a successful arm. Without control state nothing
+  # was stopped: abort as before.
+  if bootctl set-oneshot '' || [[ "$CONTROLD_RESTART_PENDING" != 1 ]]; then
+    exit 1
+  fi
+  log_error "Failed to clear the update candidate oneshot; rebooting with feral-controld stopped."
 fi
 # Armed: from here the next boot is the candidate, holding the state copied
 # above. Restarting controld now (even if the reboot request below failed)
 # would accept writes that boot would drop, so it stays stopped until reboot.
+# Remember whether controld was stopped for this reboot: only then must the
+# reboot below be forced.
+CONTROLD_HELD_FOR_REBOOT=$CONTROLD_RESTART_PENDING
 # shellcheck disable=SC2034 # read by restore_controld_if_stopped (sourced)
 CONTROLD_RESTART_PENDING=0
 # For the same reason nothing after arming may abort: an exit here would leave
@@ -509,6 +517,13 @@ log_progress "100" "Update complete! Restarting device..."
 log_info "OTA update complete. Candidate boot entry created for @snapshots/@ota_new. Rebooting now..."
 sync
 if ! systemctl reboot; then
+  # A device without control state keeps the pre-#3551 behaviour: report
+  # the failure and stay up. With controld stopped the device must not stay
+  # up, so force the reboot into the armed candidate.
+  if [[ "$CONTROLD_HELD_FOR_REBOOT" != 1 ]]; then
+    log_error "systemctl reboot failed"
+    exit 1
+  fi
   log_error "systemctl reboot failed; forcing the reboot into the armed candidate"
   systemctl reboot --force || reboot -f
 fi

@@ -39,12 +39,13 @@
 #     own message;
 #   - package rail (feral-service-update.sh): feral-controld is held back
 #     when the repository build lacks the capability (or cannot be read) and
-#     live state exists; a live
-#     stat error installs nothing;
+#     live state exists; a live stat error holds controld and updates the
+#     rest;
 #   - pre-download stop check: refused only when live state exists, the user
 #     manager is unreachable and controld still runs; nothing is stopped;
 #   - the arming block: a failed bootctl set-oneshot clears the oneshot and
-#     leaves the restart owed; a successful one clears it;
+#     leaves the restart owed; if the clear fails too, controld stays held
+#     for the reboot; a successful arm clears the restart;
 # and that feral-system-update.sh wires it in where it must: sourced before
 # the EXIT trap, the stop check before the download, the downgrade guard on
 # the mounted image before its rsync, the carry after post-extraction and
@@ -250,7 +251,8 @@ echo 1 > "$WORK/stop_rc"
 echo 0 > "$WORK/pgrep_rc"
 run_helper carry_control_state "$CAND"
 (( RC != 0 )) || fail "running: carried state while controld still runs"
-grep -q "^ERROR Could not stop feral-controld" "$WORK/out" || fail "running: refusal not logged"
+grep -q "^ERROR Control state carry failed: feral-controld did not stop" "$WORK/out" || fail "running: refusal not logged"
+! grep -q "Could not stop feral-controld" "$WORK/out" || fail "running: post-download stop failure must not use the transient prefix"
 grep -qx "stale" "$DEST/left-over.tmp" || fail "running: candidate modified"
 grep -qx "PENDING 1" "$WORK/out" || fail "running: restart not owed"
 grep -qF "pgrep -u feralfile -x feral-controld" "$WORK/calls" || fail "running: pgrep not consulted"
@@ -587,8 +589,8 @@ grep -qxF -- "$all_pkgs" "$WORK/calls" || { cat "$WORK/out" "$WORK/calls"; fail 
 reset_case
 echo "$LIVE" > "$WORK/stat_eio"
 run_service_update
-(( RC != 0 )) || fail "rail: live stat error accepted"
-! grep -q "^pacman -S" "$WORK/calls" || fail "rail: installed packages after a stat error"
+(( RC == 0 )) || { cat "$WORK/out"; fail "rail: rc=$RC after a live stat error"; }
+grep -qxF -- "pacman -S --needed --noconfirm feral-sys-monitord feral-watchdog" "$WORK/calls" || { cat "$WORK/calls"; fail "rail: a live stat error must hold controld and update the rest"; }
 
 echo "== arming block"
 # Run the real block from feral-system-update.sh (from the signal trap to the
@@ -604,7 +606,7 @@ cat > "$WORK/bin/bootctl" <<'EOF'
 #!/bin/sh
 echo "bootctl [$*]" >> "$STUB_DIR/calls"
 [ "$2" = "arch-candidate.conf" ] && exit "$(cat "$STUB_DIR/bootctl_rc")"
-exit 0
+exit "$(cat "$STUB_DIR/bootctl_clear_rc" 2>/dev/null || echo 0)"
 EOF
 chmod +x "$WORK/bin/bootctl"
 run_arm() {
@@ -614,20 +616,31 @@ run_arm() {
     # shellcheck disable=SC2317,SC2329
     log_error() { echo "ERROR $1"; }
     export PATH="$WORK/bin:$PATH"
-    CONTROLD_RESTART_PENDING=1
-    trap 'echo "PENDING $CONTROLD_RESTART_PENDING"' EXIT
+    CONTROLD_RESTART_PENDING=${1:-1}
+    trap 'echo "PENDING $CONTROLD_RESTART_PENDING HELD ${CONTROLD_HELD_FOR_REBOOT:-unset}"' EXIT
     eval "$(arm_block)"
   ) > "$WORK/out" 2>&1 || RC=$?
 }
 echo 1 > "$WORK/bootctl_rc"
 run_arm
 (( RC != 0 )) || fail "arming: a failed set-oneshot did not abort"
-grep -qx "PENDING 1" "$WORK/out" || { cat "$WORK/out"; fail "arming: restart not owed after a failed set-oneshot"; }
+grep -qx "PENDING 1 HELD unset" "$WORK/out" || { cat "$WORK/out"; fail "arming: restart not owed after a failed set-oneshot"; }
 grep -qxF "bootctl [set-oneshot ]" "$WORK/calls" || { cat "$WORK/calls"; fail "arming: oneshot not cleared after failure"; }
+# Arm and clear both fail: the candidate may be armed, so controld must not
+# be restarted; fall through to the reboot with it held.
+echo 1 > "$WORK/bootctl_clear_rc"
+run_arm
+(( RC == 0 )) || { cat "$WORK/out"; fail "arming: failed clear aborted (would restart controld)"; }
+grep -qx "PENDING 0 HELD 1" "$WORK/out" || { cat "$WORK/out"; fail "arming: failed clear must hold controld for the reboot"; }
+grep -q "^ERROR Failed to clear the update candidate oneshot" "$WORK/out" || fail "arming: failed clear not logged"
+# Same with no control state (nothing stopped): abort as before.
+run_arm 0
+(( RC != 0 )) || fail "arming: stateless device must still abort when arming fails"
+echo 0 > "$WORK/bootctl_clear_rc"
 echo 0 > "$WORK/bootctl_rc"
 run_arm
 (( RC == 0 )) || { cat "$WORK/out"; fail "arming: rc=$RC on success"; }
-grep -qx "PENDING 0" "$WORK/out" || fail "arming: restart still owed after arming"
+grep -qx "PENDING 0 HELD 1" "$WORK/out" || fail "arming: restart still owed after arming"
 ! grep -qxF "bootctl [set-oneshot ]" "$WORK/calls" || fail "arming: oneshot cleared after success"
 grep -qxF "trap '' TERM INT HUP" <(arm_block) || fail "arming: signals not ignored around set-oneshot"
 
@@ -673,6 +686,12 @@ grep -qxF 'cleanup || true' "$UPDATE" || fail "wiring: post-arm cleanup must be 
 force=$(line_of 'systemctl reboot --force || reboot -f')
 if [[ -z "$force" ]] || (( force < clear )); then
   fail "wiring: reboot must fall back to --force and reboot -f"
+fi
+# The forced fallback is only for a device whose controld is held; a device
+# without control state reports the failed reboot and stays up, as before.
+held_check=$(line_of '  if [[ "$CONTROLD_HELD_FOR_REBOOT" != 1 ]]; then')
+if [[ -z "$held_check" ]] || ! (( reboot < held_check && held_check < force )); then
+  fail "wiring: forced reboot must be limited to devices holding controld"
 fi
 grep -qF '"/root/scripts/ota-control-state.sh"' "$ROOT_DIR/archiso-ff1/profiledef.sh" \
   || fail "wiring: profiledef.sh must list /root/scripts/ota-control-state.sh"

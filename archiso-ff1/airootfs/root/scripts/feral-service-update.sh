@@ -42,10 +42,14 @@ if [[ -r "$FF1_CONTROL_HELPER" ]]; then
   source "$FF1_CONTROL_HELPER"
   live_rc=0
   control_state_any_live || live_rc=$?
-  # 2: a control path could not be classified (already logged).
-  (( live_rc != 2 )) || exit 1
-  if (( live_rc == 0 )); then
-    if ! pacman -Si feral-controld 2>/dev/null | controld_marker_in; then
+  # 2: a control path could not be classified (already logged). Spec §8.1:
+  # whatever stat cannot rule out counts as present, so hold controld and
+  # still update the other packages.
+  if (( live_rc == 2 )); then
+    log_info "Holding feral-controld: controller state could not be classified"
+    packages=(feral-sys-monitord feral-watchdog)
+  elif (( live_rc == 0 )); then
+    if ! LC_ALL=C pacman -Si feral-controld 2>/dev/null | controld_marker_in; then
       log_info "Holding feral-controld: the repository build does not provide $FF1_CONTROLD_MARKER and this device holds controller state"
       packages=(feral-sys-monitord feral-watchdog)
     fi
