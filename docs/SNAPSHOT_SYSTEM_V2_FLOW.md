@@ -284,6 +284,15 @@ built with a higher number would otherwise pass. Runbook consequences:
   rebuild and push `feral-controld` on that channel from a marker-emitting
   workflow; otherwise devices that already hold control state (lab and
   staging) hold controld on the package rail and refuse those images.
+- The same builds refuse a feral-controld checkout that has the device-ID
+  relay client (`components/feral-controld/relaywire/`) but no `control/`:
+  such a daemon would dial the open v2 relay with no authority behind it and
+  run plaintext commands from anyone who knows the device ID.
+- Forcing a fleet floor for this work (for example before the legacy relayer
+  is turned off) uses `min_runtime_version`, the `update_min_version` input of
+  `build-image-to-cf.yml`, which makes devices below it update. Never use
+  `min_upgradeable_version` (the `update_required_version` input) for this:
+  devices below it are told they need a USB reflash and stop auto-updating.
 
 `/home/feralfile/.cache` is excluded as a whole directory rather than as
 `.cache/offline-artworks`, because rsync only protects paths it is told to

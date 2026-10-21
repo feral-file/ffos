@@ -167,6 +167,14 @@ jobs:
             # version input is operator-typed and proves nothing.
             # LOCKSTEP: ffos-user pins components/feral-controld/control/ with a
             # test; renaming it must change this check in the same release.
+            # feral-file#3551: a controld that dials the device-ID relay (relaywire/)
+            # without the control authority (control/) accepts plaintext commands from
+            # anyone who knows the device ID. Refuse to build it.
+            # LOCKSTEP: ffos-user keeps relaywire/ and control/ under feral-controld.
+            if [ "$COMP" = "feral-controld" ] && [ -d relaywire ] && [ ! -d control ]; then
+              echo "::error::feral-controld has relaywire/ but no control/: refusing to build an unauthenticated v2 relay client (feral-file#3551)"
+              exit 1
+            fi
             CONTROL_PROVIDES=""
             if [ "$COMP" = "feral-controld" ] && [ -d control ]; then
               CONTROL_PROVIDES="provides=('feral-controld-control-v1')"

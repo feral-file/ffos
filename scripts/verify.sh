@@ -260,6 +260,13 @@ for workflow in .github/workflows/build-components.yaml .github/workflows/manual
     printf '%s: Go PKGBUILD must add the feral-controld-control-v1 marker for a protocol checkout (feral-file#3551)\n' "$workflow" >&2
     exit 1
   fi
+  # A controld with the device-ID relay client (relaywire/) but no control
+  # authority would take plaintext commands from anyone who knows the device ID.
+  # shellcheck disable=SC2016
+  if ! grep -Eq '^ +if \[ "\$COMP" = "feral-controld" \] && \[ -d ("\$WORKDIR/relaywire"|relaywire) \] && \[ ! -d ("\$WORKDIR/control"|control) \]; then$' "$workflow"; then
+    printf '%s: Go PKGBUILD step must refuse a feral-controld with relaywire/ but no control/ (feral-file#3551)\n' "$workflow" >&2
+    exit 1
+  fi
 done
 grep -Fq 'FF1_CONTROLD_MARKER="feral-controld-control-v1"' archiso-ff1/airootfs/root/scripts/ota-control-state.sh || {
   printf 'ota-control-state.sh: FF1_CONTROLD_MARKER must match the marker the component builds emit\n' >&2
