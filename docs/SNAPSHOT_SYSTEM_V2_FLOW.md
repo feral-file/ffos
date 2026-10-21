@@ -64,7 +64,7 @@ OTA is implemented in `feral-system-update.sh`. High-level sequence:
 2. Remove any existing `@snapshots/@ota_new`.
 3. Create a writable snapshot: `@snapshots/@` → `@snapshots/@ota_new`.
 4. **Free-space precheck** (ffos#124): refuse the update, before downloading, unless the filesystem has room for the rest of the ISO download, `@ota_new` growth estimated at 3.5 ISO sizes (rsync writes changed files as full new copies; matches the image workflows' disk budget), 128 MiB of boot staging, and a 5% reserve meant to keep usage under feral-watchdog's 95% disk-critical reboot line for the whole update. It is an estimate, not a guarantee. A short first measurement is re-checked every 10 s for up to 120 s before refusing, because btrfs returns freed space (e.g. the stale `@ota_new` deleted in step 2) lazily. The error (`Not enough free disk space for the update: ...`) is classified permanent by feral-controld's OTA gate (`otagate/classify.go`); keep the prefix in step. If the filesystem cannot be measured the check is skipped. Then download the release ISO and verify its signature.
-5. Mount the ISO and its SquashFS; rsync the filesystem into `@ota_new` (with standard exclusions — see [What survives an OTA](#what-survives-an-ota)). If live controller state exists and the new image cannot carry it (no `ota-control-state.sh`), refuse the update here (downgrade guard, feral-file#3551).
+5. Mount the ISO and its SquashFS. If live controller state exists and the mounted image cannot carry it (no `ota-control-state.sh`, or a `feral-controld` older than the installed one), refuse the update here, before the rsync (downgrade guard, feral-file#3551). Otherwise rsync the filesystem into `@ota_new` (with standard exclusions — see [What survives an OTA](#what-survives-an-ota)).
 6. **Stage boot files** into `@ota_new/var/lib/ota_boot_staging` (vmlinuz, initramfs, ucode, loader, EFI). The live `/boot` is not modified yet.
 7. Bind-mount that staging directory as `/boot` inside `@ota_new` and run **`post-extraction.sh`** in chroot (boot entries, mkinitcpio, pacman keys, etc.).
 8. Copy the staged kernel and initrd into **`/boot/candidate/`** on the live ESP, so the current known-good kernel remains at `/boot/` and the new one sits alongside.
@@ -161,17 +161,21 @@ the abort path, which restarts controld.
 
 **Downgrade guard.** Right after the image's SquashFS is mounted (before
 it is rsynced into `@ota_new`, and before controld is touched), the running
-script refuses the update if the image has no
-`/root/scripts/ota-control-state.sh` while any of the three control paths
-exists live. The download is still spent: a channel moved back to a release
-without the carry costs every device with control state one download per
-updater run until the channel moves forward. That image would run its own, older updater on the next OTA
-and lose or resurrect the state. The log line is
-`Refusing update: target image cannot carry controller state (no /root/scripts/ota-control-state.sh); a downgrade below secure-control support would lose or resurrect controller grants.`
-and feral-controld's `otagate/classify.go` treats the
-`Refusing update: target image cannot carry controller state` prefix as
-permanent; keep the two in step. Nothing has been stopped at that point, so
-the exit owes no restart.
+script refuses the update while any of the three control paths exists live
+if the image has no `/root/scripts/ota-control-state.sh` (it would run its
+own, older updater on the next OTA and lose or resurrect the state), or if
+the image's `feral-controld` (read from its pacman database) is older than
+the installed one or cannot be read (an older controld may ignore
+`.state/control` and reopen the device). The download is still spent: a
+channel moved back to such a release costs every device with control state
+one download per updater run until the channel moves forward. The log lines
+all start with
+`Refusing update: target image cannot carry controller state`, followed by
+the reason in parentheses, and feral-controld's `otagate/classify.go` treats
+that prefix as permanent; keep the two in step. A stat error on the image's
+`ota-control-state.sh` logs `Cannot stat target image path ...`, which
+otagate leaves unclassified, i.e. permanent. Nothing has been stopped at
+that point, so the exit owes no restart.
 
 **Pre-download stop check.** Before the download, when control state exists
 live, the script asks feralfile's user manager for controld's state
@@ -221,15 +225,19 @@ such a device would create control state and lose it (or resurrect revoked
 grants) on its next full-image OTA, because the old script decides. The
 image workflows enforce this: after the `controld.json` overlay they strip
 `.control` (`del(.control)`) whenever the checked-out ffos ref lacks
-`ota-control-state.sh`, and log which branch they took;
-`scripts/verify.sh` pins that gate in all three. An old image that only
+`ota-control-state.sh` or the ffos-user ref lacks
+`components/feral-controld/control/` (a pre-protocol controld), and log
+which branch they took; `scripts/verify.sh` pins that gate in all three. An old image that only
 gets a newer controld through the package rail (`feral-service-update.sh`)
 never creates control state, because `controld.json` is written only at
 image build. That argument does not cover a *downgrade*: a device that
 already holds control state and moves to an older image keeps that state
 and can then run a current controld via the package rail, with the old
 updater deciding its next OTA. That is why the downgrade guard above
-refuses such an update.
+refuses such an update. The package rail itself holds `feral-controld`
+back when the repository offers an older version than the installed one
+and control state exists live (`pacman -S` would otherwise downgrade it
+with only a warning); the other packages still update.
 
 `/home/feralfile/.cache` is excluded as a whole directory rather than as
 `.cache/offline-artworks`, because rsync only protects paths it is told to

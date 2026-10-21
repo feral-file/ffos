@@ -80,11 +80,13 @@ control_state_paths() {
   printf '%s\n' "$FF1_CONTROL_STATE_DIR" "$FF1_CONTROL_STATE_DIR.new" "$FF1_CONTROL_STATE_DIR.retired"
 }
 
-# control_path_state PATH: print "present" or "absent" for PATH, without
-# following a final symlink. Only ENOENT counts as absent: any other stat
-# failure (EIO, EACCES, ENOTDIR, ...) is logged and returns 1, because
+# control_path_state PATH [WHAT]: print "present" or "absent" for PATH,
+# without following a final symlink. Only ENOENT counts as absent: any other
+# stat failure (EIO, EACCES, ENOTDIR, ...) is logged and returns 1, because
 # treating an unreadable grant store or tombstone as "gone" would delete the
-# candidate's copy and boot the update unlocked.
+# candidate's copy and boot the update unlocked. WHAT names the path in that
+# log line (default "control state path"); otagate classifies neither
+# wording, so both are permanent.
 control_path_state() {
   local err
   if err=$(LC_ALL=C stat -- "$1" 2>&1 >/dev/null); then
@@ -96,7 +98,7 @@ control_path_state() {
   esac
   # To stderr: callers capture stdout. The updater units append both
   # streams to the same log.
-  log_error "Cannot stat control state path $1: $err" >&2
+  log_error "Cannot stat ${2:-control state path} $1: $err" >&2
   return 1
 }
 
@@ -111,31 +113,72 @@ control_state_any_live() {
   return "$any"
 }
 
+# controld_version [DBPATH]: the feral-controld version (pkgver-pkgrel)
+# recorded in the pacman database at DBPATH (default: the running system's),
+# or nothing if it is not installed there or the database cannot be read.
+controld_version() {
+  if [[ -n "${1:-}" ]]; then
+    pacman --dbpath "$1" -Q feral-controld 2>/dev/null | awk '{print $2}' || true
+  else
+    pacman -Q feral-controld 2>/dev/null | awk '{print $2}' || true
+  fi
+}
+
+# controld_would_downgrade VERSION: 0 if VERSION is older than the installed
+# feral-controld, 1 otherwise (also when nothing is installed to compare).
+# An older controld ignores .state/control, so on a device holding control
+# state it reopens the device; neither the package rail nor an OTA may
+# install one there.
+controld_would_downgrade() {
+  local installed
+  installed=$(controld_version)
+  [[ -n "$1" && -n "$installed" ]] || return 1
+  (( $(vercmp "$1" "$installed") < 0 ))
+}
+
 # refuse_update_without_carry CANDIDATE_ROOT: 0 if the update may proceed,
-# 1 (after logging) if it must be refused. The candidate image must contain
-# this helper whenever live control state exists: an image without it (a
-# downgrade to a pre-#3551 release) runs the OLD feral-system-update.sh on its
-# next OTA, which drops control state written during that OTA, and it may
-# still receive a current controld through the package rail. Called with the
-# mounted image's SquashFS root, before it is rsynced into the candidate (a
-# refusal then skips the rsync) and BEFORE carry_control_state, so controld
-# has not been stopped and no restart is owed.
+# 1 (after logging) if it must be refused. Whenever live control state
+# exists the candidate image must:
+#   - contain this helper: an image without it (a downgrade to a pre-#3551
+#     release) runs the OLD feral-system-update.sh on its next OTA, which
+#     drops control state written during that OTA;
+#   - ship a feral-controld no older than the installed one: an older
+#     controld may predate the protocol and ignore .state/control, which
+#     reopens the device (and resurrects its grants on a later upgrade). An
+#     image whose controld version cannot be read is refused too.
+# Called with the mounted image's SquashFS root, before it is rsynced into
+# the candidate (a refusal then skips the rsync) and BEFORE
+# carry_control_state, so controld has not been stopped and no restart is
+# owed.
 #
 # Wording is load-bearing: feral-controld's otagate/classify.go (ffos-user)
 # matches the prefix "Refusing update: target image cannot carry controller
 # state" and treats it as permanent. No double quotes in it: the runner's
 # message= regex stops at one.
 refuse_update_without_carry() {
-  local candidate_root="$1" st rc=0
-  st=$(control_path_state "$candidate_root$FF1_CONTROL_CARRY_SCRIPT") || return 1
-  [[ "$st" == present ]] && return 0
+  local candidate_root="$1" st target rc=0
+  local refusal="Refusing update: target image cannot carry controller state"
+  st=$(control_path_state "$candidate_root$FF1_CONTROL_CARRY_SCRIPT" "target image path") || return 1
   control_state_any_live || rc=$?
   case "$rc" in
     1) return 0 ;;
-    0) log_error "Refusing update: target image cannot carry controller state (no $FF1_CONTROL_CARRY_SCRIPT); a downgrade below secure-control support would lose or resurrect controller grants."
-       return 1 ;;
+    0) ;;
     *) return 1 ;;
   esac
+  if [[ "$st" != present ]]; then
+    log_error "$refusal (no $FF1_CONTROL_CARRY_SCRIPT); a downgrade below secure-control support would lose or resurrect controller grants."
+    return 1
+  fi
+  target=$(controld_version "$candidate_root/var/lib/pacman")
+  if [[ -z "$target" ]]; then
+    log_error "$refusal (its feral-controld version cannot be read)."
+    return 1
+  fi
+  if controld_would_downgrade "$target"; then
+    log_error "$refusal (its feral-controld $target is older than the installed $(controld_version)); an older controld would reopen this device."
+    return 1
+  fi
+  return 0
 }
 
 # check_controld_stoppable: 0 if carry_control_state will be able to stop
