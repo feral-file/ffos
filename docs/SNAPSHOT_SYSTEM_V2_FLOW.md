@@ -64,14 +64,13 @@ OTA is implemented in `feral-system-update.sh`. High-level sequence:
 2. Remove any existing `@snapshots/@ota_new`.
 3. Create a writable snapshot: `@snapshots/@` → `@snapshots/@ota_new`.
 4. **Free-space precheck** (ffos#124): refuse the update, before downloading, unless the filesystem has room for the rest of the ISO download, `@ota_new` growth estimated at 3.5 ISO sizes (rsync writes changed files as full new copies; matches the image workflows' disk budget), 128 MiB of boot staging, and a 5% reserve meant to keep usage under feral-watchdog's 95% disk-critical reboot line for the whole update. It is an estimate, not a guarantee. A short first measurement is re-checked every 10 s for up to 120 s before refusing, because btrfs returns freed space (e.g. the stale `@ota_new` deleted in step 2) lazily. The error (`Not enough free disk space for the update: ...`) is classified permanent by feral-controld's OTA gate (`otagate/classify.go`); keep the prefix in step. If the filesystem cannot be measured the check is skipped. Then download the release ISO and verify its signature.
-5. Mount the ISO and its SquashFS. If live controller state exists and the mounted image cannot carry it (no `ota-control-state.sh`, or a `feral-controld` without the `feral-controld-control-v1` capability marker), refuse the update here, before the rsync (downgrade guard, feral-file#3551). Otherwise rsync the filesystem into `@ota_new` (with standard exclusions — see [What survives an OTA](#what-survives-an-ota)).
+5. Mount the ISO and its SquashFS; rsync the filesystem into `@ota_new` (with standard exclusions — see [What survives an OTA](#what-survives-an-ota)).
 6. **Stage boot files** into `@ota_new/var/lib/ota_boot_staging` (vmlinuz, initramfs, ucode, loader, EFI). The live `/boot` is not modified yet.
 7. Bind-mount that staging directory as `/boot` inside `@ota_new` and run **`post-extraction.sh`** in chroot (boot entries, mkinitcpio, pacman keys, etc.).
 8. Copy the staged kernel and initrd into **`/boot/candidate/`** on the live ESP, so the current known-good kernel remains at `/boot/` and the new one sits alongside.
 9. Write **`/boot/loader/entries/arch-candidate.conf`** with `rootflags=subvol=@snapshots/@ota_new` (and candidate kernel paths).
-10. **Carry control state** (feral-file#3551): if any of `/home/feralfile/.state/control/`, `control.new/` or `control.retired` exists, stop the `feral-controld` user unit; make `@ota_new` mirror the live system for all three (see [What survives an OTA](#what-survives-an-ota)).
-11. Run **`bootctl set-oneshot arch-candidate.conf`** (with TERM/INT/HUP ignored) so the next boot uses the candidate entry once.
-12. Reboot.
+10. Run **`bootctl set-oneshot arch-candidate.conf`** so the next boot uses the candidate entry once.
+11. Reboot.
 
 While the update runs, `feral-updater.sh` (the caller of this script and of the pacman path, `feral-service-update.sh`) holds `/run/feral-updater.lock`. feral-watchdog (ffos-user) reads that lock from `/proc/locks` and defers its reboots and Chromium escalation until it is released, because the update's IO and disk use can trip them and the update ends in its own reboot. It caps one hold at 8 h, so a wedged update cannot disable recovery indefinitely. Keep the lock path, and keep it held across both children until each has requested its reboot. controld's boot OTA gate no longer stops the watchdog around the update.
 
@@ -93,197 +92,7 @@ deletes the old `@`, that removal is permanent. Device state therefore survives
 | `/var/lib/systemd/random-seed` | Per-device entropy seed. |
 | `/home/feralfile/.cache` | Protected for feral-controld's offline artwork blob store at `offlineCache.rootDir` (itself bounded by `maxDiskBytes`, 80 GB). Expensive to rebuild — every item re-downloads and software artworks re-capture through headless Chromium. The whole XDG cache directory inherits this protection; see below. |
 | `/home/feralfile/.config/chromium` | Kiosk browser profile. |
-| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version` and controld's owner-set records: the device name and the DP-1 signature verification mode (`signature-verification.json`, `silent`/`notify`/`strict`). Losing the latter would silently drop an owner's `strict` choice back to the `notify` default on every update. `.state/control`, `control.new` and `control.retired` are carried live; see below. |
-
-**`.state` is the copy from the start of the OTA, except controld's control state.**
-The exclusion protects the `.state` that `@ota_new` inherited from the
-snapshot taken at step 3, before the download. Anything written to `.state`
-during the download and install is lost on promotion. For
-`/home/feralfile/.state/control` (feral-controld's controller grants and
-replay counters, ffos-user `docs/ff1-control-v1.md` section 8) that would
-bring back a controller revoked during the update and make an accepted
-request replayable again. Two siblings belong to the same state:
-`.state/control.new/` (a new identity mid-creation, renamed into `control/`
-atomically) and `.state/control.retired`, the factory-reset tombstone.
-Factory reset writes the tombstone durably *before* deleting `control/`, and
-while it exists controld forces a locked policy. Carrying it keeps a reset
-that was interrupted by the update locked afterwards; losing it would let the
-candidate come up with `control/` gone and no lock, as a fresh device.
-
-Only these three are carried live. The other files in `.state`
-(`controld.state`, `content-policy.json`, `signature-verification.json`, ...)
-still revert to their start-of-OTA copy; that is out of scope for
-feral-file#3551.
-
-So step 10 carries all three **live**: as the last step before arming,
-`carry_control_state` (`root/scripts/ota-control-state.sh`) stops the
-`feral-controld` user unit (through `runuser -u feralfile ... systemctl
---user`) if any of the three exists on the running system, so nothing writes
-to them again. Then, for each path, the candidate mirrors the live system:
-a live directory is copied in with `rsync -a --checksum --delete` and the
-live tombstone with `rsync -a` after removing the candidate's (mode and
-ownership kept); a path absent on the running system is removed from the
-candidate (a stale copy from the start snapshot would resurrect a deleted
-grant store or a finished reset's tombstone). When none of the three exists
-live or in the candidate, nothing is touched. `--checksum` matters for the
-directories: `grants.json` is rewritten at the same size on every request
-and mtimes have 1 s resolution, so rsync's default size+mtime quick check
-could skip a write made in the same second as the start snapshot.
-
-"Absent" means `ENOENT` and nothing else: each path is classified with
-`stat`, and any other error (EIO, EACCES, ENOTDIR, ...) fails the carry
-before arming, because treating an unreadable grant store or tombstone as
-gone would delete the candidate's copy and boot the update unlocked.
-
-Both sides of the copy are owned by feralfile, so neither is trusted as a
-path. Live side: before the stop, the live `.state` must `realpath` to
-exactly `/home/feralfile/.state`, and each live entry is re-checked for a
-symlink immediately before its copy; either refuses the carry. Candidate
-side: before any write or `rm`, the candidate's `.state` must resolve
-(`realpath -m`) inside the candidate root. Within it, `rm` never follows a
-link; the tombstone entry is always removed before it is copied; a directory
-entry is removed first if it is a symlink or not a directory, and a real
-directory is updated in place by `rsync --delete`, which does not follow
-symlinks inside it. These checks guard against bugs and stray links, not
-against feralfile itself: feralfile has passwordless sudo, and a
-check-then-copy window remains, so they are not a privilege boundary.
-
-If the update fails after the stop and before the candidate is armed, the
-EXIT trap starts controld again (`start --no-block`, as `.start-services.sh`
-does for this Type=notify unit). After arming, controld stays stopped until
-the reboot, because writes it accepted then would be dropped by the candidate
-boot; for the same reason nothing after arming is allowed to abort the script
-(errexit and the ERR trap are switched off, cleanup is best-effort) and, on
-a device whose controld was stopped, a failed `systemctl reboot` falls back
-to `systemctl reboot --force`, then `reboot -f` (a device without control
-state reports the failed reboot and stays up, as before). Arming itself runs with `TERM`, `INT` and `HUP` ignored, so a
-signal cannot land between `bootctl set-oneshot` and the point where the
-script stops owing controld a restart. If `bootctl set-oneshot` fails, the
-script clears any oneshot (`bootctl set-oneshot ''`) and takes the abort
-path, which restarts controld, only when that clear succeeds. If the clear
-fails too, the candidate may still be armed, so with controld stopped the
-script continues to the reboot as if armed (logging both failures).
-
-If the carry's own stop fails after the download (the pre-download check
-passed), it logs `Control state carry failed: feral-controld did not stop`,
-which otagate classifies as permanent: the condition is not momentary and a
-retry would only download the image again.
-
-Accepted gap: nothing restarts controld if the script is killed with
-SIGKILL after the stop, or if every reboot form fails after arming.
-`Restart=always` does not undo an explicit stop and feral-watchdog only
-reports it, so the device stays up without controld (its provisioning and
-control path) until it is power-cycled.
-
-**Downgrade guard.** Right after the image's SquashFS is mounted (before
-it is rsynced into `@ota_new`, and before controld is touched), the running
-script refuses the update while any of the three control paths exists live
-if the image has no `/root/scripts/ota-control-state.sh` (it would run its
-own, older updater on the next OTA and lose or resurrect the state), or if
-the image's `feral-controld` (read from its pacman database) does not
-provide `feral-controld-control-v1` or cannot be read (a controld without
-the protocol ignores `.state/control` and reopens the device). See
-[Controld capability marker](#controld-capability-marker). The download is still spent: a
-channel moved back to such a release costs every device with control state
-one download per updater run until the channel moves forward. The log lines
-all start with
-`Refusing update: target image cannot carry controller state`, followed by
-the reason in parentheses, and feral-controld's `otagate/classify.go` treats
-that prefix as permanent; keep the two in step. A stat error on the image's
-`ota-control-state.sh` logs `Cannot stat target image path ...`, which
-otagate leaves unclassified, i.e. permanent. Nothing has been stopped at
-that point, so the exit owes no restart.
-
-**Pre-download stop check.** Before the download, when control state exists
-live, the script asks feralfile's user manager for controld's state
-(`systemctl --user show`); if the manager does not answer while a
-feral-controld process still runs, the carry could not stop it, so the
-script fails now with the same `Could not stop feral-controld` prefix
-(transient in `otagate/classify.go`) instead of after a full download.
-
-**Contract with feral-watchdog (ffos-user): `/run/feral-controld-ota-stop`.**
-Immediately before stopping controld, the step creates this marker (empty,
-root-owned, mode 0644, written to a temp file and renamed into place).
-feral-watchdog suppresses its "controld inactive" report only while the
-marker exists **and** `/run/feral-updater.lock` is held, so the deliberate
-stop is not reported as an outage while a real one still is. The marker is
-removed by the restore path once controld has been started again (also after
-a refused stop, and also if that start fails, so a genuine failure is still
-reported). It is never removed after arming: controld stays stopped until the
-reboot, and the reboot clears `/run`. If the marker cannot be created the
-update continues (the cost is a spurious report); that line is logged at
-`[INFO]`, because otagate fails the run on any `[ERROR]` line. Keep the path in step with
-the watchdog. Accepted gap: after arming, `feral-updater.sh` releases the
-lock as soon as `systemctl reboot` returns, while shutdown is still running,
-so the watchdog may emit one "controld inactive" report during that final
-shutdown. `scripts/test-ota-control-state.sh` (run by
-`scripts/verify.sh`) pins the helper and its placement.
-
-Factory reset and reflash **erase** all three (`control/`, `control.new/`,
-`control.retired`): factory reset (and the
-initramfs `btrfs-rollback` hook) replaces the whole root with `@factory_reset`
-/ `@recovery_candidate`, a recovery candidate is rebuilt from the ISO with no
-`.state` exclusion, and the installer creates no control state, so none of
-those roots ever holds it. ffos-user's factory reset also writes the
-tombstone and deletes `control/` itself before starting the reset unit; the
-root a completed reset boots has no tombstone. The reflash evidence
-preserver (`ff1-preserve-evidence.sh`, ffos#170) copies only `.logs` and
-`.state/vmagent_queue`.
-
-As with the cache below, the running system's script decides: the first OTA
-that ships this step still runs the old script, which is harmless because
-firmware without this step has no control state.
-
-**Release-ordering constraint.** That "harmless" holds only while no image
-without this carry step ever runs with secure control on. No image that
-lacks it may ship with `control.enabled=true` in its `controld.json`,
-including images rebuilt from older tags with `build-image-from-tags.yml`:
-such a device would create control state and lose it (or resurrect revoked
-grants) on its next full-image OTA, because the old script decides. The
-image workflows enforce this: after the `controld.json` overlay they strip
-`.control` (`del(.control)`) whenever the checked-out ffos ref lacks
-`ota-control-state.sh` or the ffos-user ref lacks
-`components/feral-controld/control/` (a pre-protocol controld), and log
-which branch they took; a missing ffos-user checkout fails the build.
-`scripts/verify.sh` pins that gate in all three. In
-`pure-build-image-to-cf.yml` controld comes from the branch's package
-repository, not from that checkout, so there the ffos-user check only
-reflects the ref; the device-side marker check below covers it. An old image that only
-gets a newer controld through the package rail (`feral-service-update.sh`)
-never creates control state, because `controld.json` is written only at
-image build. That argument does not cover a *downgrade*: a device that
-already holds control state and moves to an older image keeps that state
-and can then run a current controld via the package rail, with the old
-updater deciding its next OTA. That is why the downgrade guard above
-refuses such an update. The package rail itself holds `feral-controld`
-back when control state exists live and the repository build does not
-provide `feral-controld-control-v1` (or cannot be read), or when a control
-path cannot be classified (stat error: counts as present, §8.1); the other
-packages still update.
-
-<a id="controld-capability-marker"></a>**Controld capability marker.** The
-component builds (`build-components.yaml`, `manual-build-components.yaml`,
-`build-image-from-tags.yml`) add `provides=('feral-controld-control-v1')` to
-the feral-controld package exactly when the ffos-user checkout contains
-`components/feral-controld/control/`; `scripts/verify.sh` pins it. On a
-device that holds control state, both the OTA guard and the package rail
-require that marker and ignore the version: `pkgver` is the operator-typed
-`version` input and says nothing about the protocol, so a pre-protocol ref
-built with a higher number would otherwise pass. Runbook consequences:
-
-- A pre-protocol controld can never reach a device that holds control state,
-  through an image or the package rail, whatever its version.
-- Rolling controld back on the package rail is allowed only to a build that
-  carries the marker (any protocol-capable ref). Such a rollback still needs
-  a version `pacman` sees as different, since `pacman -S --needed` skips an
-  equal one and installs a lower one with a warning.
-- Once a device has run a control-enabled release, it cannot OTA to an image
-  without the carry step or the marker except through a factory reset.
-- Packages and images built before the marker existed carry the protocol
-  but not the marker. Before any control-enabled image ships on a channel,
-  rebuild and push `feral-controld` on that channel from a marker-emitting
-  workflow; otherwise devices that already hold control state (lab and
-  staging) hold controld on the package rail and refuse those images.
+| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version` and controld's owner-set records: the device name and the DP-1 signature verification mode (`signature-verification.json`, `silent`/`notify`/`strict`). Losing the latter would silently drop an owner's `strict` choice back to the `notify` default on every update. |
 
 `/home/feralfile/.cache` is excluded as a whole directory rather than as
 `.cache/offline-artworks`, because rsync only protects paths it is told to

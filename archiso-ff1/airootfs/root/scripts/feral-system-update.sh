@@ -66,15 +66,6 @@ if [[ ! -r /root/scripts/ota-download.sh ]]; then
 fi
 source /root/scripts/ota-download.sh
 
-# carry_control_state / restore_controld_if_stopped (feral-file#3551): carries
-# feral-controld's controller grants and replay counters live into the
-# candidate. Sourced before the EXIT trap below, which calls into it.
-if [[ ! -r /root/scripts/ota-control-state.sh ]]; then
-  log_error "/root/scripts/ota-control-state.sh missing; cannot carry control state"
-  exit 1
-fi
-source /root/scripts/ota-control-state.sh
-
 CONFIG_FILE="/home/feralfile/ff1-config.json"
 RELEASE_PK="/root/.ff1-release-public-key.pem"
 ISO_MOUNT="/mnt/ota-iso"
@@ -88,10 +79,6 @@ BTRFS_TOP="/mnt/btrfs-top"
 cleanup() {
   trap - ERR
   cd /
-
-  # An exit before the candidate is armed must not leave feral-controld
-  # stopped by carry_control_state. No-op unless it stopped it.
-  restore_controld_if_stopped
   
   # Kill progress monitor if still running
   if [[ -n "${PROGRESS_PID:-}" ]]; then
@@ -148,12 +135,6 @@ fi
 # Mount the new snapshot for updating
 mkdir -p "$NEW_ROOT"
 mount -o compress=zstd,noatime,subvol=@snapshots/@ota_new "$ROOT_DEV" "$NEW_ROOT"
-
-# Control state (feral-file#3551): refuse now, not after the download, when
-# the carry could not stop feral-controld. No-op without control state.
-if ! check_controld_stoppable; then
-  exit 1
-fi
 
 # --- Step 4: Download and extract new iso ------------------------------------
 log_progress "10" "Downloading new iso..."
@@ -342,17 +323,6 @@ log_info "Mounting SquashFS: $SFS_PATH"
 mkdir -p "$SFS_MOUNT"
 mount -t squashfs -o loop "$SFS_PATH" "$SFS_MOUNT"
 
-# Downgrade guard (feral-file#3551): a device holding controller state must
-# not move to an image that cannot carry it across ITS next OTA (that image's
-# own feral-system-update.sh decides then). Checked on the mounted image,
-# before the rsync into @ota_new, so a refusal does not pay for it.
-# refuse_update_without_carry logs a permanent-class message for
-# otagate/classify.go. controld has not been stopped yet, so this exit owes
-# no restart.
-if ! refuse_update_without_carry "$SFS_MOUNT"; then
-  exit 1
-fi
-
 log_progress "85" "Installing update to new snapshot..."
 
 # --- Step 6: Rsync selective update to NEW snapshot ---------------------------
@@ -464,45 +434,7 @@ EOF
 
 chmod 644 /boot/loader/entries/arch-candidate.conf
 
-# Control state (feral-file#3551, F9): the candidate's .state is the snapshot
-# taken at step 3, before the download, so grant approvals/revocations and
-# replay-counter advances made since then would be lost on promotion. Stop
-# feral-controld and mirror the live control/, control.new/ and the reset
-# tombstone control.retired into the candidate here, as the last step before
-# arming: everything slow or fallible (download, rsync, post-extraction, boot
-# staging) is done, so controld is down only for the seconds until reboot.
-# Any failure aborts before arming and the EXIT trap restarts controld.
-carry_control_state "$BTRFS_TOP/@snapshots/@ota_new"
-
-# Arming must not be cut in half by a signal: with the oneshot set but the
-# script killed before it clears the restart flag, the EXIT path would
-# restart controld on a device whose next boot drops its writes.
-trap '' TERM INT HUP
-if ! bootctl set-oneshot arch-candidate.conf; then
-  log_error "Failed to arm the update candidate (bootctl set-oneshot)."
-  # Clear any half-written oneshot. Only a confirmed clear makes the abort
-  # path (which restarts controld) safe; if the clear fails too the
-  # candidate may still be armed, so with controld stopped fall through and
-  # reboot, exactly as after a successful arm. Without control state nothing
-  # was stopped: abort as before.
-  if bootctl set-oneshot '' || [[ "$CONTROLD_RESTART_PENDING" != 1 ]]; then
-    exit 1
-  fi
-  log_error "Failed to clear the update candidate oneshot; rebooting with feral-controld stopped."
-fi
-# Armed: from here the next boot is the candidate, holding the state copied
-# above. Restarting controld now (even if the reboot request below failed)
-# would accept writes that boot would drop, so it stays stopped until reboot.
-# Remember whether controld was stopped for this reboot: only then must the
-# reboot below be forced.
-CONTROLD_HELD_FOR_REBOOT=$CONTROLD_RESTART_PENDING
-# shellcheck disable=SC2034 # read by restore_controld_if_stopped (sourced)
-CONTROLD_RESTART_PENDING=0
-# For the same reason nothing after arming may abort: an exit here would leave
-# the device up with controld stopped and no reboot coming. Everything below
-# is best-effort, and the reboot falls back to forced forms.
-set +e
-trap - ERR
+bootctl set-oneshot arch-candidate.conf
 
 log_info "Candidate boot entry created. Btrfs default unchanged."
 sync
@@ -510,20 +442,10 @@ sync
 # --- Step 10: Clean up and reboot ---------------------------------------------
 log_progress "99" "Cleaning up..."
 log_info "Cleaning up mounts and temporary data..."
-cleanup || true
+cleanup
 trap - EXIT
 
 log_progress "100" "Update complete! Restarting device..."
 log_info "OTA update complete. Candidate boot entry created for @snapshots/@ota_new. Rebooting now..."
 sync
-if ! systemctl reboot; then
-  # A device without control state keeps the pre-#3551 behaviour: report
-  # the failure and stay up. With controld stopped the device must not stay
-  # up, so force the reboot into the armed candidate.
-  if [[ "$CONTROLD_HELD_FOR_REBOOT" != 1 ]]; then
-    log_error "systemctl reboot failed"
-    exit 1
-  fi
-  log_error "systemctl reboot failed; forcing the reboot into the armed candidate"
-  systemctl reboot --force || reboot -f
-fi
+systemctl reboot

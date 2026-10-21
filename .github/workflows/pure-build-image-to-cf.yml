@@ -350,39 +350,6 @@ jobs:
                 staticServerAddr: "127.0.0.1:8082",
                 missPolicy: "fail_closed"
               }' 600
-          # feral-file#3551 release ordering: an image may enable secure control
-          # only if its ffos ref carries controller state across a full-image
-          # OTA (ota-control-state.sh, called by feral-system-update.sh).
-          # Without it the image's own updater would drop or resurrect grants
-          # on its next OTA, so strip .control from the overlay result. This
-          # matters most for build-image-from-tags.yml, whose ffos_ref can be
-          # an older tag. The ffos-user ref must also carry the protocol
-          # (components/feral-controld/control/): a pre-protocol controld
-          # ignores .control. That check is exact where controld is built from
-          # this checkout (build-image-to-cf.yml, build-image-from-tags.yml);
-          # pure-build-image-to-cf.yml installs controld from the branch's
-          # package repository, so there it only reflects the ref. On every
-          # path the device itself refuses an image or package whose
-          # feral-controld lacks the feral-controld-control-v1 marker while it
-          # holds control state (ota-control-state.sh). A missing checkout
-          # fails the build rather than silently shipping control off. Keep
-          # the three image workflows identical (scripts/verify.sh pins it).
-          controld_json=/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json
-          if [ ! -d "$GITHUB_WORKSPACE/ffos-user/components" ]; then
-            echo "::error::controld.json: ffos-user checkout missing at $GITHUB_WORKSPACE/ffos-user; cannot judge the control gate"
-            exit 1
-          elif [ ! -f /build/archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]; then
-            echo "::warning::controld.json: ffos ref lacks ota-control-state.sh; forcing del(.control) (secure control stays off)"
-            stripped="$(jq 'del(.control)' "$controld_json")"
-            printf '%s\n' "$stripped" > "$controld_json"
-          elif [ ! -d "$GITHUB_WORKSPACE/ffos-user/components/feral-controld/control" ]; then
-            echo "::warning::controld.json: ffos-user ref lacks components/feral-controld/control; forcing del(.control) (secure control stays off)"
-            stripped="$(jq 'del(.control)' "$controld_json")"
-            printf '%s\n' "$stripped" > "$controld_json"
-          else
-            echo "controld.json: ffos ref has ota-control-state.sh and ffos-user ref has the control protocol; keeping .control as configured"
-          fi
-          # end feral-file#3551 control gate
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'
