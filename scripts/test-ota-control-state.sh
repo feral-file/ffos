@@ -32,12 +32,14 @@
 #   - the marker cannot be created: logged without [ERROR] (otagate treats
 #     any [ERROR] line as the run's failure) and the carry proceeds;
 #   - downgrade guard: a candidate without ota-control-state.sh, or whose
-#     feral-controld is older than the installed one or unreadable, is
+#     feral-controld lacks the feral-controld-control-v1 capability (Provides,
+#     continuation lines included) or is unreadable, is
 #     refused only when live state exists, before anything is stopped; a
 #     stat error on the image probe or the live state is refused with its
 #     own message;
 #   - package rail (feral-service-update.sh): feral-controld is held back
-#     when the repository offers an older one and live state exists; a live
+#     when the repository build lacks the capability (or cannot be read) and
+#     live state exists; a live
 #     stat error installs nothing;
 #   - pre-download stop check: refused only when live state exists, the user
 #     manager is unreachable and controld still runs; nothing is stopped;
@@ -99,34 +101,36 @@ for a in "\$@"; do
 done
 exec "$REAL_STAT" "\$@"
 EOF
-# pacman: versions come from files (empty = not installed); -S logs its
-# package list and reports nothing to do.
+# pacman: -Qi/-Si print a Provides field read from a file (missing or
+# empty = not installed / unreadable, exit 1), shaped like real pacman output
+# with a wrapped continuation line; -S logs its package list and reports
+# nothing to do.
 cat > "$WORK/bin/pacman" <<'EOF'
 #!/bin/sh
-ver() { [ -s "$STUB_DIR/$1" ] || exit 1; echo "feral-controld $(cat "$STUB_DIR/$1")"; exit 0; }
+info() {
+  [ -s "$STUB_DIR/$1" ] || exit 1
+  echo "Name            : feral-controld"
+  echo "Version         : 0.0.1-1"
+  echo "Description     : mentions feral-controld-control-v1 here only"
+  echo "Provides        : $(head -n1 "$STUB_DIR/$1")"
+  sed -n '2,$s/^/                  /p' "$STUB_DIR/$1"
+  echo "Depends On      : None"
+  exit 0
+}
 case "$*" in
-  "--dbpath "*" -Q feral-controld") ver image_ver ;;
-  "-Q feral-controld") ver installed_ver ;;
-  "-Si feral-controld") [ -s "$STUB_DIR/repo_ver" ] || exit 1; echo "Version         : $(cat "$STUB_DIR/repo_ver")"; exit 0 ;;
+  "--dbpath "*" -Qi feral-controld") info image_prov ;;
+  "-Si feral-controld") info repo_prov ;;
   "-Sy --noconfirm") exit 0 ;;
   "-S "*) echo "pacman $*" >> "$STUB_DIR/calls"; echo " there is nothing to do"; exit 0 ;;
 esac
 echo "pacman stub: unexpected $*" >&2
 exit 2
 EOF
-# vercmp: pacman's comparison is not on CI or macOS; sort -V agrees with it
-# on the plain pkgver-pkgrel strings used here.
-cat > "$WORK/bin/vercmp" <<'EOF'
-#!/bin/sh
-if [ "$1" = "$2" ]; then echo 0
-elif [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$1" ]; then echo -1
-else echo 1; fi
-EOF
 cat > "$WORK/bin/systemctl" <<'EOF'
 #!/bin/sh
 echo "systemctl $*" >> "$STUB_DIR/calls"
 EOF
-chmod +x "$WORK/bin/runuser" "$WORK/bin/pgrep" "$WORK/bin/stat" "$WORK/bin/pacman" "$WORK/bin/vercmp" "$WORK/bin/systemctl"
+chmod +x "$WORK/bin/runuser" "$WORK/bin/pgrep" "$WORK/bin/stat" "$WORK/bin/pacman" "$WORK/bin/systemctl"
 # The helper uses GNU `realpath -m` / `-e`. On a non-GNU host (macOS) shim it
 # so the test runs locally too; CI (Ubuntu) and the image use the real one.
 if ! realpath -m -- / >/dev/null 2>&1; then
@@ -162,9 +166,8 @@ reset_case() {
   echo 0 > "$WORK/start_rc"
   echo 0 > "$WORK/show_rc"
   echo 1 > "$WORK/pgrep_rc"
-  echo 2.1.0-1 > "$WORK/installed_ver"
-  echo 2.1.0-1 > "$WORK/image_ver"
-  echo 2.1.0-1 > "$WORK/repo_ver"
+  echo feral-controld-control-v1 > "$WORK/image_prov"
+  echo feral-controld-control-v1 > "$WORK/repo_prov"
   mkdir -p "$DEST"
   echo '{"v":1,"gen":1,"controllers":["revoked-later"]}' > "$DEST/grants.json"
   echo stale > "$DEST/left-over.tmp"
@@ -469,32 +472,38 @@ reset_case
 rm -rf "$LIVE"
 run_helper refuse_update_without_carry "$CAND"
 (( RC == 0 )) || fail "downgrade: refused with no live state"
-# Carry present but the image's controld is older: refused, same prefix.
+# Carry present but the image's controld lacks the marker: refused, same
+# prefix (the version field is irrelevant, and the Description mention of the
+# marker must not count).
 reset_case
 mkdir -p "$CAND/root/scripts"
 : > "$CAND/root/scripts/ota-control-state.sh"
-echo 2.0.9-1 > "$WORK/image_ver"
+echo None > "$WORK/image_prov"
 run_helper refuse_update_without_carry "$CAND"
-(( RC != 0 )) || fail "downgrade: older image controld accepted while state is live"
-grep -qxF -- "ERROR Refusing update: target image cannot carry controller state (its feral-controld 2.0.9-1 is older than the installed 2.1.0-1); an older controld would reopen this device." "$WORK/out" || { cat "$WORK/out"; fail "downgrade: controld version refusal message"; }
-[[ ! -s "$WORK/calls" ]] || fail "downgrade: version refusal touched controld"
-# A newer image controld is fine.
-echo 2.2.0-1 > "$WORK/image_ver"
+(( RC != 0 )) || fail "downgrade: image controld without the marker accepted while state is live"
+grep -qxF -- "ERROR Refusing update: target image cannot carry controller state (its feral-controld does not provide feral-controld-control-v1); a controld without the protocol would reopen this device." "$WORK/out" || { cat "$WORK/out"; fail "downgrade: marker refusal message"; }
+[[ ! -s "$WORK/calls" ]] || fail "downgrade: marker refusal touched controld"
+# A similar but different capability does not count.
+echo feral-controld-control-v10 > "$WORK/image_prov"
 run_helper refuse_update_without_carry "$CAND"
-(( RC == 0 )) || { cat "$WORK/out"; fail "downgrade: newer image controld refused"; }
-# Unreadable image controld version: refused.
-: > "$WORK/image_ver"
+(( RC != 0 )) || fail "downgrade: a different capability accepted as the marker"
+# The marker on a wrapped continuation line counts.
+printf '%s\n%s\n' other-thing feral-controld-control-v1 > "$WORK/image_prov"
 run_helper refuse_update_without_carry "$CAND"
-(( RC != 0 )) || fail "downgrade: unreadable image controld version accepted"
-grep -q "^ERROR Refusing update: target image cannot carry controller state (its feral-controld version cannot be read)" "$WORK/out" || { cat "$WORK/out"; fail "downgrade: unreadable version message"; }
-# Older image controld with no live state: fine.
+(( RC == 0 )) || { cat "$WORK/out"; fail "downgrade: marker on a continuation line refused"; }
+# Unreadable image controld: refused.
+: > "$WORK/image_prov"
+run_helper refuse_update_without_carry "$CAND"
+(( RC != 0 )) || fail "downgrade: unreadable image controld accepted"
+grep -q "^ERROR Refusing update: target image cannot carry controller state (its feral-controld does not provide" "$WORK/out" || { cat "$WORK/out"; fail "downgrade: unreadable controld message"; }
+# No marker with no live state: fine.
 reset_case
 rm -rf "$LIVE"
 mkdir -p "$CAND/root/scripts"
 : > "$CAND/root/scripts/ota-control-state.sh"
-echo 2.0.9-1 > "$WORK/image_ver"
+echo None > "$WORK/image_prov"
 run_helper refuse_update_without_carry "$CAND"
-(( RC == 0 )) || fail "downgrade: older controld refused with no live state"
+(( RC == 0 )) || fail "downgrade: controld without the marker refused with no live state"
 # Stat error on the image probe: its own message, not the control-state one.
 reset_case
 echo "$CAND/root/scripts/ota-control-state.sh" > "$WORK/stat_eio"
@@ -557,19 +566,22 @@ run_service_update() {
 }
 all_pkgs="pacman -S --needed --noconfirm feral-controld feral-sys-monitord feral-watchdog"
 reset_case
-echo 2.0.9-1 > "$WORK/repo_ver"
+echo None > "$WORK/repo_prov"
 run_service_update
 (( RC == 0 )) || { cat "$WORK/out"; fail "rail: rc=$RC"; }
-grep -qxF -- "pacman -S --needed --noconfirm feral-sys-monitord feral-watchdog" "$WORK/calls" || { cat "$WORK/calls"; fail "rail: older controld not held back with live state"; }
-grep -q "Holding feral-controld at 2.1.0-1" "$WORK/out" || { cat "$WORK/out"; fail "rail: hold not logged"; }
+grep -qxF -- "pacman -S --needed --noconfirm feral-sys-monitord feral-watchdog" "$WORK/calls" || { cat "$WORK/calls"; fail "rail: controld without the marker not held back with live state"; }
+grep -q "Holding feral-controld: the repository build does not provide feral-controld-control-v1" "$WORK/out" || { cat "$WORK/out"; fail "rail: hold not logged"; }
 ! grep -q "\[ERROR\]" "$WORK/out" || fail "rail: hold logged as an error"
 reset_case
-echo 2.2.0-1 > "$WORK/repo_ver"
+: > "$WORK/repo_prov"
 run_service_update
-grep -qxF -- "$all_pkgs" "$WORK/calls" || { cat "$WORK/out" "$WORK/calls"; fail "rail: newer controld held back"; }
+grep -qxF -- "pacman -S --needed --noconfirm feral-sys-monitord feral-watchdog" "$WORK/calls" || { cat "$WORK/calls"; fail "rail: unreadable repo controld not held back"; }
+reset_case
+run_service_update
+grep -qxF -- "$all_pkgs" "$WORK/calls" || { cat "$WORK/out" "$WORK/calls"; fail "rail: marker-carrying controld held back"; }
 reset_case
 rm -rf "$LIVE"
-echo 2.0.9-1 > "$WORK/repo_ver"
+echo None > "$WORK/repo_prov"
 run_service_update
 grep -qxF -- "$all_pkgs" "$WORK/calls" || { cat "$WORK/out" "$WORK/calls"; fail "rail: controld held back with no live state"; }
 reset_case

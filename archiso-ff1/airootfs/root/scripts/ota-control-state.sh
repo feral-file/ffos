@@ -113,27 +113,22 @@ control_state_any_live() {
   return "$any"
 }
 
-# controld_version [DBPATH]: the feral-controld version (pkgver-pkgrel)
-# recorded in the pacman database at DBPATH (default: the running system's),
-# or nothing if it is not installed there or the database cannot be read.
-controld_version() {
-  if [[ -n "${1:-}" ]]; then
-    pacman --dbpath "$1" -Q feral-controld 2>/dev/null | awk '{print $2}' || true
-  else
-    pacman -Q feral-controld 2>/dev/null | awk '{print $2}' || true
-  fi
-}
+# FF1_CONTROLD_MARKER: the capability the ffos component builds add to
+# feral-controld's provides=() only when the ffos-user checkout carries the
+# protocol (components/feral-controld/control/). A controld without it may
+# predate the protocol and ignore .state/control, which reopens a device
+# holding control state (and resurrects its grants on a later upgrade), so
+# neither the package rail nor an OTA installs one there. The marker, not
+# pkgver: pkgver is the operator-typed version input and proves nothing.
+FF1_CONTROLD_MARKER="feral-controld-control-v1"
 
-# controld_would_downgrade VERSION: 0 if VERSION is older than the installed
-# feral-controld, 1 otherwise (also when nothing is installed to compare).
-# An older controld ignores .state/control, so on a device holding control
-# state it reopens the device; neither the package rail nor an OTA may
-# install one there.
-controld_would_downgrade() {
-  local installed
-  installed=$(controld_version)
-  [[ -n "$1" && -n "$installed" ]] || return 1
-  (( $(vercmp "$1" "$installed") < 0 ))
+# controld_marker_in: 0 if the pacman -Qi/-Si output on stdin lists
+# FF1_CONTROLD_MARKER under Provides (continuation lines included), 1
+# otherwise (also for empty input: not installed or unreadable). grep reads
+# all of its input (no -q) so pipefail never sees a SIGPIPE from awk.
+controld_marker_in() {
+  awk '/^Provides/ { f = 1; print; next } f && /^ / { print; next } { f = 0 }' \
+    | grep -w -- "$FF1_CONTROLD_MARKER" >/dev/null
 }
 
 # refuse_update_without_carry CANDIDATE_ROOT: 0 if the update may proceed,
@@ -142,10 +137,8 @@ controld_would_downgrade() {
 #   - contain this helper: an image without it (a downgrade to a pre-#3551
 #     release) runs the OLD feral-system-update.sh on its next OTA, which
 #     drops control state written during that OTA;
-#   - ship a feral-controld no older than the installed one: an older
-#     controld may predate the protocol and ignore .state/control, which
-#     reopens the device (and resurrects its grants on a later upgrade). An
-#     image whose controld version cannot be read is refused too.
+#   - ship a feral-controld that provides FF1_CONTROLD_MARKER (see above).
+#     An image whose controld cannot be read is refused too.
 # Called with the mounted image's SquashFS root, before it is rsynced into
 # the candidate (a refusal then skips the rsync) and BEFORE
 # carry_control_state, so controld has not been stopped and no restart is
@@ -156,7 +149,7 @@ controld_would_downgrade() {
 # state" and treats it as permanent. No double quotes in it: the runner's
 # message= regex stops at one.
 refuse_update_without_carry() {
-  local candidate_root="$1" st target rc=0
+  local candidate_root="$1" st rc=0
   local refusal="Refusing update: target image cannot carry controller state"
   st=$(control_path_state "$candidate_root$FF1_CONTROL_CARRY_SCRIPT" "target image path") || return 1
   control_state_any_live || rc=$?
@@ -169,13 +162,8 @@ refuse_update_without_carry() {
     log_error "$refusal (no $FF1_CONTROL_CARRY_SCRIPT); a downgrade below secure-control support would lose or resurrect controller grants."
     return 1
   fi
-  target=$(controld_version "$candidate_root/var/lib/pacman")
-  if [[ -z "$target" ]]; then
-    log_error "$refusal (its feral-controld version cannot be read)."
-    return 1
-  fi
-  if controld_would_downgrade "$target"; then
-    log_error "$refusal (its feral-controld $target is older than the installed $(controld_version)); an older controld would reopen this device."
+  if ! pacman --dbpath "$candidate_root/var/lib/pacman" -Qi feral-controld 2>/dev/null | controld_marker_in; then
+    log_error "$refusal (its feral-controld does not provide $FF1_CONTROLD_MARKER); a controld without the protocol would reopen this device."
     return 1
   fi
   return 0

@@ -30,10 +30,11 @@ log_progress "0" "Updating Pacman packages..."
 packages=(feral-controld feral-sys-monitord feral-watchdog)
 pacman -Sy --noconfirm >/dev/null
 
-# feral-file#3551: a device holding controller state must never take an
-# older feral-controld (it may ignore .state/control and reopen the device),
-# and `pacman -S` installs a lower repository version with only a warning.
-# Hold controld back then; the other packages still update. The helper is
+# feral-file#3551: a device holding controller state must never take a
+# feral-controld without the protocol (it ignores .state/control and reopens
+# the device); the repository version proves nothing, so require the
+# capability marker (FF1_CONTROLD_MARKER). Hold controld back otherwise; the
+# other packages still update. The helper is
 # overridable only for scripts/test-ota-control-state.sh.
 FF1_CONTROL_HELPER="${FF1_CONTROL_HELPER:-/root/scripts/ota-control-state.sh}"
 if [[ -r "$FF1_CONTROL_HELPER" ]]; then
@@ -44,9 +45,8 @@ if [[ -r "$FF1_CONTROL_HELPER" ]]; then
   # 2: a control path could not be classified (already logged).
   (( live_rc != 2 )) || exit 1
   if (( live_rc == 0 )); then
-    repo_version=$(pacman -Si feral-controld 2>/dev/null | awk -F': *' '/^Version/{print $2; exit}' || true)
-    if [[ -z "$repo_version" ]] || controld_would_downgrade "$repo_version"; then
-      log_info "Holding feral-controld at $(controld_version): the repository offers ${repo_version:-no version}, older, and this device holds controller state"
+    if ! pacman -Si feral-controld 2>/dev/null | controld_marker_in; then
+      log_info "Holding feral-controld: the repository build does not provide $FF1_CONTROLD_MARKER and this device holds controller state"
       packages=(feral-sys-monitord feral-watchdog)
     fi
   fi

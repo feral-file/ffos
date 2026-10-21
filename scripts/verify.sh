@@ -205,7 +205,8 @@ log "Checking controld.json secure-control release gate"
 # OTA and its ffos-user ref carries the protocol. Each image workflow strips
 # .control after the controld.json overlay when ota-control-state.sh is
 # missing from the checked-out ffos ref or components/feral-controld/control
-# from the ffos-user ref (build-image-from-tags.yml can build older tags).
+# from the ffos-user ref (build-image-from-tags.yml can build older tags),
+# and fails when the ffos-user checkout is missing.
 # Pin that the gate is present, identical in all three, and placed after the
 # overlay.
 control_gate_block() {
@@ -217,7 +218,8 @@ for workflow in .github/workflows/build-image-to-cf.yml .github/workflows/pure-b
   # The $GITHUB_WORKSPACE below is workflow text matched literally.
   # shellcheck disable=SC2016
   if [[ -z "$block" ]] \
-    || ! grep -Fq 'if [ ! -f /build/archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]; then' <<< "$block" \
+    || ! grep -Fq 'if [ ! -d "$GITHUB_WORKSPACE/ffos-user/components" ]; then' <<< "$block" \
+    || ! grep -Fq 'elif [ ! -f /build/archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]; then' <<< "$block" \
     || ! grep -Fq 'elif [ ! -d "$GITHUB_WORKSPACE/ffos-user/components/feral-controld/control" ]; then' <<< "$block" \
     || ! grep -Fq "jq 'del(.control)'" <<< "$block" \
     || ! grep -Fq 'end feral-file#3551 control gate' <<< "$block"; then
@@ -239,6 +241,28 @@ for workflow in .github/workflows/build-image-to-cf.yml .github/workflows/pure-b
 done
 [[ -f archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]] || {
   printf 'archiso-ff1/airootfs/root/scripts/ota-control-state.sh missing: the image workflows would strip .control from every build\n' >&2
+  exit 1
+}
+
+log "Checking feral-controld protocol capability marker"
+# feral-file#3551: the device's package rail and OTA guard install a
+# feral-controld where control state exists only when it provides
+# feral-controld-control-v1. Every workflow that generates the Go component
+# PKGBUILD must add that marker exactly when the ffos-user checkout carries
+# components/feral-controld/control/, or the first protocol release could
+# never be installed (and a pre-protocol build could slip through).
+for workflow in .github/workflows/build-components.yaml .github/workflows/manual-build-components.yaml .github/workflows/build-image-from-tags.yml; do
+  # The $COMP/$WORKDIR below are workflow text matched literally.
+  # shellcheck disable=SC2016
+  if ! grep -Fq "CONTROL_PROVIDES=\"provides=('feral-controld-control-v1')\"" "$workflow" \
+    || ! grep -Eq '^ +if \[ "\$COMP" = "feral-controld" \] && \[ -d ("\$WORKDIR/control"|control) \]; then$' "$workflow" \
+    || ! grep -Eq '^ +\$\{CONTROL_PROVIDES\}$' "$workflow"; then
+    printf '%s: Go PKGBUILD must add the feral-controld-control-v1 marker for a protocol checkout (feral-file#3551)\n' "$workflow" >&2
+    exit 1
+  fi
+done
+grep -Fq 'FF1_CONTROLD_MARKER="feral-controld-control-v1"' archiso-ff1/airootfs/root/scripts/ota-control-state.sh || {
+  printf 'ota-control-state.sh: FF1_CONTROLD_MARKER must match the marker the component builds emit\n' >&2
   exit 1
 }
 

@@ -161,6 +161,14 @@ jobs:
           EOF
           else
             # PKGBUILD for Go component
+            # feral-file#3551: the capability marker the device's package rail and
+            # OTA guard require before installing feral-controld where controller
+            # state exists. Only a checkout that carries the protocol earns it; the
+            # version input is operator-typed and proves nothing.
+            CONTROL_PROVIDES=""
+            if [ "$COMP" = "feral-controld" ] && [ -d control ]; then
+              CONTROL_PROVIDES="provides=('feral-controld-control-v1')"
+            fi
             cat <<EOF > PKGBUILD
           # Maintainer: ${{ inputs.maintainer }}
           pkgname=${COMP}
@@ -172,6 +180,7 @@ jobs:
           license=('MIT')
           depends=()
           makedepends=('go')
+          ${CONTROL_PROVIDES}
           options=(!strip)
 
           source=("${TARBALL}")

@@ -449,10 +449,20 @@ jobs:
           # matters most for build-image-from-tags.yml, whose ffos_ref can be
           # an older tag. The ffos-user ref must also carry the protocol
           # (components/feral-controld/control/): a pre-protocol controld
-          # ignores .control. Keep the three image workflows identical
-          # (scripts/verify.sh pins it).
+          # ignores .control. That check is exact where controld is built from
+          # this checkout (build-image-to-cf.yml, build-image-from-tags.yml);
+          # pure-build-image-to-cf.yml installs controld from the branch's
+          # package repository, so there it only reflects the ref. On every
+          # path the device itself refuses an image or package whose
+          # feral-controld lacks the feral-controld-control-v1 marker while it
+          # holds control state (ota-control-state.sh). A missing checkout
+          # fails the build rather than silently shipping control off. Keep
+          # the three image workflows identical (scripts/verify.sh pins it).
           controld_json=/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json
-          if [ ! -f /build/archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]; then
+          if [ ! -d "$GITHUB_WORKSPACE/ffos-user/components" ]; then
+            echo "::error::controld.json: ffos-user checkout missing at $GITHUB_WORKSPACE/ffos-user; cannot judge the control gate"
+            exit 1
+          elif [ ! -f /build/archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]; then
             echo "::warning::controld.json: ffos ref lacks ota-control-state.sh; forcing del(.control) (secure control stays off)"
             stripped="$(jq 'del(.control)' "$controld_json")"
             printf '%s\n' "$stripped" > "$controld_json"
