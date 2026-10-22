@@ -261,6 +261,21 @@ provide `feral-controld-control-v1` (or cannot be read), or when a control
 path cannot be classified (stat error: counts as present, §8.1); the other
 packages still update.
 
+**Reset images and legacy retirement (feral-file#3551, plan A5/A6/A8).** A
+factory reset boots `@factory_reset` or `@recovery_candidate`, and units
+still in their boxes boot their install image; any of those can be
+pre-protocol firmware, which withholds its claim QR until the legacy
+relayer issues it a topic. So retiring the legacy relayer is split: its
+controller endpoints go first, and device-facing topic issuance stays until
+the recovery image is dual-stack. Before that step a human raises
+`update_recovery_version` to a dual-stack image (the recovery update
+service then installs it as `@recovery_candidate`), and shelf stock is
+reflashed or ships dual-stack. Separately, once a channel ships dual-stack
+firmware (legacy relayer plus the v2 relay, ffos-user `docs/ff1-control-v1.md`
+§7.2) it is never moved back below it: the capability marker proves only
+that the image carries `control/`, and a controller registered without a
+topic would be stranded off the LAN on older firmware.
+
 <a id="controld-capability-marker"></a>**Controld capability marker.** The
 component builds (`build-components.yaml`, `manual-build-components.yaml`,
 `build-image-from-tags.yml`) add `provides=('feral-controld-control-v1')` to
