@@ -112,8 +112,7 @@ candidate come up with `control/` gone and no lock, as a fresh device.
 
 Only these three are carried live. The other files in `.state`
 (`controld.state`, `content-policy.json`, `signature-verification.json`, ...)
-still revert to their start-of-OTA copy; that is out of scope for
-feral-file#3551.
+still revert to their start-of-OTA copy.
 
 So step 10 carries all three **live**: as the last step before arming,
 `carry_control_state` (`root/scripts/ota-control-state.sh`) stops the
@@ -261,7 +260,7 @@ provide `feral-controld-control-v1` (or cannot be read), or when a control
 path cannot be classified (stat error: counts as present, §8.1); the other
 packages still update.
 
-**Reset images and legacy retirement (feral-file#3551, plan A5/A6/A8).** A
+**Reset images and legacy retirement (feral-file#3551).** A
 factory reset boots `@factory_reset` or `@recovery_candidate`, and units
 still in their boxes boot their install image; any of those can be
 pre-protocol firmware, which withholds its claim QR until the legacy
