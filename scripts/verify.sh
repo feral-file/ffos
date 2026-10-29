@@ -222,6 +222,8 @@ for workflow in .github/workflows/build-image-to-cf.yml .github/workflows/pure-b
     || ! grep -Fq 'elif [ ! -f /build/archiso-ff1/airootfs/root/scripts/ota-control-state.sh ]; then' <<< "$block" \
     || ! grep -Fq 'elif [ ! -d "$GITHUB_WORKSPACE/ffos-user/components/feral-controld/control" ]; then' <<< "$block" \
     || ! grep -Fq "jq 'del(.control)'" <<< "$block" \
+    || ! grep -Fq 'if [ -d "$GITHUB_WORKSPACE/ffos-user/components/feral-controld/relaywire" ]' <<< "$block" \
+    || ! grep -Fq "jq -r '.relayV2.endpoint // \"\"'" <<< "$block" \
     || ! grep -Fq 'end feral-file#3551 control gate' <<< "$block"; then
     printf '%s: missing or incomplete controld.json control gate (feral-file#3551)\n' "$workflow" >&2
     exit 1

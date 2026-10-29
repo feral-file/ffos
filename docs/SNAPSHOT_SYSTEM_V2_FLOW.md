@@ -269,7 +269,15 @@ controller endpoints go first, and device-facing topic issuance stays until
 the recovery image is dual-stack. Before that step a human raises
 `update_recovery_version` to a dual-stack image (the recovery update
 service then installs it as `@recovery_candidate`), and shelf stock is
-reflashed or ships dual-stack. Separately, once a channel ships dual-stack
+reflashed or ships dual-stack. Whenever it runs with the btrfs top level mounted,
+`feral-recovery-update.sh` writes the version a reset would boot (the
+`@recovery_candidate` if installed, else `@factory_reset`) to
+`/home/feralfile/.state/reset_target_version`; feral-controld exports it as
+`reset_target_version_info`, and the device-API retirement gate requires it to
+be dual-stack-or-newer across the fleet (ffos-user `docs/relay-v2-only-g3.md`
+§3.6, §6). The image workflows also refuse a `controld.json` with no
+`.relayV2.endpoint` for any ffos-user ref that carries the v2 relay client
+(`relaywire/`), inside the same pinned control-gate block. Separately, once a channel ships dual-stack
 firmware (legacy relayer plus the v2 relay, ffos-user `docs/ff1-control-v1.md`
 §7.2) it is never moved back below it: the capability marker proves only
 that the image carries `control/`, and a controller registered without a

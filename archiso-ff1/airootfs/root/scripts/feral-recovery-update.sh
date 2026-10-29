@@ -97,8 +97,33 @@ BOOT_MOUNT="/mnt/recovery-boot"
 RECOVERY_ROOT="/mnt/recovery-candidate"
 BTRFS_TOP="/mnt/btrfs-top-recovery"
 
+# write_reset_target records the version a factory reset would boot now: the
+# @recovery_candidate if one is installed, else @factory_reset. feral-controld
+# exports it as reset_target_version_info, which the legacy-relayer retirement
+# gate reads (ffos-user docs/relay-v2-only-g3.md §3.6, §4.4). Best-effort and
+# only while the btrfs top level is mounted; a missing file reads "unknown".
+RESET_TARGET_VERSION_FILE="/home/feralfile/.state/reset_target_version"
+write_reset_target() {
+  mountpoint -q "$BTRFS_TOP" 2>/dev/null || return 0
+  local cfg version=""
+  for cfg in "$BTRFS_TOP/@snapshots/@recovery_candidate/home/feralfile/ff1-config.json" \
+    "$BTRFS_TOP/@snapshots/@factory_reset/home/feralfile/ff1-config.json"; do
+    if [[ -f "$cfg" ]]; then
+      version=$(jq -r '.version // empty' "$cfg" 2>/dev/null || true)
+      [[ -n "$version" ]] && break
+    fi
+  done
+  [[ -n "$version" ]] || return 0
+  printf '%s\n' "$version" > "$RESET_TARGET_VERSION_FILE.tmp" \
+    && chmod 0644 "$RESET_TARGET_VERSION_FILE.tmp" \
+    && mv -f "$RESET_TARGET_VERSION_FILE.tmp" "$RESET_TARGET_VERSION_FILE" \
+    || rm -f "$RESET_TARGET_VERSION_FILE.tmp"
+}
+
 cleanup() {
   trap - ERR
+
+  write_reset_target || true
 
   cd /
   sync

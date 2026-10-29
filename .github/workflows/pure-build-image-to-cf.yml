@@ -382,6 +382,16 @@ jobs:
           else
             echo "controld.json: ffos ref has ota-control-state.sh and ffos-user ref has the control protocol; keeping .control as configured"
           fi
+          # A ref whose feral-controld carries the v2 relay client (relaywire/)
+          # must ship a v2 endpoint: v2 eligibility follows control state on
+          # disk, not control.enabled, and a G3 image without relayV2 would
+          # leave its devices with no route once the legacy relayer retires
+          # (ffos-user docs/relay-v2-only-g3.md §4.2).
+          if [ -d "$GITHUB_WORKSPACE/ffos-user/components/feral-controld/relaywire" ] \
+            && [ -z "$(jq -r '.relayV2.endpoint // ""' "$controld_json")" ]; then
+            echo "::error::controld.json: the ffos-user ref carries the v2 relay client but .relayV2.endpoint is empty; set it in FERAL_CONTROLD_CONFIG_JSON"
+            exit 1
+          fi
           # end feral-file#3551 control gate
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
