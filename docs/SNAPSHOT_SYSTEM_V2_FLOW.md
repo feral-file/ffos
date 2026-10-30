@@ -263,19 +263,23 @@ packages still update.
 **Reset images and legacy retirement (feral-file#3551).** A
 factory reset boots `@factory_reset` or `@recovery_candidate`, and units
 still in their boxes boot their install image; any of those can be
-pre-protocol firmware, which withholds its claim QR until the legacy
-relayer issues it a topic. So retiring the legacy relayer is split: its
-controller endpoints go first, and device-facing topic issuance stays until
-the recovery image is dual-stack. Before that step a human raises
-`update_recovery_version` to a dual-stack image (the recovery update
-service then installs it as `@recovery_candidate`), and shelf stock is
-reflashed or ships dual-stack. Whenever it runs with the btrfs top level mounted,
+pre-G3 firmware, which withholds its claim QR until the legacy
+relayer issues it a topic. The legacy relayer is shut down in one step (its
+worker is deleted) only once both of ffos-user `docs/ff1-control-v1.md`
+§15.4's gates hold; the reset image is an input to Gate B (devices), not a
+separate retirement stage. Before that, a human raises
+`update_recovery_version` to a G3 image (the recovery update service then
+installs it as `@recovery_candidate`), and shelf stock is reflashed with G3.
+Whenever it runs with the btrfs top level mounted,
 `feral-recovery-update.sh` writes the version a reset would boot (the
 `@recovery_candidate` if installed, else `@factory_reset`) to
 `/home/feralfile/.state/reset_target_version`; feral-controld exports it as
-`reset_target_version_info`, and the device-API retirement gate requires it to
-be dual-stack-or-newer across the fleet (ffos-user `docs/ff1-control-v1.md`
-§15.4 Gate B). The image workflows also refuse a `controld.json` with no
+`reset_target_version_info`, and Gate B requires it to be G3 or newer for
+nearly all devices (a missing file reads `unknown`, which counts as older). Both
+updaters decide whether the device is online through `internet-check.sh`
+(TCP 443 to the Google resolvers, then to mainland-China resolvers, then
+the old ping), never a
+ping of `8.8.8.8` alone, which skipped every update on mainland networks. The image workflows also refuse a `controld.json` with no
 `.relayV2.endpoint` for any ffos-user ref that carries the v2 relay client
 (`relaywire/`), inside the same pinned control-gate block. Separately, once a channel ships dual-stack
 firmware (legacy relayer plus the v2 relay, ffos-user `docs/ff1-control-v1.md`

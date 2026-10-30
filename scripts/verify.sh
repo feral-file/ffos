@@ -26,12 +26,12 @@ mapfile -t package_shell_files < <(find packages -type f -name '*.sh' | sort)
 log "Checking shell syntax"
 # One file per invocation: `bash -n a b` parses only a and treats b as a
 # positional parameter, so a multi-file call silently checks the first file.
-for f in scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
+for f in scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
   bash -n "$f"
 done
 
 log "Running shellcheck"
-shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-ota-control-state.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/airootfs/root/scripts/ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/airootfs/root/scripts/internet-check.sh archiso-ff1/airootfs/root/scripts/ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
 log "Checking owner Tailscale integration"
 bash -n archiso-ff1/airootfs/usr/local/bin/feral-tailscale
@@ -102,6 +102,26 @@ grep -q '"/root/scripts/ota-download.sh"' archiso-ff1/profiledef.sh || {
   exit 1
 }
 ./scripts/test-ota-download.sh
+
+log "Checking the internet check"
+# Both updaters decide "online" through the shared internet-check.sh (TCP 443
+# to Google, then to mainland-China resolvers), never a ping of 8.8.8.8 alone,
+# which skipped every update on mainland networks (feral-file#3539).
+for updater in archiso-ff1/airootfs/root/scripts/feral-updater.sh archiso-ff1/airootfs/root/scripts/feral-recovery-update.sh; do
+  grep -q '^source /root/scripts/internet-check.sh$' "$updater" || {
+    printf '%s must source /root/scripts/internet-check.sh\n' "$updater" >&2
+    exit 1
+  }
+  if grep -q 'ping .*8\.8\.8\.8' "$updater"; then
+    printf '%s must not decide online by its own ping of 8.8.8.8\n' "$updater" >&2
+    exit 1
+  fi
+done
+grep -q '"/root/scripts/internet-check.sh"' archiso-ff1/profiledef.sh || {
+  printf 'archiso-ff1/profiledef.sh must list /root/scripts/internet-check.sh in file_permissions\n' >&2
+  exit 1
+}
+./scripts/test-internet-check.sh
 
 log "Checking OTA control-state carry"
 # feral-file#3551 (F9): the candidate's .state is the snapshot from the start

@@ -50,7 +50,9 @@ release_lock() {
 trap release_lock EXIT
 
 # Check network connectivity
-if ! ping -q -c 1 -W 5 8.8.8.8 >/dev/null 2>&1; then
+# internet_reachable: TCP 443 to Google, then to mainland-China resolvers.
+source /root/scripts/internet-check.sh
+if ! internet_reachable; then
   log_info "No network connection. Skipping recovery update check."
   exit 0
 fi
