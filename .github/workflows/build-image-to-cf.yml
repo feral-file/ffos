@@ -477,7 +477,7 @@ jobs:
           # must ship a v2 endpoint: v2 eligibility follows control state on
           # disk, not control.enabled, and a G3 image without relayV2 would
           # leave its devices with no route once the legacy relayer retires
-          # (ffos-user docs/relay-v2-only-g3.md §4.2).
+          # (docs/SNAPSHOT_SYSTEM_V2_FLOW.md; ffos-user docs/ff1-control-v1.md §15.3).
           if [ -d "$GITHUB_WORKSPACE/ffos-user/components/feral-controld/relaywire" ] \
             && [ -z "$(jq -r '.relayV2.endpoint // ""' "$controld_json")" ]; then
             echo "::error::controld.json: the ffos-user ref carries the v2 relay client but .relayV2.endpoint is empty; set it in FERAL_CONTROLD_CONFIG_JSON"

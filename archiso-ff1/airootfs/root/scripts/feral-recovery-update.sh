@@ -100,7 +100,7 @@ BTRFS_TOP="/mnt/btrfs-top-recovery"
 # write_reset_target records the version a factory reset would boot now: the
 # @recovery_candidate if one is installed, else @factory_reset. feral-controld
 # exports it as reset_target_version_info, which the legacy-relayer retirement
-# gate reads (ffos-user docs/relay-v2-only-g3.md §3.6, §4.4). Best-effort and
+# gate reads (ffos-user docs/ff1-control-v1.md §15.4 Gate B). Best-effort and
 # only while the btrfs top level is mounted; a missing file reads "unknown".
 RESET_TARGET_VERSION_FILE="/home/feralfile/.state/reset_target_version"
 write_reset_target() {
