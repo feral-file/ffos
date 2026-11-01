@@ -84,7 +84,7 @@ connect_owner() {
     tailscale up --reset --accept-dns=false --accept-routes=false \
         --advertise-routes= --advertise-exit-node=false --exit-node= \
         --ssh=false --timeout=5m
-    printf 'Connected. For unattended access, disable key expiry for this FF1 in the Tailscale admin console.\n'
+    printf 'Connected. Keep Tailscale key expiry on for this FF1: remote access ends when its key expires (180 days by default).\n'
 }
 
 enroll() {

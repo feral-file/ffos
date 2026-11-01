@@ -15,8 +15,10 @@ The owner's existing coding agent runs on their own Tailscale-connected computer
 That computer reaches the FF1's existing HTTP control API on port 1111 and an
 independent OpenSSH owner listener on port 2222. The owner explicitly enrolls
 one computer's Tailscale IPv4 address and SSH public key. Its grant lasts until
-revocation or factory reset; it survives reboot and full-image OTA. Recovery
-works independently of the player and controld when the OS and network work.
+revocation or factory reset; it survives reboot and full-image OTA. Remote
+reach ends sooner, when the FF1's Tailscale key expires (180 days by default;
+see Enroll while local). Recovery works independently of the player and
+controld when the OS and network work.
 
 Port 1111 is an administrative interface, including reset and SSH authorization.
 The authorized `feralfile` account already has sudo privileges. Enroll only the
@@ -75,10 +77,11 @@ Merge the relevant grant into the owner's policy; do not replace their whole
 policy. The device allowlist is an additional restriction even on a permissive
 tailnet. Test with an unauthorized peer before relying on remote access.
 
-For unattended FF1 access, disable key expiry **for this FF1** in the owner's
-Tailscale admin console after enrollment. Node credential expiry is separate
-from the persistent SSH grant; an expired FF1 node key can require local
-reauthentication. Do not change expiry for their other devices. See
+Leave Tailscale key expiry on for this FF1. It bounds remote access: the FF1's
+node key expires on the owner's tailnet setting, 180 days by default, and remote
+access then stops until the owner reauthenticates the FF1 locally, over LAN.
+Node key expiry is separate from the persistent SSH grant, which stays on the
+device until revocation or factory reset. See
 [Tailscale's key-expiry instructions](https://tailscale.com/kb/1028/key-expiry).
 
 ## Use the existing agent and CLI
