@@ -51,7 +51,9 @@ if systemctl is-active --quiet feral-recovery-update.service; then
   sleep 2
 fi
 
-if ! ping -q -c 1 -W 2 8.8.8.8 >/dev/null; then
+# internet_reachable: TCP 443 to Google, then to mainland-China resolvers.
+source /root/scripts/internet-check.sh
+if ! internet_reachable; then
   log_error "No network connection. Aborting update."
   exit 0
 fi
