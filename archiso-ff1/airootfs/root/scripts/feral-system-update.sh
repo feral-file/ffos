@@ -471,7 +471,10 @@ chmod 644 /boot/loader/entries/arch-candidate.conf
 # tombstone control.retired into the candidate here, as the last step before
 # arming: everything slow or fallible (download, rsync, post-extraction, boot
 # staging) is done, so controld is down only for the seconds until reboot.
-# Any failure aborts before arming and the EXIT trap restarts controld.
+# Any failure aborts before arming and the EXIT trap restarts controld. The
+# same stopped window carries controld's media observation store
+# (.state/media-health, ffos-user#392) best effort: a failure there is
+# logged and the store is dropped, never the update.
 carry_control_state "$BTRFS_TOP/@snapshots/@ota_new"
 
 # Arming must not be cut in half by a signal: with the oneshot set but the
