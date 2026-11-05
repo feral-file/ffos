@@ -575,6 +575,29 @@ jobs:
           # which feral-system-update.sh's rsync exclusion of
           # /home/feralfile/.state carries across OTA (see
           # docs/SNAPSHOT_SYSTEM_V2_FLOW.md).
+          #
+          # mediaHealth (ffos-user#392, docs/media-health.md there) is the
+          # device-side media observation store and its probes. Pinned here
+          # for the same reason as signatureVerification: an absent block
+          # already means L0 ON and L1 OFF, so this changes no behavior, but
+          # the switches then live in a reviewed diff on the build branch
+          # and the next operator finds them. disabled=true is the L0 kill
+          # switch (casts forwarded unprobed, no hints, no per-item status).
+          # l1.enabled=true turns on the nightly render probe — an
+          # EXPERIMENT: it renders untrusted pages in the offline cache's
+          # headless Chromium while the panel sleeps and reports its verdicts
+          # as `suspect` only (never a skip, never a rejection); it needs
+          # offlineCache.enabled above. Other mediaHealth / l1 keys from the
+          # environment secret (knownBadPageMarkers, knownBad fingerprints,
+          # minAsleepSeconds, maxPerNight, settle windows) are kept. Safe on
+          # every controld: a build without the feature ignores the key, and
+          # one with it decodes the block permissively (a bad value reads as
+          # its default, never a crash loop). ipfsGateways / arweaveGateways
+          # are the ordered fallback gateways the media-health probe tries
+          # when a content-addressed source's own gateway answers 404, and
+          # the kiosk then loads the work through (ffos-user#392 gateway
+          # fallback); pinned to the measured defaults unless the
+          # environment secret sets its own list.
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
             del(.sentry)
             | .logStreaming = ((.logStreaming // {}) + {
@@ -584,6 +607,10 @@ jobs:
             | .logStreaming.sampleRate //= 1
             | .logStreaming.playerSampleRate //= 1
             | .signatureVerification = { disabled: false }
+            | .mediaHealth = ((.mediaHealth // {}) + { disabled: false })
+            | .mediaHealth.l1 = ((.mediaHealth.l1 // {}) + { enabled: false })
+            | .mediaHealth.ipfsGateways //= ["https://ipfs.filebase.io", "https://gateway.pinata.cloud"]
+            | .mediaHealth.arweaveGateways //= ["https://arweave.net", "https://ar-io.dev"]
             | .offlineCache = {
                 enabled: true,
                 rootDir: "/home/feralfile/.cache/offline-artworks",
