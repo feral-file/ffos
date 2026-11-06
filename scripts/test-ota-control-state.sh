@@ -46,6 +46,13 @@
 #   - the arming block: a failed bootctl set-oneshot clears the oneshot and
 #     leaves the restart owed; if the clear fails too, controld stays held
 #     for the reboot; a successful arm clears the restart;
+#   - the best-effort media-health store (ffos-user#392): carried in the
+#     same stop window as control state (one stop); carried on its own,
+#     stopping controld; a stale candidate copy removed; a copy failure, a
+#     stat error, a symlinked live entry, or a controld that will not stop
+#     when only the store is live: logged without [ERROR], the store dropped
+#     or left, the update not refused and control state still carried; the
+#     downgrade guard and the pre-download stop check ignore it;
 # and that feral-system-update.sh wires it in where it must: sourced before
 # the EXIT trap, the stop check before the download, the downgrade guard on
 # the mounted image before its rsync, the carry after post-extraction and
@@ -156,6 +163,8 @@ TOMB="$LIVE.retired"
 DEST_TOMB="$CAND$TOMB"
 LIVE_NEW="$LIVE.new"
 DEST_NEW="$CAND$LIVE_NEW"
+MEDIA="$WORK/live/home/feralfile/.state/media-health"
+DEST_MEDIA="$CAND$MEDIA"
 
 # reset_case: stale candidate copy from the "OTA start", fresh live state.
 reset_case() {
@@ -190,6 +199,7 @@ run_helper() {
     log_error() { echo "ERROR $1"; }
     export PATH="$WORK/bin:$PATH"
     export FF1_CONTROL_STATE_DIR="$LIVE"
+    export FF1_MEDIA_HEALTH_STATE_DIR="$MEDIA"
     export FF1_CONTROLD_OTA_STOP_MARKER="$MARKER"
     # shellcheck source=/dev/null
     source "$HELPER"
@@ -520,6 +530,137 @@ echo "$LIVE" > "$WORK/stat_eio"
 run_helper refuse_update_without_carry "$CAND"
 (( RC != 0 )) || fail "downgrade: live stat error accepted"
 grep -q "^ERROR Cannot stat control state path $LIVE" "$WORK/out" || { cat "$WORK/out"; fail "downgrade: live stat error message"; }
+
+echo "== best-effort media-health store"
+# media_case: a live store (a bbolt file is opaque bytes) and a stale copy
+# in the candidate from the start of the OTA.
+media_case() {
+  mkdir -p "$MEDIA"
+  chmod 750 "$MEDIA"
+  printf 'live-bolt-%s\n' "$RANDOM" > "$MEDIA/store.db"
+  chmod 600 "$MEDIA/store.db"
+  mkdir -p "$DEST_MEDIA"
+  echo stale-bolt > "$DEST_MEDIA/store.db"
+  echo stale > "$DEST_MEDIA/left-over.tmp"
+}
+no_error_lines() { ! grep -q "^ERROR" "$WORK/out"; }
+# With control state: both carried under one stop.
+reset_case
+media_case
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "media both: rc=$RC"; }
+diff -r "$LIVE" "$DEST" >/dev/null || fail "media both: control/ not carried"
+diff -r "$MEDIA" "$DEST_MEDIA" >/dev/null || { cat "$WORK/out"; fail "media both: store not carried"; }
+[[ ! -e "$DEST_MEDIA/left-over.tmp" ]] || fail "media both: stale file survived (--delete missing)"
+[[ -n "$(find "$DEST_MEDIA" -maxdepth 0 -perm 750)" ]] || fail "media both: directory mode not kept"
+[[ "$(grep -cxF -- "$stop_line" "$WORK/calls")" -eq 1 ]] || fail "media both: expected exactly one stop"
+# Store only: controld is stopped for the copy, restart owed, no [ERROR].
+reset_case
+rm -rf "$LIVE" "$DEST"
+media_case
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "media only: rc=$RC"; }
+grep -qxF -- "$stop_line" "$WORK/calls" || fail "media only: controld not stopped for a live store"
+diff -r "$MEDIA" "$DEST_MEDIA" >/dev/null || fail "media only: store not carried"
+grep -qx "PENDING 1" "$WORK/out" || fail "media only: restart not owed after the stop"
+[[ -f "$MARKER" ]] || fail "media only: watchdog marker missing during the stop"
+no_error_lines || { cat "$WORK/out"; fail "media only: logged an error"; }
+# Store absent live, stale in the candidate: removed, nothing stopped.
+reset_case
+rm -rf "$LIVE" "$DEST"
+media_case
+rm -rf "$MEDIA"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "media stale: rc=$RC"; }
+[[ ! -e "$DEST_MEDIA" ]] || fail "media stale: candidate kept a store the live system no longer has"
+[[ ! -s "$WORK/calls" ]] || fail "media stale: touched controld"
+no_error_lines || fail "media stale: logged an error"
+# Nothing anywhere: the no-op path is unchanged.
+reset_case
+rm -rf "$LIVE" "$DEST"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || fail "media none: rc=$RC"
+grep -q "^INFO No control state to carry" "$WORK/out" || fail "media none: no-op path lost"
+# Copy fails (unreadable live store): a warning, the candidate copy dropped
+# (never a torn database), control state still carried, update not refused.
+reset_case
+media_case
+chmod 000 "$MEDIA"
+run_helper carry_control_state "$CAND"
+chmod 750 "$MEDIA"
+(( RC == 0 )) || { cat "$WORK/out"; fail "media copy fails: rc=$RC (must never refuse the update)"; }
+grep -q "^INFO Warning: failed to copy $MEDIA" "$WORK/out" || { cat "$WORK/out"; fail "media copy fails: warning not logged"; }
+no_error_lines || { cat "$WORK/out"; fail "media copy fails: logged as an error, which otagate treats as terminal"; }
+[[ ! -e "$DEST_MEDIA" ]] || fail "media copy fails: a torn or stale store left in the candidate"
+diff -r "$LIVE" "$DEST" >/dev/null || fail "media copy fails: control/ not carried"
+grep -qx "PENDING 1" "$WORK/out" || fail "media copy fails: restart not owed"
+# Stat error on the store: skipped with a warning, control state carried.
+reset_case
+media_case
+printf '%s\n' "$MEDIA" > "$WORK/stat_eio"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "media eio: rc=$RC"; }
+grep -q "^INFO Warning: cannot stat best-effort state $MEDIA" "$WORK/out" || { cat "$WORK/out"; fail "media eio: warning not logged"; }
+no_error_lines || fail "media eio: logged as an error"
+grep -qx stale-bolt "$DEST_MEDIA/store.db" || fail "media eio: candidate store touched on a stat error"
+diff -r "$LIVE" "$DEST" >/dev/null || fail "media eio: control/ not carried"
+# Symlinked live store: skipped with a warning, nothing written through it.
+reset_case
+media_case
+rm -rf "$WORK/elsewhere" && mkdir -p "$WORK/elsewhere" && echo secret > "$WORK/elsewhere/secret"
+rm -rf "$MEDIA"
+ln -s "$WORK/elsewhere" "$MEDIA"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "media link: rc=$RC"; }
+grep -q "^INFO Warning: live state $MEDIA is a symlink" "$WORK/out" || { cat "$WORK/out"; fail "media link: warning not logged"; }
+no_error_lines || fail "media link: logged as an error"
+[[ ! -e "$DEST_MEDIA/secret" ]] || fail "media link: carried through a symlinked live store"
+diff -r "$LIVE" "$DEST" >/dev/null || fail "media link: control/ not carried"
+# Store only and controld will not stop: skipped with a warning, the
+# candidate keeps its start-of-OTA copy, the update is not refused.
+reset_case
+rm -rf "$LIVE" "$DEST"
+media_case
+echo 1 > "$WORK/stop_rc"
+echo 0 > "$WORK/pgrep_rc"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "media no-stop: rc=$RC (only the store was live; must not refuse)"; }
+grep -q "^INFO Warning: feral-controld did not stop; not carrying best-effort state" "$WORK/out" || { cat "$WORK/out"; fail "media no-stop: warning not logged"; }
+no_error_lines || fail "media no-stop: logged as an error"
+grep -qx stale-bolt "$DEST_MEDIA/store.db" || fail "media no-stop: candidate store changed while controld still runs"
+grep -qx "PENDING 1" "$WORK/out" || fail "media no-stop: restart not owed after the stop attempt"
+# With control state live the same failure still refuses, as before.
+reset_case
+media_case
+echo 1 > "$WORK/stop_rc"
+echo 0 > "$WORK/pgrep_rc"
+run_helper carry_control_state "$CAND"
+(( RC != 0 )) || fail "media no-stop strict: control state carried while controld still runs"
+grep -q "^ERROR Control state carry failed: feral-controld did not stop" "$WORK/out" || fail "media no-stop strict: refusal not logged"
+# A symlinked live .state with only the store live: skipped, not refused.
+reset_case
+rm -rf "$LIVE" "$DEST"
+media_case
+mkdir -p "$WORK/elsewhere"
+mv "$WORK/live/home/feralfile/.state" "$WORK/elsewhere/.state"
+ln -s "$WORK/elsewhere/.state" "$WORK/live/home/feralfile/.state"
+run_helper carry_control_state "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "media parent link: rc=$RC"; }
+grep -q "^INFO Warning: live state parent" "$WORK/out" || { cat "$WORK/out"; fail "media parent link: warning not logged"; }
+no_error_lines || fail "media parent link: logged as an error"
+[[ ! -s "$WORK/calls" ]] || fail "media parent link: stopped controld for state it then skipped"
+# The guards ignore the store: a candidate without the carry is accepted and
+# the pre-download stop check probes nothing when only the store is live.
+reset_case
+rm -rf "$LIVE" "$DEST"
+media_case
+run_helper refuse_update_without_carry "$CAND"
+(( RC == 0 )) || { cat "$WORK/out"; fail "media guard: refused an update with only the store live"; }
+echo 1 > "$WORK/show_rc"
+echo 0 > "$WORK/pgrep_rc"
+run_helper check_controld_stoppable
+(( RC == 0 )) || fail "media stoppable: refused with only the store live"
+[[ ! -s "$WORK/calls" ]] || fail "media stoppable: probed with only the store live"
 
 echo "== pre-download stop check"
 reset_case
