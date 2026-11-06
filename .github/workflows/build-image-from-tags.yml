@@ -610,7 +610,7 @@ jobs:
             | .mediaHealth = ((.mediaHealth // {}) + { disabled: false })
             | .mediaHealth.l1 = ((.mediaHealth.l1 // {}) + { enabled: false })
             | .mediaHealth.ipfsGateways //= ["https://ipfs.filebase.io", "https://gateway.pinata.cloud"]
-            | .mediaHealth.arweaveGateways //= ["https://arweave.net", "https://ar-io.dev"]
+            | .mediaHealth.arweaveGateways //= ["https://arweave.net"]
             | .offlineCache = {
                 enabled: true,
                 rootDir: "/home/feralfile/.cache/offline-artworks",
