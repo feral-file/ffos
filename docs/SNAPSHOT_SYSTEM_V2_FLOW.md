@@ -69,7 +69,7 @@ OTA is implemented in `feral-system-update.sh`. High-level sequence:
 7. Bind-mount that staging directory as `/boot` inside `@ota_new` and run **`post-extraction.sh`** in chroot (boot entries, mkinitcpio, pacman keys, etc.).
 8. Copy the staged kernel and initrd into **`/boot/candidate/`** on the live ESP, so the current known-good kernel remains at `/boot/` and the new one sits alongside.
 9. Write **`/boot/loader/entries/arch-candidate.conf`** with `rootflags=subvol=@snapshots/@ota_new` (and candidate kernel paths).
-10. **Carry control state** (feral-file#3551): if any of `/home/feralfile/.state/control/`, `control.new/` or `control.retired` exists, stop the `feral-controld` user unit; make `@ota_new` mirror the live system for all three (see [What survives an OTA](#what-survives-an-ota)).
+10. **Carry control state** (feral-file#3551): if any of `/home/feralfile/.state/control/`, `control.new/` or `control.retired` exists, stop the `feral-controld` user unit; make `@ota_new` mirror the live system for all three (see [What survives an OTA](#what-survives-an-ota)). The same stopped window carries controld's media observation store, `.state/media-health/` (ffos-user#392), best effort: it is mirrored too, but a failure on it is logged and the store dropped, never the update refused.
 11. Run **`bootctl set-oneshot arch-candidate.conf`** (with TERM/INT/HUP ignored) so the next boot uses the candidate entry once.
 12. Reboot.
 
@@ -93,7 +93,7 @@ deletes the old `@`, that removal is permanent. Device state therefore survives
 | `/var/lib/systemd/random-seed` | Per-device entropy seed. |
 | `/home/feralfile/.cache` | Protected for feral-controld's offline artwork blob store at `offlineCache.rootDir` (itself bounded by `maxDiskBytes`, 80 GB). Expensive to rebuild — every item re-downloads and software artworks re-capture through headless Chromium. The whole XDG cache directory inherits this protection; see below. |
 | `/home/feralfile/.config/chromium` | Kiosk browser profile. |
-| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version` and controld's owner-set records: the device name and the DP-1 signature verification mode (`signature-verification.json`, `silent`/`notify`/`strict`). Losing the latter would silently drop an owner's `strict` choice back to the `notify` default on every update. `.state/control`, `control.new` and `control.retired` are carried live; see below. |
+| `/home/feralfile/.logs`, `/home/feralfile/.state` | Diagnostics and daemon state, including `failed_recovery_version` and controld's owner-set records: the device name and the DP-1 signature verification mode (`signature-verification.json`, `silent`/`notify`/`strict`). Losing the latter would silently drop an owner's `strict` choice back to the `notify` default on every update. `.state/control`, `control.new` and `control.retired` are carried live, and `.state/media-health` best effort; see below. |
 
 **`.state` is the copy from the start of the OTA, except controld's control state.**
 The exclusion protects the `.state` that `@ota_new` inherited from the
@@ -110,9 +110,18 @@ while it exists controld forces a locked policy. Carrying it keeps a reset
 that was interrupted by the update locked afterwards; losing it would let the
 candidate come up with `control/` gone and no lock, as a fresh device.
 
-Only these three are carried live. The other files in `.state`
-(`controld.state`, `content-policy.json`, `signature-verification.json`, ...)
-still revert to their start-of-OTA copy.
+Only these three are carried live and strictly. One more path rides the
+same stopped window **best effort**: `.state/media-health/`, feral-controld's
+media observation store (ffos-user#392, `docs/media-health.md` there), a
+bbolt database of per-source media verdicts and play history. Its loss costs
+re-probing, never correctness, so the trade-off is the reverse of
+`control/`: it is mirrored (copied when live, removed from the candidate when
+not) when that works, and any failure on it (a stat error, a symlink, a copy
+that fails, a controld that would not stop when only this store is live) is
+logged as a warning, the store is dropped from the candidate, and the update
+goes on. The downgrade guard and the pre-download stop check ignore it. The
+other files in `.state` (`controld.state`, `content-policy.json`,
+`signature-verification.json`, ...) still revert to their start-of-OTA copy.
 
 So step 10 carries all three **live**: as the last step before arming,
 `carry_control_state` (`root/scripts/ota-control-state.sh`) stops the
