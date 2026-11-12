@@ -361,8 +361,15 @@ jobs:
           # the kiosk then loads the work through (ffos-user#392 gateway
           # fallback); pinned to the measured defaults unless the
           # environment secret sets its own list.
+          #
+          # raster is dropped: controld once read a device Raster read key
+          # from raster.apiKey (ffos-user wallet walks, feral-file#3576), but
+          # Raster's read API needs no key and controld no longer reads the
+          # block (ffos-user#457). Deleting it here keeps a key still sitting
+          # in an environment secret off the image, the same way .sentry is.
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
             del(.sentry)
+            | del(.raster)
             | .logStreaming = ((.logStreaming // {}) + {
                 endpoint: "https://677c668ad85c407fb1f0b68f63f41f21.ingest.cloudflare.com",
                 environment: ($log_stream_environment | ascii_downcase)

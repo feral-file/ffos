@@ -165,7 +165,8 @@ for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; the rule itself is in
 Each `Development`, `Staging`, and `Production` GitHub environment supplies the
 Cloudflare credential in `FERAL_CONTROLD_CONFIG_JSON` as
 `logStreaming.apiKey`. The three image workflows preserve that credential in
-controld's mode-600 config and remove the obsolete controld Sentry block. The
+controld's mode-600 config and remove the obsolete controld Sentry and Raster
+(`raster.apiKey`; Raster's read API needs no key) blocks. The
 same environment-scoped JSON independently controls whole-session sampling with
 `logStreaming.sampleRate` for `feral-controld` and
 `logStreaming.playerSampleRate` for `player`; each defaults to `1` when absent.
