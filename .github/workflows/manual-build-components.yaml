@@ -229,8 +229,16 @@ jobs:
 
       - name: Install kmspgp
         run: |
-          curl -sL -o /usr/local/bin/kmspgp \
+          # -f: a GitHub release 504 must fail here, not be saved as the
+          # "binary" (it was, and the sign step then died running HTML as a
+          # shell script). --retry rides out those transient 5xx. The pinned
+          # digest proves the file is the v1.1.0 ELF before it runs with the
+          # KMS signing credentials; bump it together with the URL.
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
+            -o /usr/local/bin/kmspgp \
             https://github.com/hf/kmspgp/releases/download/v1.1.0/kmspgp-v1.1.0-linux-amd64
+          echo "a9e1f438aac06657aa726b65031079f5e27b1d1e41dd1ffa7bf55326a8ca2547  /usr/local/bin/kmspgp" \
+            | sha256sum -c -
           chmod +x /usr/local/bin/kmspgp
 
       - name: Sign packages with AWS KMS (OpenPGP)
