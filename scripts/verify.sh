@@ -202,6 +202,7 @@ fi
 while IFS= read -r workflow; do
   for required in \
     'del(.sentry)' \
+    '| del(.raster)' \
     '.logStreaming = ((.logStreaming // {}) + {' \
     "environment: (\$log_stream_environment | ascii_downcase)" \
     '.logStreaming.sampleRate //= 1' \

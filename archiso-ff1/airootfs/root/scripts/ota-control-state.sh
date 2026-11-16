@@ -33,6 +33,14 @@
 # the three paths: nothing is stopped and nothing is copied. controld is
 # stopped only if at least one of them exists live.
 #
+# The same stopped window also carries feral-controld's media observation
+# store, /home/feralfile/.state/media-health (ffos-user#392): a bbolt file of
+# per-source media verdicts that the device would otherwise re-derive by
+# probing after every full-image update. It is carried BEST EFFORT (see
+# best_effort_state_paths): mirrored like the control paths, but no failure
+# on it ever refuses or aborts the update, and none of the guards above
+# (downgrade, pre-download stop check) consider it.
+#
 # Cross-repo contract with feral-watchdog (ffos-user): while this script has
 # controld stopped it holds the marker FF1_CONTROLD_OTA_STOP_MARKER
 # (/run/feral-controld-ota-stop, root-owned, 0644, empty). The watchdog
@@ -46,6 +54,7 @@
 # scripts/test-ota-control-state.sh can point them at a fake root; nothing on
 # a device sets them.
 FF1_CONTROL_STATE_DIR="${FF1_CONTROL_STATE_DIR:-/home/feralfile/.state/control}"
+FF1_MEDIA_HEALTH_STATE_DIR="${FF1_MEDIA_HEALTH_STATE_DIR:-/home/feralfile/.state/media-health}"
 FF1_CONTROL_USER="${FF1_CONTROL_USER:-feralfile}"
 FF1_CONTROLD_OTA_STOP_MARKER="${FF1_CONTROLD_OTA_STOP_MARKER:-/run/feral-controld-ota-stop}"
 # Where this helper lives in an image; its absence in a candidate marks an
@@ -102,8 +111,42 @@ control_path_state() {
   return 1
 }
 
+# best_effort_state_paths: live paths carried in the same stopped window as
+# the control state but whose loss must never fail an update, one per line:
+#   media-health/     feral-controld's per-device media observation store
+#                     (ffos-user#392): a bbolt database of per-source media
+#                     verdicts and play history. Losing it costs re-probing,
+#                     never correctness, so it is the opposite trade-off from
+#                     control/: carried when it can be, dropped when it
+#                     cannot. Mirrored present or absent like the control
+#                     paths. Every failure on it is logged as a warning (never
+#                     [ERROR]: otagate fails the run on the first one) and
+#                     skipped, and a copy that fails part-way is removed from
+#                     the candidate, so the next boot rebuilds the store from
+#                     nothing rather than opening a torn database.
+best_effort_state_paths() {
+  printf '%s\n' "$FF1_MEDIA_HEALTH_STATE_DIR"
+}
+
+# soft_path_state PATH: control_path_state for a best-effort path: "present",
+# "absent", or "error" for any stat failure other than ENOENT (the caller
+# logs the warning). Never fails and never logs [ERROR].
+soft_path_state() {
+  local err
+  if err=$(LC_ALL=C stat -- "$1" 2>&1 >/dev/null); then
+    echo present
+    return 0
+  fi
+  case "$err" in
+    *"No such file or directory"*) echo absent ;;
+    *) echo error ;;
+  esac
+  return 0
+}
+
 # control_state_any_live: 0 if any live control-state path exists, 1 if
-# none does, 2 (after logging) if one cannot be classified.
+# none does, 2 (after logging) if one cannot be classified. Only the control
+# paths: the best-effort ones never gate anything.
 control_state_any_live() {
   local path st any=1
   while IFS= read -r path; do
@@ -202,9 +245,10 @@ check_controld_stoppable() {
 # controld if it was stopped).
 carry_control_state() {
   local candidate_root="$1"
-  local path dest st dst any_live=0 any_candidate=0
-  local -a paths
+  local path dest st dst any_live=0 any_candidate=0 soft_live=0
+  local -a paths soft soft_live_paths=() soft_stale_paths=()
   mapfile -t paths < <(control_state_paths)
+  mapfile -t soft < <(best_effort_state_paths)
 
   for path in "${paths[@]}"; do
     st=$(control_path_state "$path") || return 1
@@ -212,7 +256,23 @@ carry_control_state() {
     st=$(control_path_state "$candidate_root$path") || return 1
     [[ "$st" == present ]] && any_candidate=1
   done
-  if (( !any_live && !any_candidate )); then
+  # Best-effort paths: a stat error drops the path from this run, never the
+  # update. Classified here, before the stop, with the same mirror rule.
+  for path in "${soft[@]}"; do
+    st=$(soft_path_state "$path")
+    dst=$(soft_path_state "$candidate_root$path")
+    if [[ "$st" == error || "$dst" == error ]]; then
+      log_info "Warning: cannot stat best-effort state $path (live: $st, candidate: $dst); not carrying it."
+      continue
+    fi
+    if [[ "$st" == present ]]; then
+      soft_live_paths+=("$path")
+      soft_live=1
+    elif [[ "$dst" == present ]]; then
+      soft_stale_paths+=("$path")
+    fi
+  done
+  if (( !any_live && !any_candidate && !soft_live && ${#soft_stale_paths[@]} == 0 )); then
     log_info "No control state to carry into the candidate"
     return 0
   fi
@@ -220,16 +280,24 @@ carry_control_state() {
   # Live side: the source must be the real .state, not a symlink feralfile
   # pointed elsewhere (root would otherwise copy whatever it names into the
   # candidate). Checked before the stop, so a refusal here owes no restart.
+  # The best-effort paths share the parent (they live under .state too), so
+  # one check covers both; with control state live it refuses, with only
+  # best-effort state live it skips that state.
   local live_parent live_real
   live_parent=$(dirname -- "$FF1_CONTROL_STATE_DIR")
-  if (( any_live )); then
+  if (( any_live || soft_live )); then
     if ! live_real=$(realpath -e -- "$live_parent") || [[ "$live_real" != "$live_parent" ]]; then
-      log_error "Live control state parent $live_parent does not resolve to itself; refusing to carry control state."
-      return 1
+      if (( any_live )); then
+        log_error "Live control state parent $live_parent does not resolve to itself; refusing to carry control state."
+        return 1
+      fi
+      log_info "Warning: live state parent $live_parent does not resolve to itself; not carrying best-effort state."
+      soft_live=0
+      soft_live_paths=()
     fi
   fi
 
-  if (( any_live )); then
+  if (( any_live || soft_live )); then
     log_info "Stopping feral-controld to freeze control state..."
     # Set before the stop: a stop that half-succeeds still owes a restart.
     CONTROLD_RESTART_PENDING=1
@@ -238,14 +306,24 @@ carry_control_state() {
       # The user manager can be unreachable while controld is already gone
       # (e.g. it crashed); only a still-running writer makes the copy unsafe.
       if pgrep -u "$FF1_CONTROL_USER" -x feral-controld >/dev/null; then
-        # Distinct from check_controld_stoppable's transient prefix: this
-        # runs after the full download, the pre-download check already passed,
-        # so the condition is not momentary and a retry would only download
-        # the image again. otagate classifies this message as permanent.
-        log_error "Control state carry failed: feral-controld did not stop; refusing to arm the update with control state that may still change."
-        return 1
+        if (( any_live )); then
+          # Distinct from check_controld_stoppable's transient prefix: this
+          # runs after the full download, the pre-download check already passed,
+          # so the condition is not momentary and a retry would only download
+          # the image again. otagate classifies this message as permanent.
+          log_error "Control state carry failed: feral-controld did not stop; refusing to arm the update with control state that may still change."
+          return 1
+        fi
+        # Only best-effort state wanted the stop: a store still being written
+        # cannot be copied consistently, so it is left to be rebuilt. The
+        # candidate keeps its start-of-OTA copy, which is what would boot
+        # without this helper at all.
+        log_info "Warning: feral-controld did not stop; not carrying best-effort state that may still change."
+        soft_live=0
+        soft_live_paths=()
+      else
+        log_info "feral-controld stop reported failure but no feral-controld process is running; continuing"
       fi
-      log_info "feral-controld stop reported failure but no feral-controld process is running; continuing"
     fi
   fi
 
@@ -322,6 +400,42 @@ carry_control_state() {
         return 1
       fi
     fi
+  done
+
+  # Best-effort paths, after the control state so a failure here can never
+  # interleave with it. Same mirror rule and the same symlink defences, but
+  # every failure is a warning and a skip, and a copy that failed part-way is
+  # removed rather than left torn.
+  for path in "${soft_live_paths[@]}"; do
+    dest="$candidate_root$path"
+    if [[ -L "$path" ]]; then
+      log_info "Warning: live state $path is a symlink; not carrying it."
+      continue
+    fi
+    log_info "Copying live $path into the update candidate (best effort)..."
+    if [[ -d "$path" ]]; then
+      if [[ -e "$dest" || -L "$dest" ]] && [[ ! -d "$dest" || -L "$dest" ]]; then
+        rm -f -- "$dest" 2>/dev/null || true
+      fi
+      if [[ -L "$path" ]] || ! mkdir -p "$dest" \
+        || ! rsync -a --checksum --delete "$path"/ "$dest"/; then
+        log_info "Warning: failed to copy $path into the update candidate; it is dropped and rebuilt after the update."
+        rm -rf -- "$dest" 2>/dev/null || true
+      fi
+    else
+      rm -rf -- "$dest" 2>/dev/null || true
+      if [[ -L "$path" ]] || ! mkdir -p "$(dirname "$dest")" \
+        || ! rsync -a "$path" "$dest"; then
+        log_info "Warning: failed to copy $path into the update candidate; it is dropped and rebuilt after the update."
+        rm -rf -- "$dest" 2>/dev/null || true
+      fi
+    fi
+  done
+  for path in "${soft_stale_paths[@]}"; do
+    dest="$candidate_root$path"
+    log_info "Removing stale $path from the update candidate (absent on the running system)"
+    rm -rf -- "$dest" 2>/dev/null \
+      || log_info "Warning: failed to remove stale $path from the update candidate."
   done
   sync
   log_info "Control state carried into the update candidate."
