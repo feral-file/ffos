@@ -23,7 +23,7 @@ files=[]
 for name in ('CMakeLists.txt','dependencies.json','README.md'):
     files.append(source/name)
 files.extend((source/'docs').glob('*.md'))
-for name in ('src','include','cmake','renderers','tools','tests','protocol','maintenance'):
+for name in ('src','include','cmake','renderers','tools','tests','protocol','maintenance','assets','third_party'):
     files.extend(path for path in (source/name).rglob('*') if path.is_file() and '__pycache__' not in path.parts)
 for dependency in dependencies.values():
     path=source/'vendor'/dependency['file']

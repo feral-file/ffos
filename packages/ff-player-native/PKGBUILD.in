@@ -10,7 +10,7 @@ depends=('glibc' 'gcc-libs' 'sqlite' 'sdl2-compat' 'libglvnd' 'mesa' 'libdrm'
          'pango' 'qrencode' 'nss' 'alsa-lib' 'libcups' 'at-spi2-core' 'libx11'
          'libxcomposite' 'libxdamage' 'libxext' 'libxfixes' 'libxrandr' 'libxkbcommon'
          'libass' 'lcms2' 'libpulse' 'gnutls' 'libva' 'zlib' 'libjpeg-turbo' 'curl' 'libdisplay-info'
-         'bubblewrap' 'ca-certificates' 'ttf-dejavu' 'python' 'wayland')
+         'bubblewrap' 'ca-certificates' 'ttf-dejavu' 'python' 'wayland' 'grim' 'wlr-randr')
 makedepends=('gcc=16.1.1+r346+g4e03491b401d-3' 'cmake=4.4.0-1'
              'ninja=1.13.2-3' 'meson=1.11.2-1' 'pkgconf=2.5.1-1'
              'nasm=3.02-1' 'make=4.4.1-3' 'python-jinja' 'wayland-protocols')

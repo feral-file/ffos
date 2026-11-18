@@ -11,7 +11,7 @@ NAME="${EARLYOOM_NAME:-}"
 CMDLINE="${EARLYOOM_CMDLINE:-}"
 
 case "$NAME:$CMDLINE" in
-    chromium:*|cage:*|*:chromium*|*:cage*)
+    ff-player-nativ*:*|ff-media-worker:*|chromium:*|cage:*|*:ff-player-native*|*:ff-media-worker*|*:chromium*|*:cage*)
         ;;
     *)
         exit 0
@@ -36,4 +36,4 @@ COUNT=$((COUNT + 1))
 echo "$COUNT" > "$COUNT_FILE"
 echo "$NOW" > "$LAST_EVENT_FILE"
 
-logger -t ff1-earlyoom-hook "counted chromium oom kill event: count=$COUNT name=${NAME:-unknown}"
+logger -t ff1-earlyoom-hook "counted kiosk process oom kill event: count=$COUNT name=${NAME:-unknown}"
