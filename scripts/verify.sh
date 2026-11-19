@@ -26,12 +26,15 @@ mapfile -t package_shell_files < <(find packages -type f -name '*.sh' | sort)
 log "Checking shell syntax"
 # One file per invocation: `bash -n a b` parses only a and treats b as a
 # positional parameter, so a multi-file call silently checks the first file.
-for f in scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
+for f in scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh scripts/test-earlyoom-player.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
   bash -n "$f"
 done
 
 log "Running shellcheck"
 shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/airootfs/root/scripts/internet-check.sh archiso-ff1/airootfs/root/scripts/ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+
+log "Checking native player OOM accounting"
+bash scripts/test-earlyoom-player.sh
 
 log "Checking owner Tailscale integration"
 bash -n archiso-ff1/airootfs/usr/local/bin/feral-tailscale

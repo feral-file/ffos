@@ -15,7 +15,7 @@ python3 packages/ff-player-native/prepare.py \
 
 Use the source revision's fixed epoch for release candidates. The output records
 every source file hash, the package source hash, and SOURCE_DATE_EPOCH. The same
-inputs produce the same archive bytes. The archive contains CEF, media source
+inputs produce the same archive bytes. The archive contains the public Chromium archive, compositor SDKs, media source
 archives, model-viewer and the JSON header; build phases verify their hashes
 without downloading. Transfer the generated directory to an FFOS/Arch x86-64
 build machine with the pinned toolchain and the matching FFOS snapshot, then run:
@@ -30,10 +30,10 @@ PKGBUILD pins the tested compiler/build-tool package versions. Complete base
 image/transitive dependency locking and a second clean rebuild comparison remain
 required. Do not update the device's system packages merely to satisfy makepkg.
 
-The package carries the CEF setuid sandbox (root:root 4755), private shared media
+The package carries the public Chromium setuid sandbox (root:root 4755), private shared media
 libraries, renderer resources, protocol schema, migration tools and available
 upstream license notices. makepkg splits host/worker debug symbols; the selected
-minimal CEF archive does not supply Chromium symbols. Complete CEF symbol
+public browser archive does not supply Chromium symbols. Complete browser symbol
 retrieval, bundled third-party license audit and the new host's license
 declaration remain release work. `license=custom` is deliberate until that audit
 is complete; it is not a statement that the bundled open-source code has been
@@ -44,3 +44,9 @@ The two may coexist for rollback, but the final full-image session must activate
 one playback owner. Do not ship a package-only activation or leave both ordinary
 control paths running after cutover. Production/staging promotion remains human
 operated under the repository guardrails.
+
+The current runtime is built with `FF_WITH_PUBLIC=ON`; `FF_WITH_CEF` is an explicit
+rollback/diagnostic target. `build-presentation.sh` builds the pinned private
+headless wlroots library. The engine archive and executable hashes are recorded
+in dependencies.json; core, native UI, private decoder and broker checks are part
+of the component build. The source bundle excludes the unused CEF archive.

@@ -25,7 +25,8 @@ for name in ('CMakeLists.txt','dependencies.json','README.md'):
 files.extend((source/'docs').glob('*.md'))
 for name in ('src','include','cmake','renderers','tools','tests','protocol','maintenance','assets','third_party'):
     files.extend(path for path in (source/name).rglob('*') if path.is_file() and '__pycache__' not in path.parts)
-for dependency in dependencies.values():
+for dependency_name,dependency in dependencies.items():
+    if dependency_name=="cef": continue
     path=source/'vendor'/dependency['file']
     if hashlib.file_digest(path.open('rb'),'sha256').hexdigest()!=dependency['sha256']:
         raise SystemExit('Dependency checksum mismatch: '+dependency['file'])

@@ -11,7 +11,7 @@ NAME="${EARLYOOM_NAME:-}"
 CMDLINE="${EARLYOOM_CMDLINE:-}"
 
 case "$NAME:$CMDLINE" in
-    ff-player-nativ*:*|ff-media-worker:*|chromium:*|cage:*|*:ff-player-native*|*:ff-media-worker*|*:chromium*|*:cage*)
+    ff-player-nativ*:*|ff-media-worker:*|chrome:*|chromium:*|cage:*|*:ff-player-native*|*:ff-media-worker*|*:chromium*|*:cage*)
         ;;
     *)
         exit 0
