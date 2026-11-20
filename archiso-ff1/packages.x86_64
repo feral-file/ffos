@@ -106,7 +106,5 @@ feral-sys-monitord
 feral-watchdog
 ff-player-native
 
-# HTTP server to serve feral-player static
-darkhttpd
 # Optional, individually enrolled owner access. Never enroll an image.
 tailscale

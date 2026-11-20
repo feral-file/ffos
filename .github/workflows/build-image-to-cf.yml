@@ -138,25 +138,20 @@ jobs:
       ffos_user_ref: ${{ inputs.ffos_user_ref }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
-  build-feral-player:
+  build-native-player:
     needs: [permission-check, resolve-container]
-    name: Build feral-player Package
-    uses: ./.github/workflows/build-feral-player.yaml
+    name: Package tested native player
+    uses: ./.github/workflows/build-pkgbuild.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
-      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-      SENTRY_DSN_PLAYER: ${{ secrets.SENTRY_DSN_PLAYER }}
     with:
-      version: ${{ inputs.version }}
-      description: 'FF Player Static Web Application'
-      maintainer: 'Feral File'
+      package: ff-player-native
       environment: ${{ inputs.environment }}
-      ff_player_ref: ${{ inputs.ff_player_ref }}
-      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-amdgpu-vcn-h264-cap:
@@ -179,7 +174,7 @@ jobs:
 
   build-feralfile-pacman-repo:
     name: Build Feralfile pacman repo
-    needs: [permission-check, resolve-container, build-feral-controld, build-feral-sys-monitord, build-feral-watchdog, build-feral-player, build-amdgpu-vcn-h264-cap]
+    needs: [permission-check, resolve-container, build-feral-controld, build-feral-sys-monitord, build-feral-watchdog, build-native-player, build-amdgpu-vcn-h264-cap]
     uses: ./.github/workflows/pacman-repo.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -309,6 +304,7 @@ jobs:
 
           # Copy components directory with current checkout
           cp -r ffos-user/components /build/archiso-ff1/airootfs/home/feralfile/src/
+          rm -rf /build/archiso-ff1/airootfs/home/feralfile/src/components/player-wrapper-ui
 
       - name: Inject pacman.conf
         run: |
@@ -330,14 +326,12 @@ jobs:
 
           cp /build/archiso-ff1/pacman.conf /build/archiso-ff1/airootfs/etc/pacman.conf
 
-      - name: Copy UI files
+      - name: Prepare native player session
         run: |
-          # launcher-ui is retired: the kiosk now serves ff-player (feral-player
-          # package) at http://127.0.0.1:8080/, so /opt/feral/ui/launcher is no
-          # longer provisioned into the image.
-          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
-          cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
-          mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
+          home=/build/archiso-ff1/airootfs/home/feralfile
+          mkdir -p "$home/.logs"
+          rm "$home/systemd-services/feral-player.service" "$home/scripts/serve-feral-player.sh"
+          sed -i '/^  "feral-player.service"$/d' "$home/scripts/ota-update-success-check.sh"
 
       - name: Add Configs and Services
         env:
@@ -615,7 +609,18 @@ jobs:
             mv "$ISO_FILE" "/build/out/$NEW_NAME"
             echo "ISO created: /build/out/$NEW_NAME"
 
+            # Check the packaged filesystem from the ISO itself.
+            xorriso -osirrox on -indev "/build/out/$NEW_NAME" -extract /arch/x86_64/airootfs.sfs /build/root.sfs
+            unsquashfs -d /build/native-check /build/root.sfs var/lib/pacman/local home/feralfile/scripts/start-kiosk.sh home/feralfile/systemd-services usr/bin/ff-player-native usr/lib/ff-player-native/media/ff-media-worker
+            root=/build/native-check
+            test -L "$root/usr/bin/ff-player-native"
+            test -x "$root/usr/lib/ff-player-native/media/ff-media-worker"
+            test -d "$root"/var/lib/pacman/local/ff-player-native-*
+            ! compgen -G "$root/var/lib/pacman/local/feral-player-*" || exit 1
+            test ! -e "$root/home/feralfile/systemd-services/feral-player.service"
+            grep -q '/usr/lib/ff-player-native/ff-player-native' "$root/home/feralfile/scripts/start-kiosk.sh"
             cd /build/out
+            sha256sum "$NEW_NAME" | tee "$NEW_NAME.sha256"
 
             openssl dgst -sha256 -binary "$NEW_NAME" > iso.sha256
 
@@ -643,6 +648,7 @@ jobs:
               --transfers=7 \
               --verbose \
               --stats=1s
+            rclone copyto "$NEW_NAME.sha256" "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${{ github.ref_name }}/$NEW_NAME.sha256"
             echo "Image successfully uploaded to R2: ${NEW_NAME}"
 
             rclone copyto "$NEW_NAME.sig" \
@@ -655,6 +661,7 @@ jobs:
           fi
 
       - name: Update version info JSON
+        if: ${{ !inputs.dev_iso || inputs.update_min_version || inputs.update_required_version || inputs.update_recovery_version }}
         run: |
           set -e
 

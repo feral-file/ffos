@@ -58,6 +58,25 @@ jobs:
         with:
           pacman_snapshot: ${{ inputs.pacman_snapshot }}
 
+      - name: Download qualified FF1 runtime
+        if: inputs.package == 'ff-player-native'
+        uses: actions/download-artifact@v4
+        with:
+          repository: feral-file/ffos-user
+          run-id: 44737069377
+          github-token: ${{ github.token }}
+          name: ff-player-native-linux-x86_64
+          path: native-artifact
+
+      - name: Prepare native PKGBUILD
+        if: inputs.package == 'ff-player-native'
+        run: |
+          pacman -S --needed --noconfirm python
+          python packages/ff-player-native/prepare.py --artifact native-artifact/ff-player-cef-linux.tar.gz \
+            --sha256 ade3fd98b79456666334acbdf8cea6242d0419c70c6e7bee4e3ee38156b50cfc \
+            --version 3.1.0.native.1 --epoch 1795178130 --output /tmp/native-package
+          mv /tmp/native-package/* packages/ff-player-native/
+
       # The artifact is a pure function of the package directory and the
       # pacman snapshot (same sources, same config, same toolchain), so a
       # previous build with identical inputs is reused instead of spending
@@ -93,7 +112,7 @@ jobs:
           useradd -m builder
 
       - name: Install makedepends
-        if: steps.cache.outputs.cache-hit != 'true'
+        if: inputs.package != 'ff-player-native' && steps.cache.outputs.cache-hit != 'true'
         working-directory: packages/${{ inputs.package }}
         run: |
           set -euo pipefail
