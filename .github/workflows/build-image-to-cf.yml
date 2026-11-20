@@ -611,8 +611,18 @@ jobs:
 
             # Check the packaged filesystem from the ISO itself.
             xorriso -osirrox on -indev "/build/out/$NEW_NAME" -extract /arch/x86_64/airootfs.sfs /build/root.sfs
-            unsquashfs -d /build/native-check /build/root.sfs var/lib/pacman/local home/feralfile/scripts/start-kiosk.sh home/feralfile/systemd-services usr/bin/ff-player-native usr/lib/ff-player-native/media/ff-media-worker
+            unsquashfs -d /build/native-check /build/root.sfs var/lib/pacman/local home/feralfile/scripts/start-kiosk.sh home/feralfile/systemd-services usr/bin/ff-player-native usr/lib/ff-player-native usr/share/ff-player-native/ffos-worker-packages.lock
             root=/build/native-check
+            runtime="$root/usr/lib/ff-player-native"
+            test "$runtime/libcef.so" -ef "$runtime/engine/libcef.so"
+            test "$runtime/ff-cef-views-engine" -ef "$runtime/engine/chrome"
+            test "$(stat -c %a "$runtime/engine/chrome-sandbox")" = 4755
+            for program in ff-player-native ff-browser-launch ff-cage-client media/ff-media-launch; do
+              test -x "$runtime/$program"
+            done
+            while read -r package version; do
+              test -d "$root/var/lib/pacman/local/$package-$version"
+            done < "$root/usr/share/ff-player-native/ffos-worker-packages.lock"
             test -L "$root/usr/bin/ff-player-native"
             test -x "$root/usr/lib/ff-player-native/media/ff-media-worker"
             test -d "$root"/var/lib/pacman/local/ff-player-native-*

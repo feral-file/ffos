@@ -256,7 +256,8 @@ mount -t squashfs -o loop "$SFS_PATH" "$SFS_MOUNT"
 
 # Rsync filesystem to recovery candidate
 log_info "Syncing filesystem to @snapshots/@recovery_candidate_new..."
-rsync -aAX --delete \
+# Preserve shared CEF library and resource inodes on the destination.
+rsync -aHAX --delete \
   --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed"} \
   "$SFS_MOUNT"/ "$RECOVERY_ROOT"/
 

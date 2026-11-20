@@ -111,7 +111,8 @@ echo
 echo "Copying root filesystem..."
 rm -rf /home/soaktest
 rm -f /usr/local/bin/websocat
-rsync -aAX --info=progress2 --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/live-efi/*","/media/*","/lost+found"} / /mnt
+# Preserve shared CEF library and resource inodes on the destination.
+rsync -aHAX --info=progress2 --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/live-efi/*","/media/*","/lost+found"} / /mnt
 # No tty1 autologin on the installed system (ffos#126): the image's
 # getty@tty1 drop-in is conditioned on the live ISO cmdline and
 # feral-kiosk-startup.service owns tty1. Drop the soak-test sudoers grant too.

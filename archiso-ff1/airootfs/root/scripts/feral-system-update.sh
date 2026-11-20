@@ -387,7 +387,8 @@ log_progress "85" "Installing update to new snapshot..."
 # Factory reset still clears the cache as intended — factory_reset.sh restores
 # from @factory_reset / @recovery_candidate, neither of which ever holds it.
 log_info "Syncing filesystem into '@snapshots/@ota_new' snapshot..."
-rsync -aAX --delete --info=progress2 \
+# Preserve shared CEF library and resource inodes on the destination.
+rsync -aHAX --delete --info=progress2 \
   --exclude={"/dev/*","/.snapshots/*","/proc/*","/boot/*","/sys/*","/tmp/*","/var/tmp/*","/run/*","/mnt/*","/media/*","/live-efi/*","/lost+found","/etc/fstab","/etc/machine-id","/etc/hostname","/etc/ssh/ssh_host_*","/etc/NetworkManager/system-connections/*","/var/lib/systemd/random-seed","/home/feralfile/.cache","/home/feralfile/.config/chromium","/home/feralfile/.logs","/home/feralfile/.state"} \
   "$SFS_MOUNT"/ "$NEW_ROOT"/
 
