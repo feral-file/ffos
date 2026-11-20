@@ -6,7 +6,7 @@ pkgrel=1
 pkgdesc='Native FFOS artwork host with a public Chromium engine and native image/media playback'
 arch=('x86_64')
 license=('custom')
-depends=('glibc' 'gcc-libs' 'sqlite' 'sdl2-compat' 'libglvnd' 'mesa'
+depends=('glibc' 'gcc-libs' 'sqlite' 'sdl2-compat' 'glycin>=2.1' 'libheif' 'libglvnd' 'mesa'
          'pango' 'qrencode' 'nss' 'alsa-lib' 'libcups' 'at-spi2-core' 'libx11'
          'libxcomposite' 'libxdamage' 'libxext' 'libxfixes' 'libxrandr' 'libxkbcommon'
          'dav1d>=1.5.3' 'libass' 'lcms2' 'libpulse' 'gnutls' 'libva' 'zlib' 'libjpeg-turbo' 'curl' 'libdisplay-info'

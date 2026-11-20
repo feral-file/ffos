@@ -6,18 +6,34 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import shutil
 import re
 import tarfile
 
 parser=argparse.ArgumentParser()
-parser.add_argument('--source',type=Path,required=True)
+inputs=parser.add_mutually_exclusive_group(required=True)
+inputs.add_argument('--artifact',type=Path,help='Tested CI CEF runtime archive')
+inputs.add_argument('--source',type=Path,help='Public Chromium comparison source')
+parser.add_argument('--sha256',help='Expected SHA-256 of the tested CEF archive')
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--version',required=True)
 parser.add_argument('--epoch',type=int,required=True,help='Fixed SOURCE_DATE_EPOCH for the intended source revision')
 args=parser.parse_args()
 if not re.fullmatch(r'[0-9][0-9A-Za-z._]*',args.version) or args.epoch<0: raise SystemExit('Invalid version/epoch')
-source=args.source.resolve(strict=True)
 if args.output.exists(): raise SystemExit('Output must not exist; existing package evidence is never overwritten')
+if args.artifact:
+    if not args.sha256 or not re.fullmatch(r'[a-f0-9]{64}',args.sha256):
+        raise SystemExit('--artifact requires the expected --sha256')
+    with args.artifact.open('rb') as stream:
+        if hashlib.file_digest(stream,'sha256').hexdigest()!=args.sha256:
+            raise SystemExit('CEF archive checksum mismatch')
+    args.output.mkdir(parents=True)
+    shutil.copyfile(args.artifact,args.output/'ff-player-cef-linux.tar.gz')
+    template=Path(__file__).with_name('PKGBUILD.cef.in').read_text()
+    (args.output/'PKGBUILD').write_text(template.replace('@VERSION@',args.version).replace('@SHA256@',args.sha256))
+    (args.output/'SOURCE_DATE_EPOCH').write_text(str(args.epoch)+'\n')
+    raise SystemExit(0)
+source=args.source.resolve(strict=True)
 dependencies=json.loads((source/'dependencies.json').read_text())
 files=[]
 for name in ('CMakeLists.txt','dependencies.json','README.md'):

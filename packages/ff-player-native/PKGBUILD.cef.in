@@ -1,0 +1,29 @@
+# Package the exact runtime tested on FF1 by ffos-user CI.
+pkgname=ff-player-native
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='FF1 native artwork player with glycin, libmpv and CEF Views'
+arch=('x86_64')
+license=('custom')
+depends=('glibc' 'gcc-libs' 'sqlite' 'sdl2-compat' 'glycin>=2.1' 'libheif' 'libglvnd' 'mesa'
+         'vulkan-radeon' 'pango' 'qrencode' 'nss' 'alsa-lib' 'libcups' 'at-spi2-core'
+         'libx11' 'libxcomposite' 'libxdamage' 'libxext' 'libxfixes' 'libxrandr'
+         'libxkbcommon' 'dav1d>=1.5.3' 'libass' 'lcms2' 'libpulse' 'gnutls'
+         'libva' 'zlib' 'libjpeg-turbo' 'curl' 'libdisplay-info' 'bubblewrap'
+         'ca-certificates' 'ttf-dejavu' 'python' 'wayland>=1.24' 'libdrm>=2.4.129' 'cage')
+options=('!strip' '!debug')
+source=('ff-player-cef-linux.tar.gz')
+noextract=('ff-player-cef-linux.tar.gz')
+sha256sums=('@SHA256@')
+
+package() {
+  bsdtar -xpf "$srcdir/ff-player-cef-linux.tar.gz" -C "$pkgdir"
+  local root="$pkgdir/usr/lib/ff-player-native"
+  test -x "$root/ff-cage-client"
+  test -x "$root/ff-cef-views-engine"
+  test -x "$root/media/ff-media-worker"
+  test "$root/ff-cef-views-engine" -ef "$root/engine/chrome"
+  chmod 4755 "$root/engine/chrome-sandbox"
+  install -dm755 "$pkgdir/usr/bin"
+  ln -s /usr/lib/ff-player-native/ff-player-native "$pkgdir/usr/bin/ff-player-native"
+}

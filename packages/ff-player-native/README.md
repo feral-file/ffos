@@ -1,4 +1,16 @@
-# Native player local package
+# FF1 native player package
+
+The Cage runtime uses glycin for raster artwork, libmpv for video and CEF Views for browser artwork. The FF1 CEF workflow in `ffos-user` builds and tests the binaries on GitHub. Package the same archive that passed the on-device playlist checks.
+
+```sh
+python3 packages/ff-player-native/prepare.py \
+  --artifact ff-player-cef-linux.tar.gz --sha256 "$tested_sha256" \
+  --version "$pkgver" --epoch "$commit_epoch" --output /tmp/ff1-cef-package
+```
+
+Run `makepkg` there in the Arch packaging environment. This step preserves the CI binaries and the hard link to the CEF executable. The FFOS image owns Cage activation.
+
+## Public Chromium comparison build
 
 This package builds the C++ runtime and private media worker from an immutable
 source bundle. It installs no session/systemd units and triggers no service
