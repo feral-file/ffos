@@ -22,6 +22,10 @@ on:
         required: false
         type: string
         default: 'latest'
+      ffos_user_ref:
+        description: 'Source ref of the matching native player and daemons'
+        type: string
+        required: false
       container_image:
         description: 'Container image to use for the build'
         required: true
@@ -58,12 +62,32 @@ jobs:
         with:
           pacman_snapshot: ${{ inputs.pacman_snapshot }}
 
+      - name: Resolve matching player build
+        if: inputs.package == 'ff-player-native'
+        uses: actions/github-script@v7
+        id: player
+        env:
+          SOURCE_REF: ${{ inputs.ffos_user_ref }}
+        with:
+          script: |
+            const repo = {owner: 'feral-file', repo: 'ffos-user'};
+            const {data: commit} = await github.rest.repos.getCommit({...repo, ref: process.env.SOURCE_REF});
+            const {data} = await github.rest.actions.listWorkflowRuns({
+              ...repo, workflow_id: 'build-player.yaml', head_sha: commit.sha, status: 'success', event: 'push'
+            });
+            const run = data.workflow_runs.find(run => run.head_sha === commit.sha);
+            if (!run) throw new Error('No successful player build for ' + commit.sha);
+            core.setOutput('run', run.id);
+            core.setOutput('version', '3.1.0.native.' + run.run_number);
+            core.setOutput('epoch', Math.floor(Date.parse(commit.commit.committer.date) / 1000));
+            core.info('Packaging ' + commit.sha + ' from ' + run.html_url);
+
       - name: Download qualified FF1 runtime
         if: inputs.package == 'ff-player-native'
         uses: actions/download-artifact@v4
         with:
           repository: feral-file/ffos-user
-          run-id: 44850721007
+          run-id: ${{ steps.player.outputs.run }}
           github-token: ${{ github.token }}
           name: ff-player-native-linux-x86_64
           path: native-artifact
@@ -73,8 +97,8 @@ jobs:
         run: |
           pacman -S --needed --noconfirm python
           python packages/ff-player-native/prepare.py --artifact native-artifact/ff-player-cef-linux.tar.gz \
-            --sha256 00af86f1ef7f2df09e12c4eb0a3f6695acdd7b4edd20fcfd2b5557f75becb495 \
-            --version 3.1.0.native.2 --epoch 1795224713 --output /tmp/native-package
+            --sha256 "$(cut -d' ' -f1 native-artifact/SHA256SUMS)" \
+            --version "${{ steps.player.outputs.version }}" --epoch "${{ steps.player.outputs.epoch }}" --output /tmp/native-package
           mv /tmp/native-package/* packages/ff-player-native/
 
       # The artifact is a pure function of the package directory and the

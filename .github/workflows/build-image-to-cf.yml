@@ -39,11 +39,6 @@ on:
         required: true
         type: string
         default: 'develop'
-      ff_player_ref:
-        description: "feral-player repository reference to build static export"
-        required: true
-        default: "main"
-        type: string
       dev_iso:
         description: "Build development ISO"
         required: true
@@ -150,6 +145,7 @@ jobs:
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
       package: ff-player-native
+      ffos_user_ref: ${{ inputs.ffos_user_ref }}
       environment: ${{ inputs.environment }}
       pacman_snapshot: ${{ inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
@@ -330,8 +326,7 @@ jobs:
         run: |
           home=/build/archiso-ff1/airootfs/home/feralfile
           mkdir -p "$home/.logs"
-          rm "$home/systemd-services/feral-player.service" "$home/scripts/serve-feral-player.sh"
-          sed -i '/^  "feral-player.service"$/d' "$home/scripts/ota-update-success-check.sh"
+
 
       - name: Add Configs and Services
         env:
@@ -614,19 +609,19 @@ jobs:
             unsquashfs -d /build/native-check /build/root.sfs var/lib/pacman/local home/feralfile/scripts/start-kiosk.sh home/feralfile/systemd-services usr/bin/ff-player-native usr/lib/ff-player-native usr/share/ff-player-native/ffos-worker-packages.lock
             root=/build/native-check
             runtime="$root/usr/lib/ff-player-native"
-            test "$runtime/libcef.so" -ef "$runtime/engine/libcef.so"
-            test "$runtime/ff-cef-views-engine" -ef "$runtime/engine/chrome"
-            test "$(stat -c %a "$runtime/engine/chrome-sandbox")" = 4755
-            for program in ff-player-native ff-browser-launch ff-cage-client media/ff-media-launch; do
-              test -x "$runtime/$program"
+            test -x "$runtime/ff-player-native"
+            test "$(stat -c %a "$runtime/chrome-sandbox")" = 4755
+            for retired in ff-egress ff-media-worker ff-cef-views-engine ff-cage-client ff-browser-launch ff-media-launch ff-player-import ff-player-cef-rollback; do
+              test -z "$(find "$runtime" -name "$retired" -print -quit)"
             done
             while read -r package version; do
               test -d "$root/var/lib/pacman/local/$package-$version"
             done < "$root/usr/share/ff-player-native/ffos-worker-packages.lock"
             test -L "$root/usr/bin/ff-player-native"
-            test -x "$root/usr/lib/ff-player-native/media/ff-media-worker"
+            test -f "$runtime/media/libff_decode.so"
             test -d "$root"/var/lib/pacman/local/ff-player-native-*
             ! compgen -G "$root/var/lib/pacman/local/feral-player-*" || exit 1
+            ! compgen -G "$root/var/lib/pacman/local/ff-player-[0-9]*" || exit 1
             test ! -e "$root/home/feralfile/systemd-services/feral-player.service"
             grep -q '/usr/lib/ff-player-native/ff-player-native' "$root/home/feralfile/scripts/start-kiosk.sh"
             cd /build/out
