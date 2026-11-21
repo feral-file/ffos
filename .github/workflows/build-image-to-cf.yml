@@ -328,7 +328,13 @@ jobs:
           name: signed-native-package
           path: /build/native-repo
 
-      - name: Select this build's signed player during image assembly
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: signed-component-*
+          merge-multiple: true
+          path: /build/native-repo
+
+      - name: Select this build's signed runtime during image assembly
         run: |
           cd /build/native-repo
           repo-add native-build.db.tar.gz ./*.pkg.tar.zst
@@ -630,6 +636,9 @@ jobs:
             while read -r package version; do
               test -d "$root/var/lib/pacman/local/$package-$version"
             done < "$root/usr/share/ff-player-native/ffos-worker-packages.lock"
+            for component in feral-controld feral-watchdog feral-sys-monitord; do
+              test -d "$root/var/lib/pacman/local/$component-${{ inputs.version }}-1"
+            done
             test -L "$root/usr/bin/ff-player-native"
             test -f "$runtime/media/libff_decode.so"
             test -d "$root/var/lib/pacman/local/ff-player-native-${{ needs.build-native-player.outputs.native_version }}-1"

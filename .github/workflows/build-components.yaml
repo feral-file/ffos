@@ -241,6 +241,12 @@ jobs:
             kmspgp sign "$KMS_KEY_ID" < "$p" > "$p.sig"
           done
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-component-${{ inputs.component }}
+          path: ffos-user/components/${{ inputs.component }}/*.pkg.tar.zst*
+          if-no-files-found: error
+
       - name: Rclone to r2
         working-directory: ffos-user/components/${{ inputs.component }}
         run: |
