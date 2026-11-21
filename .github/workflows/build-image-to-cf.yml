@@ -449,7 +449,7 @@ jobs:
           # in an environment secret off the image, the same way .sentry is.
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
             del(.sentry)
-            | del(.raster)
+            | del(.raster, .cdp)
             | .logStreaming = ((.logStreaming // {}) + {
                 endpoint: "https://677c668ad85c407fb1f0b68f63f41f21.ingest.cloudflare.com",
                 environment: ($log_stream_environment | ascii_downcase)
