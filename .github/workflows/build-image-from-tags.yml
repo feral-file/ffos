@@ -75,12 +75,22 @@ jobs:
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
       native: ${{ steps.profile.outputs.native }}
+      ffos_sha: ${{ steps.profile.outputs.ffos_sha }}
+      user_sha: ${{ steps.profile.outputs.user_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ffos_ref }}
+      - uses: actions/checkout@v4
+        with:
+          repository: feral-file/ffos-user
+          ref: ${{ inputs.ffos_user_ref }}
+          path: ffos-user
+          persist-credentials: false
       - id: profile
         run: |
+          echo "ffos_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "user_sha=$(git -C ffos-user rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           if grep -qx ff-player-native archiso-ff1/packages.x86_64; then
             echo native=true >> "$GITHUB_OUTPUT"
           else
@@ -126,7 +136,7 @@ jobs:
     if: needs.determine-local-player.outputs.native == 'true'
     uses: ./.github/workflows/native-runtime.yaml
     with:
-      ffos_user_ref: ${{ inputs.ffos_user_ref }}
+      ffos_user_ref: ${{ needs.determine-local-player.outputs.user_sha }}
 
   build-image:
     name: Generate FFOS iso from tags
@@ -142,13 +152,13 @@ jobs:
       - name: Checkout ffos repository at tag/ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ffos_ref }}
+          ref: ${{ needs.determine-local-player.outputs.ffos_sha }}
 
       - name: Checkout ffos-user Repository at tag/ref
         uses: actions/checkout@v4
         with:
           repository: feral-file/ffos-user
-          ref: ${{ inputs.ffos_user_ref }}
+          ref: ${{ needs.determine-local-player.outputs.user_sha }}
           path: ffos-user
 
       - name: Checkout feral-player Repository at ref
