@@ -2,10 +2,10 @@
 pkgname=ff-player-native
 pkgver=@VERSION@
 pkgrel=1
-pkgdesc='FF1 native artwork player with glycin, libmpv and CEF Views'
+pkgdesc='FF1 native artwork player with libmpv and CEF Views'
 arch=('x86_64')
 license=('custom')
-depends=('glibc' 'gcc-libs' 'sqlite' 'sdl2-compat' 'glycin>=2.1' 'libheif' 'libglvnd' 'mesa'
+depends=('glibc' 'gcc-libs' 'sqlite' 'sdl2-compat' 'libglvnd' 'mesa'
          'vulkan-radeon' 'pango' 'qrencode' 'nss' 'alsa-lib' 'libcups' 'at-spi2-core'
          'libx11' 'libxcomposite' 'libxdamage' 'libxext' 'libxfixes' 'libxrandr'
          'libxkbcommon' 'dav1d>=1.5.3' 'libass' 'lcms2' 'libpulse' 'gnutls'

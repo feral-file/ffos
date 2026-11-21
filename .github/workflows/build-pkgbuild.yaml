@@ -63,7 +63,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           repository: feral-file/ffos-user
-          run-id: 44737069377
+          run-id: 44850721007
           github-token: ${{ github.token }}
           name: ff-player-native-linux-x86_64
           path: native-artifact
@@ -73,8 +73,8 @@ jobs:
         run: |
           pacman -S --needed --noconfirm python
           python packages/ff-player-native/prepare.py --artifact native-artifact/ff-player-cef-linux.tar.gz \
-            --sha256 ade3fd98b79456666334acbdf8cea6242d0419c70c6e7bee4e3ee38156b50cfc \
-            --version 3.1.0.native.1 --epoch 1795178130 --output /tmp/native-package
+            --sha256 00af86f1ef7f2df09e12c4eb0a3f6695acdd7b4edd20fcfd2b5557f75becb495 \
+            --version 3.1.0.native.2 --epoch 1795224713 --output /tmp/native-package
           mv /tmp/native-package/* packages/ff-player-native/
 
       # The artifact is a pure function of the package directory and the
