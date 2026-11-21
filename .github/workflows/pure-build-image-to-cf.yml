@@ -595,6 +595,7 @@ jobs:
             NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version }}.iso"
             mv "$ISO_FILE" "/build/out/$NEW_NAME"
             echo "ISO created: /build/out/$NEW_NAME"
+            bash "$GITHUB_WORKSPACE/scripts/verify-native-iso.sh" "/build/out/$NEW_NAME" "${{ needs.build-native-player.outputs.native_version }}" "${{ inputs.version }}" feral-controld feral-watchdog
 
             cd /build/out
 

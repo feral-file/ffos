@@ -154,6 +154,16 @@ jobs:
         with:
           ref: ${{ needs.determine-local-player.outputs.ffos_sha }}
 
+      - name: Checkout image verification from the workflow revision
+        if: needs.determine-local-player.outputs.native == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: scripts/verify-native-iso.sh
+          sparse-checkout-cone-mode: false
+          path: workflow-verifier
+          persist-credentials: false
+
       - name: Checkout ffos-user Repository at tag/ref
         uses: actions/checkout@v4
         with:
@@ -847,6 +857,9 @@ jobs:
             NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version }}.iso"
             mv "$ISO_FILE" "/build/out/$NEW_NAME"
             echo "ISO created: /build/out/$NEW_NAME"
+            if [ "${{ needs.determine-local-player.outputs.native }}" = true ]; then
+              bash "$GITHUB_WORKSPACE/workflow-verifier/scripts/verify-native-iso.sh" "/build/out/$NEW_NAME" "${{ needs.native.outputs.version }}" "${{ inputs.version }}" feral-controld feral-watchdog feral-sys-monitord
+            fi
 
             cd /build/out
             openssl dgst -sha256 -binary "$NEW_NAME" > iso.sha256
