@@ -68,6 +68,7 @@ wlroots0.18
 xorg-xwayland
 chromium
 wlr-randr
+grim
 # seatd gives cage DRM/input access without a logind session (ffos#126): no
 # getty or login shell runs on tty1, so libseat's logind backend has no session
 # to attach to. Selected through LIBSEAT_BACKEND=seatd in
