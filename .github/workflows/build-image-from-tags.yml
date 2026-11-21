@@ -539,7 +539,7 @@ jobs:
           cat >> /build/archiso-ff1/airootfs/etc/pacman.conf << EOF
           [feralfile]
           SigLevel = Required DatabaseOptional TrustedOnly
-          Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
+          Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/native/os/\$arch
           EOF
 
       - name: Copy UI files

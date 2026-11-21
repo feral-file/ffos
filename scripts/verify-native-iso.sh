@@ -6,8 +6,11 @@ component_version=$3
 shift 3
 # Check the packaged filesystem from the ISO itself.
 xorriso -osirrox on -indev "$iso" -extract /arch/x86_64/airootfs.sfs /build/root.sfs
-unsquashfs -d /build/native-check /build/root.sfs var/lib/pacman/local home/feralfile/scripts/start-kiosk.sh home/feralfile/systemd-services usr/bin/ff-player-native usr/lib/ff-player-native usr/share/ff-player-native/ffos-worker-packages.lock
+unsquashfs -d /build/native-check /build/root.sfs etc/pacman.conf var/lib/pacman/local home/feralfile/scripts/start-kiosk.sh home/feralfile/systemd-services usr/bin/ff-player-native usr/lib/ff-player-native usr/share/ff-player-native/ffos-worker-packages.lock
 root=/build/native-check
+# Legacy kiosks poll the old branch index before they receive a full image.
+# Only a booted native image may discover the socket-only daemon packages.
+grep -Eq '^Server = https://[^ ]+/native/os/\$arch$' "$root/etc/pacman.conf"
 runtime="$root/usr/lib/ff-player-native"
 test -x "$runtime/ff-player-native"
 test "$(stat -c %a "$runtime/chrome-sandbox")" = 4755

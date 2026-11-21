@@ -11,7 +11,7 @@ FFOS is the centralized build repository responsible for creating FFOS images. I
 │                 │    │                 │    │                 │
 │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
 │ │ components/ │ │    │ │   GitHub    │ │    │ │ {branch}/   │ │
-│ │ users/      │ │    │ │  Actions    │ │    │ │ os/x86_64/  │ │
+│ │ users/      │ │    │ │  Actions    │ │    │ │ native/os/x86_64/  │ │
 │ └─────────────┘ │    │ └─────────────┘ │    │ │ *.iso       │ │
 │                 │    │                 │    │ └─────────────┘ │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
@@ -65,7 +65,7 @@ ffos/
 3. Create pacman package with PKGBUILD
 4. Upload package to R2 storage
 
-**Output**: Pacman package uploaded to `{branch}/os/x86_64/`
+**Output**: Pacman package uploaded to `{branch}/native/os/x86_64/`
 
 ### 2. Repository Management Layer (`pacman-repo.yaml`)
 
@@ -120,7 +120,7 @@ ffos/
 
 ### Component Data Flow
 ```
-ffos-user/components/ → ffos build process → R2/{branch}/os/x86_64/
+ffos-user/components/ → ffos build process → R2/{branch}/native/os/x86_64/
 ```
 
 ### User Data Flow
@@ -175,9 +175,15 @@ one minute maximum duration rather than accepting image-time overrides.
 
 ## R2 Storage Structure
 
+Legacy images continue polling the original `{branch}/os/x86_64/` index.
+The full-image update installs the native package repository configuration
+together with the matching kiosk session. Build a full image once on a new
+branch before using the pure-image workflow, which reuses its kernel module
+and system-monitor packages.
+
 ```
 {branch}/
-├── os/x86_64/
+├── native/os/x86_64/
 │   ├── feral-controld-{version}-x86_64.pkg.tar.zst
 │   ├── feral-sys-monitord-{version}-x86_64.pkg.tar.zst
 │   ├── feral-watchdog-{version}-x86_64.pkg.tar.zst
