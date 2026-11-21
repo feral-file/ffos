@@ -75,8 +75,22 @@ jobs:
     with:
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
 
+  source:
+    needs: permission-check
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.revision.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: feral-file/ffos-user
+          ref: ${{ inputs.ffos_user_ref }}
+          persist-credentials: false
+      - id: revision
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   build-feral-controld:
-    needs: [permission-check, resolve-container]
+    needs: [permission-check, source, resolve-container]
     name: Build Feral Controld
     uses: ./.github/workflows/build-components.yaml
     secrets:
@@ -93,11 +107,11 @@ jobs:
       description: 'Feral File Controld Service'
       maintainer: 'Feral File'
       environment: ${{ inputs.environment }}
-      ffos_user_ref: ${{ inputs.ffos_user_ref }}
+      ffos_user_ref: ${{ needs.source.outputs.sha }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-feral-sys-monitord:
-    needs: [permission-check, resolve-container]
+    needs: [permission-check, source, resolve-container]
     name: Build Feral System Monitord
     uses: ./.github/workflows/build-components.yaml
     secrets:
@@ -112,11 +126,11 @@ jobs:
       description: 'Feral File System Monitord'
       maintainer: 'Feral File'
       environment: ${{ inputs.environment }}
-      ffos_user_ref: ${{ inputs.ffos_user_ref }}
+      ffos_user_ref: ${{ needs.source.outputs.sha }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-feral-watchdog:
-    needs: [permission-check, resolve-container]
+    needs: [permission-check, source, resolve-container]
     name: Build Feral Watchdog
     uses: ./.github/workflows/build-components.yaml
     secrets:
@@ -131,11 +145,11 @@ jobs:
       description: 'Feral File Watchdog'
       maintainer: 'Feral File'
       environment: ${{ inputs.environment }}
-      ffos_user_ref: ${{ inputs.ffos_user_ref }}
+      ffos_user_ref: ${{ needs.source.outputs.sha }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-native-player:
-    needs: [permission-check, resolve-container]
+    needs: [permission-check, source, resolve-container]
     name: Package tested native player
     uses: ./.github/workflows/build-pkgbuild.yaml
     secrets:
@@ -146,7 +160,7 @@ jobs:
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
       package: ff-player-native
-      ffos_user_ref: ${{ inputs.ffos_user_ref }}
+      ffos_user_ref: ${{ needs.source.outputs.sha }}
       environment: ${{ inputs.environment }}
       pacman_snapshot: ${{ inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
@@ -187,7 +201,7 @@ jobs:
   build-image:
     name: Generate FFOS iso
     runs-on: ubuntu-latest
-    needs: [permission-check, resolve-container, build-feralfile-pacman-repo, build-native-player]
+    needs: [permission-check, source, resolve-container, build-feralfile-pacman-repo, build-native-player]
     if: always() && !failure() && !cancelled()
     environment: ${{ inputs.environment }}
 
@@ -203,7 +217,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: feral-file/ffos-user
-          ref: ${{ inputs.ffos_user_ref }}
+          ref: ${{ needs.source.outputs.sha }}
           path: ffos-user
 
       - name: Setup pacman
