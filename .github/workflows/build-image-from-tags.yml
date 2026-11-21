@@ -507,6 +507,8 @@ jobs:
           cp -r ffos-user/components /build/archiso-ff1/airootfs/home/feralfile/src/
 
       - name: Inject pacman.conf for build and runtime
+        env:
+          NATIVE_PROFILE: ${{ needs.determine-local-player.outputs.native }}
         run: |
           set -e
 
@@ -532,6 +534,13 @@ jobs:
           Server = file:///build/local-repo/\$arch
           EOF
 
+          # Historical tags retain the package rail compatible with their kiosk.
+          case "$NATIVE_PROFILE" in
+            true) package_path=native/os ;;
+            false) package_path=os ;;
+            *) exit 1 ;;
+          esac
+
           # Runtime pacman config inside ISO should point to remote R2 repo only,
           # so systems can update to latest packages from that channel.
           # Use archiso profile's original pacman.conf as base (not the container's /etc/pacman.conf)
@@ -539,7 +548,7 @@ jobs:
           cat >> /build/archiso-ff1/airootfs/etc/pacman.conf << EOF
           [feralfile]
           SigLevel = Required DatabaseOptional TrustedOnly
-          Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/native/os/\$arch
+          Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/${package_path}/\$arch
           EOF
 
       - name: Copy UI files
