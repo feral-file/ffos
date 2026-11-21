@@ -61,6 +61,7 @@ on:
         default: false
 permissions:
   id-token: write
+  actions: read
   contents: read
 
 jobs:
@@ -186,7 +187,7 @@ jobs:
   build-image:
     name: Generate FFOS iso
     runs-on: ubuntu-latest
-    needs: [permission-check, resolve-container, build-feralfile-pacman-repo]
+    needs: [permission-check, resolve-container, build-feralfile-pacman-repo, build-native-player]
     if: always() && !failure() && !cancelled()
     environment: ${{ inputs.environment }}
 
@@ -322,6 +323,17 @@ jobs:
 
           cp /build/archiso-ff1/pacman.conf /build/archiso-ff1/airootfs/etc/pacman.conf
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-native-package
+          path: /build/native-repo
+
+      - name: Select this build's signed player during image assembly
+        run: |
+          cd /build/native-repo
+          repo-add native-build.db.tar.gz ./*.pkg.tar.zst
+          sed -i '/^\[feralfile\]/i [native-build]\nSigLevel = Required DatabaseOptional TrustedOnly\nServer = file:///build/native-repo\n' /build/archiso-ff1/pacman.conf
+
       - name: Prepare native player session
         run: |
           home=/build/archiso-ff1/airootfs/home/feralfile
@@ -449,7 +461,8 @@ jobs:
           # in an environment secret off the image, the same way .sentry is.
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
             del(.sentry)
-            | del(.raster, .cdp)
+            | del(.raster)
+            | del(.cdp)
             | .logStreaming = ((.logStreaming // {}) + {
                 endpoint: "https://677c668ad85c407fb1f0b68f63f41f21.ingest.cloudflare.com",
                 environment: ($log_stream_environment | ascii_downcase)
@@ -619,7 +632,7 @@ jobs:
             done < "$root/usr/share/ff-player-native/ffos-worker-packages.lock"
             test -L "$root/usr/bin/ff-player-native"
             test -f "$runtime/media/libff_decode.so"
-            test -d "$root"/var/lib/pacman/local/ff-player-native-*
+            test -d "$root/var/lib/pacman/local/ff-player-native-${{ needs.build-native-player.outputs.native_version }}-1"
             ! compgen -G "$root/var/lib/pacman/local/feral-player-*" || exit 1
             ! compgen -G "$root/var/lib/pacman/local/ff-player-[0-9]*" || exit 1
             test ! -e "$root/home/feralfile/systemd-services/feral-player.service"

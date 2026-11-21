@@ -54,6 +54,7 @@ on:
         type: boolean
 permissions:
   id-token: write
+  actions: read
   contents: read
 
 jobs:
@@ -73,9 +74,21 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
+      native: ${{ steps.profile.outputs.native }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ffos_ref }}
+      - id: profile
+        run: |
+          if grep -qx ff-player-native archiso-ff1/packages.x86_64; then
+            echo native=true >> "$GITHUB_OUTPUT"
+          else
+            echo native=false >> "$GITHUB_OUTPUT"
+          fi
       - name: Check if ffos tag supports local player
         id: check
+        if: steps.profile.outputs.native != 'true'
         env:
           FFOS_REF: ${{ inputs.ffos_ref }}
           FF_PLAYER_REF: ${{ inputs.ff_player_ref }}
@@ -108,9 +121,16 @@ jobs:
             echo "Skipping local player: ffos_ref ${FFOS_REF} is below v${MIN_VERSION}."
           fi
 
+  native:
+    needs: determine-local-player
+    if: needs.determine-local-player.outputs.native == 'true'
+    uses: ./.github/workflows/native-runtime.yaml
+    with:
+      ffos_user_ref: ${{ inputs.ffos_user_ref }}
+
   build-image:
     name: Generate FFOS iso from tags
-    needs: [permission-check, resolve-container, determine-local-player]
+    needs: [permission-check, resolve-container, determine-local-player, native]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
@@ -191,6 +211,14 @@ jobs:
           npm ci
           NEXT_PUBLIC_DISABLE_VERSION_CHECK=true npm run build
 
+      - uses: actions/download-artifact@v4
+        if: needs.determine-local-player.outputs.native == 'true'
+        with:
+          name: ff-player-native-linux-x86_64
+          repository: ${{ needs.native.outputs.repository }}
+          run-id: ${{ needs.native.outputs.run }}
+          github-token: ${{ github.token }}
+          path: native-artifact
       - name: Build local FFOS packages (no R2 upload)
         env:
           PKG_VERSION: ${{ inputs.version }}
@@ -331,6 +359,15 @@ jobs:
             cp ./*.pkg.tar.zst /build/local-repo/x86_64/
           fi
 
+          if [ "${{ needs.determine-local-player.outputs.native }}" = true ]; then
+            cd "$GITHUB_WORKSPACE"
+            python packages/ff-player-native/prepare.py --artifact native-artifact/ff-player-cef-linux.tar.gz \
+              --sha256 "$(cut -d' ' -f1 native-artifact/SHA256SUMS)" --version "${{ needs.native.outputs.version }}" \
+              --epoch "${{ needs.native.outputs.epoch }}" --output /tmp/native-package
+            chown -R builder:builder /tmp/native-package
+            su builder -c 'cd /tmp/native-package && makepkg -df'
+            cp /tmp/native-package/*.pkg.tar.zst /build/local-repo/x86_64/
+          fi
           cd /build/local-repo/x86_64
           repo-add feralfile-local.db.tar.gz ./*.pkg.tar.zst
 
@@ -489,8 +526,10 @@ jobs:
           # launcher-ui is retired: the kiosk now serves ff-player (feral-player
           # package) at http://127.0.0.1:8080/, so /opt/feral/ui/launcher is no
           # longer provisioned into the image.
-          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
-          cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
+          if [ "${{ needs.determine-local-player.outputs.native }}" != true ]; then
+            mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
+            cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
+          fi
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
 
       - name: Add Configs and Services

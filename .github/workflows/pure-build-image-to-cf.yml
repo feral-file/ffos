@@ -39,11 +39,6 @@ on:
         required: true
         type: string
         default: 'develop'
-      ff_player_ref:
-        description: "feral-player repository reference to build static export"
-        required: true
-        default: "main"
-        type: string
       dev_iso:
         description: "Build development ISO"
         required: true
@@ -66,6 +61,7 @@ on:
         default: false
 permissions:
   id-token: write
+  actions: read
   contents: read
 
 jobs:
@@ -79,30 +75,25 @@ jobs:
     with:
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
 
-  build-feral-player:
-    name: Build feral-player Package
+  build-native-player:
     needs: [permission-check, resolve-container]
-    if: ${{ inputs.ff_player_ref != '' }}
-    uses: ./.github/workflows/build-feral-player.yaml
+    name: Package tested native player
+    uses: ./.github/workflows/build-pkgbuild.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
-      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-      SENTRY_DSN_PLAYER: ${{ secrets.SENTRY_DSN_PLAYER }}
     with:
-      version: ${{ inputs.version }}
-      description: 'FF Player Static Web Application'
-      maintainer: 'Feral File'
+      package: ff-player-native
+      ffos_user_ref: ${{ inputs.ffos_user_ref }}
       environment: ${{ inputs.environment }}
-      ff_player_ref: ${{ inputs.ff_player_ref }}
-      pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-image:
-    needs: [permission-check, resolve-container, build-feral-player]
+    needs: [permission-check, resolve-container, build-native-player]
     if: always() && !failure() && !cancelled()
     name: Generate FFOS iso
     runs-on: ubuntu-latest
@@ -239,14 +230,19 @@ jobs:
 
           cp /build/archiso-ff1/pacman.conf /build/archiso-ff1/airootfs/etc/pacman.conf
 
-      - name: Copy UI files
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-native-package
+          path: /build/native-repo
+
+      - name: Select this build's signed player during image assembly
         run: |
-          # launcher-ui is retired: the kiosk now serves ff-player (feral-player
-          # package) at http://127.0.0.1:8080/, so /opt/feral/ui/launcher is no
-          # longer provisioned into the image.
-          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
-          cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
-          mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
+          cd /build/native-repo
+          repo-add native-build.db.tar.gz ./*.pkg.tar.zst
+          sed -i '/^\[feralfile\]/i [native-build]\nSigLevel = Required DatabaseOptional TrustedOnly\nServer = file:///build/native-repo\n' /build/archiso-ff1/pacman.conf
+
+      - name: Prepare native player session
+        run: mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
 
       - name: Add Configs and Services
         env:
@@ -370,6 +366,7 @@ jobs:
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
             del(.sentry)
             | del(.raster)
+            | del(.cdp)
             | .logStreaming = ((.logStreaming // {}) + {
                 endpoint: "https://677c668ad85c407fb1f0b68f63f41f21.ingest.cloudflare.com",
                 environment: ($log_stream_environment | ascii_downcase)

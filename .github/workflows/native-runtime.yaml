@@ -1,0 +1,67 @@
+name: Resolve native player runtime
+on:
+  workflow_call:
+    inputs:
+      ffos_user_ref:
+        type: string
+        required: true
+    outputs:
+      run:
+        value: ${{ jobs.runtime.outputs.run }}
+      repository:
+        value: ${{ jobs.runtime.outputs.repository }}
+      epoch:
+        value: ${{ jobs.runtime.outputs.epoch }}
+      version:
+        value: ${{ jobs.runtime.outputs.version }}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    outputs:
+      run: ${{ steps.select.outputs.run }}
+      repository: ${{ steps.select.outputs.repository }}
+      epoch: ${{ steps.select.outputs.epoch }}
+      version: ${{ steps.select.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: feral-file/ffos-user
+          ref: ${{ inputs.ffos_user_ref }}
+      - name: Identify reusable runtime built from this commit
+        id: select
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {execFileSync} = require('node:child_process');
+            const sha = execFileSync('git',['rev-parse','HEAD']).toString().trim();
+            const epoch = execFileSync('git',['show','-s','--format=%ct','HEAD']).toString().trim();
+            const repo = {owner:'feral-file',repo:'ffos-user'};
+            const {data} = await github.rest.actions.listWorkflowRuns({...repo,workflow_id:'build-player.yaml',head_sha:sha,status:'success'});
+            let selected;
+            for (const run of data.workflow_runs) {
+              if (!['push','workflow_dispatch'].includes(run.event) || run.head_sha !== sha || run.head_repository?.full_name !== 'feral-file/ffos-user') continue;
+              const {data: artifacts} = await github.rest.actions.listWorkflowRunArtifacts({...repo,run_id:run.id});
+              if (artifacts.artifacts.some(a => a.name === 'ff-player-native-linux-x86_64' && !a.expired)) { selected = run; break; }
+            }
+            core.setOutput('build',selected ? 'false' : 'true');
+            core.setOutput('run',selected?.id || context.runId);
+            core.setOutput('repository',selected ? 'feral-file/ffos-user' : process.env.GITHUB_REPOSITORY);
+            core.setOutput('epoch',epoch);
+            core.setOutput('version','3.1.0.native.' + epoch + '.g' + sha.slice(0,12));
+      - name: Build and test selected source when no reusable artifact exists
+        if: steps.select.outputs.build == 'true'
+        run: |
+          docker build -t ff-native-build components/player
+          docker run --rm -v "$PWD/components:/workspace/components" -w /workspace/components/player ff-native-build sh tools/build-ff1.sh
+      - uses: actions/upload-artifact@v4
+        if: steps.select.outputs.build == 'true'
+        with:
+          name: ff-player-native-linux-x86_64
+          path: |
+            components/player/build-ff1/ff-player-cef-linux.tar.gz
+            components/player/build-ff1/SHA256SUMS
+            components/player/build-ff1/installed-executables.txt
+          if-no-files-found: error
