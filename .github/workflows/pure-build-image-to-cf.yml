@@ -75,6 +75,46 @@ jobs:
     with:
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
 
+  build-feral-controld:
+    needs: [permission-check, resolve-container]
+    name: Build Feral Controld
+    uses: ./.github/workflows/build-components.yaml
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+      CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
+      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
+    with:
+      component: feral-controld
+      version: ${{ inputs.version }}
+      description: 'Feral File Controld Service'
+      maintainer: 'Feral File'
+      environment: ${{ inputs.environment }}
+      ffos_user_ref: ${{ inputs.ffos_user_ref }}
+      container_image: ${{ needs.resolve-container.outputs.image }}
+
+  build-feral-watchdog:
+    needs: [permission-check, resolve-container]
+    name: Build Feral Watchdog
+    uses: ./.github/workflows/build-components.yaml
+    secrets:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+      CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
+      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
+    with:
+      component: feral-watchdog
+      version: ${{ inputs.version }}
+      description: 'Feral File Watchdog'
+      maintainer: 'Feral File'
+      environment: ${{ inputs.environment }}
+      ffos_user_ref: ${{ inputs.ffos_user_ref }}
+      container_image: ${{ needs.resolve-container.outputs.image }}
+
   build-native-player:
     needs: [permission-check, resolve-container]
     name: Package tested native player
@@ -94,7 +134,7 @@ jobs:
 
   build-feralfile-pacman-repo:
     name: Build Feralfile pacman repo
-    needs: [permission-check, resolve-container, build-native-player]
+    needs: [permission-check, resolve-container, build-native-player, build-feral-controld, build-feral-watchdog]
     uses: ./.github/workflows/pacman-repo.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -248,6 +288,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: signed-native-package
+          path: /build/native-repo
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: signed-component-*
+          merge-multiple: true
           path: /build/native-repo
 
       - name: Select this build's signed player during image assembly
