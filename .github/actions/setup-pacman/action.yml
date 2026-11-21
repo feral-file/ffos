@@ -24,6 +24,7 @@ runs:
           {
             echo "# Arch Linux Archive - ${SNAPSHOT} snapshot"
             echo "Server = https://archive.archlinux.org/repos/${SNAPSHOT}/\$repo/os/\$arch"
+            echo "Server = https://umea.archive.pkgbuild.com/repos/${SNAPSHOT}/\$repo/os/\$arch"
           } > /etc/pacman.d/mirrorlist
         fi
 
