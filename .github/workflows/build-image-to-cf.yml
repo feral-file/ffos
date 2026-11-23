@@ -49,6 +49,11 @@ on:
         required: true
         default: false
         type: boolean
+      factory_check:
+        description: "Factory ISO: boots straight into the factory check, cannot install (factory-iso/apply.sh)"
+        required: true
+        default: false
+        type: boolean
       update_min_version:
         description: "Update minimum runtime version (min_runtime_version)"
         required: true
@@ -73,8 +78,22 @@ jobs:
     name: Permission Check
     uses: ./.github/workflows/permission-check.yaml
 
+  # A factory ISO (factory_check) is not a release, but this workflow still
+  # builds every component and publishes it to {branch}/os/x86_64/ and
+  # regenerates that pacman repo: on a device channel that is what fielded
+  # devices install on their next package update. So a factory ISO is built on
+  # a branch no device follows (it gets its own {branch}/ prefix and repo).
+  factory-branch-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse a factory ISO on a device channel
+        if: ${{ inputs.factory_check && contains(fromJSON('["develop", "staging", "release", "demo", "main"]'), github.ref_name) }}
+        run: |
+          echo "::error::factory_check would publish this build's packages to ${{ github.ref_name }}/os/x86_64/, which devices on ${{ github.ref_name }} install. Dispatch it on a branch no device follows."
+          exit 1
+
   resolve-container:
-    needs: permission-check
+    needs: [permission-check, factory-branch-guard]
     uses: ./.github/workflows/resolve-container.yaml
     with:
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
@@ -259,6 +278,17 @@ jobs:
           mesa-utils
           python-rich
           EOF
+          fi
+
+          # Factory ISO (factory-iso/apply.sh): the Factory check entry only, as
+          # the default with no menu, run in kmscon. Carries no soak test:
+          # that is a different stick.
+          if [ "${{ inputs.factory_check }}" = "true" ]; then
+            if [ "${{ inputs.soak-test }}" = "true" ]; then
+              echo "::error::factory_check and soak-test cannot be combined"
+              exit 1
+            fi
+            ./factory-iso/apply.sh /build/archiso-ff1
           fi
 
           # CRITICAL: Create and set up the mirrorlist for the archiso build environment
@@ -599,7 +629,7 @@ jobs:
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
           ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
           if [ -f "$ISO_FILE" ]; then
-            IMAGE_TYPE="${{ inputs.dev_iso && 'dev-' || '' }}"
+            IMAGE_TYPE="${{ inputs.dev_iso && 'dev-' || '' }}${{ inputs.factory_check && 'factory-' || '' }}"
             if [ "${{ github.ref_name }}" = "release" ]; then
               IMAGE_TAG="-release"
             elif [ "${{ github.ref_name }}" = "demo" ]; then
@@ -654,7 +684,12 @@ jobs:
             exit 1
           fi
 
+      # A factory ISO is not an OS release: latest_version is what devices on
+      # this branch update to, and the factory ISO's name is not the one they
+      # would fetch. (Its packages are still published; factory-branch-guard
+      # keeps that off the device channels.)
       - name: Update version info JSON
+        if: ${{ !inputs.factory_check }}
         run: |
           set -e
 

@@ -145,6 +145,14 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 - `version`: ISO version number
 - `ffos_user_ref`: ffos-user repository reference
 - `soak-test`: Include soak test components
+- `factory_check`: Factory ISO (`build-image-to-cf.yml`). Boots straight into
+  the Factory check with no key pressed and carries no install entry, so it can
+  never wipe a unit; runs the check in kmscon for its Chinese lines. Named
+  `FF1-<branch>-factory-<version>.iso` and leaves `version-info.json` alone.
+  The run still builds and publishes every package to `<branch>/os/x86_64/`,
+  so it is refused on `develop`, `staging`, `release`, `demo` and `main`
+  (devices install from those repos): dispatch it on a branch no device
+  follows. See `factory-iso/apply.sh`.
 - `environment`: Development/Staging/Production environment
 - `is_development`: Include development tools
 - `install_to_emmc`: Build installation image
