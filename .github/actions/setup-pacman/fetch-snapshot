@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Pacman selects the version from its snapshot DB and verifies the downloaded
+# package against that DB and its signing policy. Only its transport changes.
+set -eu
+url=$1
+output=$2
+fetch() {
+  curl --fail --silent --show-error --location --connect-timeout 10 \
+    --speed-limit 1024 --speed-time 30 --output "$output" -- "$1"
+}
+case "$url" in
+  https://archive.archlinux.org/repos/*|https://umea.archive.pkgbuild.com/repos/*)
+    file=${url##*/}
+    if [[ "$file" =~ ^(.+)-[^-]+-[^-]+-[^-]+\.pkg\.tar\.(zst|xz)(\.sig)?$ ]]; then
+      name=${BASH_REMATCH[1]}
+      if fetch "https://umea.archive.pkgbuild.com/packages/${name:0:1}/$name/$file"; then
+        exit 0
+      fi
+    fi ;;
+esac
+fetch "$url"

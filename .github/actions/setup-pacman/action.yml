@@ -20,6 +20,8 @@ runs:
             "https://archlinux.org/mirrorlist/?country=US&protocol=https&ip_version=4&use_mirror_status=on"
           sed -i 's/^#Server/Server/' /etc/pacman.d/mirrorlist
         else
+          install -m755 "$GITHUB_ACTION_PATH/fetch-snapshot" /usr/local/bin/ff-fetch-snapshot
+          sed -i '/^\[options\]/a XferCommand = /usr/local/bin/ff-fetch-snapshot %u %o' /etc/pacman.conf
           echo "Using Arch Linux Archive snapshot: $SNAPSHOT"
           {
             echo "# Arch Linux Archive - ${SNAPSHOT} snapshot"

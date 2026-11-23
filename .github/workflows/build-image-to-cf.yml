@@ -350,6 +350,11 @@ jobs:
 
       - name: Select this build's signed runtime during image assembly
         run: |
+          if [ -x /usr/local/bin/ff-fetch-snapshot ]; then
+            # Only the build profile uses the runner's downloader. The device
+            # configuration was copied before this step.
+            sed -i '/^\[options\]/a XferCommand = /usr/local/bin/ff-fetch-snapshot %u %o' /build/archiso-ff1/pacman.conf
+          fi
           cd /build/native-repo
           repo-add native-build.db.tar.gz ./*.pkg.tar.zst
           sed -i '/^\[feralfile\]/i [native-build]\nSigLevel = Required DatabaseOptional TrustedOnly\nServer = file:///build/native-repo\n' /build/archiso-ff1/pacman.conf
