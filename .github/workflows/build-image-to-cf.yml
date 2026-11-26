@@ -227,7 +227,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
+          ./scripts/install-build-packages.sh archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
             git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli
 
       - name: Apply version-specific patches

@@ -250,7 +250,7 @@ jobs:
       - name: Rclone to r2
         working-directory: ffos-user/components/${{ inputs.component }}
         run: |
-          pacman -S --noconfirm rclone
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" rclone
 
           # Configure rclone
           mkdir -p ~/.config/rclone
