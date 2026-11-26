@@ -20,17 +20,32 @@ jobs:
     outputs:
       image: ${{ steps.resolve.outputs.image }}
     steps:
+      # Every dated snapshot is pinned to the archlinux:base-<date> image
+      # closest to it, so the image's packages match the snapshot's and
+      # nothing drifts. The build moves the image's packages to the snapshot,
+      # and a rolling archlinux:latest drifts until a soname bump breaks that
+      # move (2026-11: OpenSSL 4 in latest vs 3.6 in 2026/07/13, which had
+      # ridden latest unpinned since July). A snapshot with no pin fails here
+      # rather than riding latest until the day latest moves; scripts/verify.sh
+      # checks that every snapshot the workflows offer has a pin.
       - name: Resolve container image for snapshot
         id: resolve
         run: |
           case "${{ inputs.pacman_snapshot }}" in
+            "2026/07/13")
+              echo "image=archlinux:base-20260712.0.555161" >> $GITHUB_OUTPUT
+              ;;
             "2025/11/25")
               echo "image=archlinux:base-20251214.0.467559" >> $GITHUB_OUTPUT
               ;;
             "2025/05/31")
               echo "image=archlinux:base-20250525.0.354646" >> $GITHUB_OUTPUT
               ;;
-            *)
+            "latest")
               echo "image=archlinux:latest" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "::error::pacman_snapshot '${{ inputs.pacman_snapshot }}' has no pinned container image in resolve-container.yaml; archlinux:latest drifts away from a fixed snapshot. Pin the archlinux:base-<date> image closest to it."
+              exit 1
               ;;
           esac
