@@ -519,8 +519,22 @@ grep -q 'if: ${{ !inputs.factory_check }}' .github/workflows/build-image-to-cf.y
 factory_profile="$(mktemp -d)"
 cp -r archiso-ff1 "$factory_profile/"
 factory-iso/apply.sh "$factory_profile/archiso-ff1"
-[ "$(ls "$factory_profile/archiso-ff1/efiboot/loader/entries")" = archiso-x86_64-linux-factory-check.conf ] || {
-  printf 'the factory ISO must carry the Factory check entry and nothing else (Auto Install wipes the NVMe unasked)\n' >&2
+factory_entries=""
+for f in "$factory_profile"/archiso-ff1/efiboot/loader/entries/*; do factory_entries+="$(basename "$f") "; done
+[ "$factory_entries" = "archiso-x86_64-linux-display-check-assembly.conf archiso-x86_64-linux-display-check-brightness.conf archiso-x86_64-linux-factory-check.conf " ] || {
+  printf 'the factory ISO must carry the Factory check and Display check entries and nothing else (Auto Install wipes the NVMe unasked); got: %s\n' "$factory_entries" >&2
+  exit 1
+}
+# kmscon runs the factory check on tty1 whatever entry booted; a Display check
+# entry that does not mask it never reaches display-check.sh.
+for f in "$factory_profile"/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-display-check-*.conf; do
+  if ! grep -q ' systemd.mask=kmsconvt@tty1.service ' "$f" || ! grep -q ' script=/home/feralfile/scripts/display-check.sh ' "$f"; then
+    printf '%s must mask kmsconvt@tty1 and run display-check.sh\n' "$(basename "$f")" >&2
+    exit 1
+  fi
+done
+grep -q 'script=/home/feralfile/scripts/display-check.sh" /proc/cmdline && echo root' "$AIROOTFS/etc/systemd/system/getty@tty1.service.d/autologin.conf" || {
+  printf 'the getty@tty1 autologin must log root in for the Display check entries\n' >&2
   exit 1
 }
 grep -qx 'default archiso-x86_64-linux-factory-check.conf' "$factory_profile/archiso-ff1/efiboot/loader/loader.conf" || {
@@ -538,6 +552,10 @@ for f in efiboot/loader/entries/archiso-x86_64-linux-factory-check.conf airootfs
   }
 done
 rm -rf "$factory_profile"
+ls archiso-ff1/efiboot/loader/entries/*display-check* >/dev/null 2>&1 && {
+  printf 'Display check entries belong to the factory ISO only (factory-iso/entries): the normal ISO boots Auto Install unless a key is held\n' >&2
+  exit 1
+}
 grep -qx kmscon archiso-ff1/packages.x86_64 && {
   printf 'kmscon belongs to the factory ISO only (factory-iso/packages.x86_64)\n' >&2
   exit 1

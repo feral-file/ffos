@@ -26,8 +26,9 @@ hardware.
    `getty@tty1` drop-in is conditioned on `archisobasedir` (live ISO only:
    the installer, soak-test, factory-check and display-check entries keep
    their autologin; the factory check and the display check run ffos-user's
-   `/home/feralfile/scripts/factory-check.sh` and `display-check.sh` as root),
-   and that
+   `/home/feralfile/scripts/factory-check.sh` and `display-check.sh` as root;
+   the display-check entries are on the factory ISO only, where they mask
+   `kmsconvt@tty1` so tty1 falls to this autologin), and that
    condition is the *only* thing keeping getty off tty1: the startup unit
    deliberately has no `Conflicts=getty@tty1.service`, because systemd
    resolves `Conflicts=` while building the boot transaction, before any
