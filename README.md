@@ -147,7 +147,11 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 - `soak-test`: Include soak test components
 - `factory_check`: Factory ISO (`build-image-to-cf.yml`). Boots straight into
   the Factory check with no key pressed and carries no install entry, so it can
-  never wipe a unit; runs the check in kmscon for its Chinese lines. Named
+  never wipe a unit; runs the check in kmscon for its Chinese lines. With a
+  key held at boot its menu also offers the two Display check entries
+  (ffos-user `display-check.sh`: test slides for an assembled unit), which
+  install nothing either and exist on this ISO only. The boot entry editor is
+  off (`editor no`), so no one can retype an entry into an install. Named
   `FF1-<branch>-factory-<version>.iso` and leaves `version-info.json` alone.
   The run still builds and publishes every package to `<branch>/os/x86_64/`,
   so it is refused on `develop`, `staging`, `release`, `demo` and `main`
