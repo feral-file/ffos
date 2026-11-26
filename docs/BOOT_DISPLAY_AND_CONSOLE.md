@@ -28,7 +28,9 @@ hardware.
    their autologin; the factory check and the display check run ffos-user's
    `/home/feralfile/scripts/factory-check.sh` and `display-check.sh` as root;
    the display-check entries are on the factory ISO only, where they mask
-   `kmsconvt@tty1` so tty1 falls to this autologin), and that
+   `kmsconvt@tty1` so tty1 falls to this autologin; the default Factory
+   check entry, in kmscon, also runs one `display-check.sh once` pass after
+   each reading, on VT 8, and kmscon gets the display back on `chvt 1`), and that
    condition is the *only* thing keeping getty off tty1: the startup unit
    deliberately has no `Conflicts=getty@tty1.service`, because systemd
    resolves `Conflicts=` while building the boot transaction, before any

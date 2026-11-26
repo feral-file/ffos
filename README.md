@@ -147,7 +147,10 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 - `soak-test`: Include soak test components
 - `factory_check`: Factory ISO (`build-image-to-cf.yml`). Boots straight into
   the Factory check with no key pressed and carries no install entry, so it can
-  never wipe a unit; runs the check in kmscon for its Chinese lines. With a
+  never wipe a unit; runs the check in kmscon for its Chinese lines. After
+  each reading's results it shows one pass of the Display check slides
+  (about 2 min, on VT 8, then back to the check), so every unit gets them
+  without the menu (ffos-user#497). With a
   key held at boot its menu also offers the two Display check entries
   (ffos-user `display-check.sh`: test slides for an assembled unit), which
   install nothing either and exist on this ISO only. The boot entry editor is
