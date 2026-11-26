@@ -62,6 +62,29 @@ end
 puts "Validated #{paths.length} workflow files."
 RUBY
 
+log "Checking every pacman snapshot has a pinned container"
+# resolve-container.yaml fails a dated snapshot it has no pin for (an unpinned
+# one rode the rolling archlinux:latest until OpenSSL 4 broke it); catch the
+# missing pin here, in the PR that adds the snapshot, not at dispatch.
+ruby <<'RUBY'
+require "yaml"
+
+resolver = File.read(".github/workflows/resolve-container.yaml")
+Dir[".github/workflows/*.{yml,yaml}"].sort.each do |path|
+  data = YAML.load(File.read(path))
+  on = data["on"] || data[true]
+  next unless on.is_a?(Hash)
+  input = on.dig("workflow_dispatch", "inputs", "pacman_snapshot")
+  next unless input.is_a?(Hash)
+  (Array(input["options"]) + [input["default"]]).compact.uniq.each do |snapshot|
+    next if snapshot == "latest"
+    unless resolver.include?(%Q{"#{snapshot}")})
+      abort "#{path}: pacman_snapshot #{snapshot} has no pinned image in resolve-container.yaml"
+    end
+  end
+end
+RUBY
+
 log "Checking verification workflow contract"
 grep -q "scripts/verify.sh" .github/workflows/verify.yml
 grep -q "^verify:" Makefile
