@@ -87,7 +87,7 @@ jobs:
       - name: Prepare native PKGBUILD
         if: inputs.package == 'ff-player-native'
         run: |
-          pacman -S --needed --noconfirm python
+          ./scripts/install-build-packages.sh python
           python packages/ff-player-native/prepare.py --artifact native-artifact/ff-player-cef-linux.tar.gz \
             --sha256 "$(cut -d' ' -f1 native-artifact/SHA256SUMS)" \
             --version "${{ needs.native.outputs.version }}" --epoch "${{ needs.native.outputs.epoch }}" --output /tmp/native-package
@@ -125,7 +125,7 @@ jobs:
       - name: Install build tooling
         run: |
           set -euo pipefail
-          if ! pacman -S --noconfirm --needed base-devel shadow; then
+          if ! "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" base-devel shadow; then
             # The dated repository can lose a package link while the archive
             # still serves the exact file selected by the snapshot database.
             packages=$(pacman -Sp --needed --print-format '%n %f %h' base-devel shadow)
@@ -137,7 +137,7 @@ jobs:
               printf '%s  %s\n' "$digest" "$cache/$file.part" | sha256sum --check --status
               mv "$cache/$file.part" "$cache/$file"
             done <<< "$packages"
-            pacman -S --noconfirm --needed base-devel shadow
+            "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" base-devel shadow
           fi
           useradd -m builder
 
@@ -157,7 +157,7 @@ jobs:
           # unparsed .SRCINFO would silently install nothing. Refuse that.
           (( ${#MAKEDEPENDS[@]} )) || { echo "::error::no makedepends parsed from .SRCINFO"; exit 1; }
           echo "makedepends: ${MAKEDEPENDS[*]}"
-          pacman -S --noconfirm --needed "${MAKEDEPENDS[@]}"
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" "${MAKEDEPENDS[@]}"
 
       - name: Check depends= resolve in this snapshot
         working-directory: packages/${{ inputs.package }}
