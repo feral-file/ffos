@@ -33,6 +33,10 @@ sed -i "s/^default .*/default $factory/" "$loader"
 grep -qx "default $factory" "$loader" || { echo "apply.sh: $loader does not default to $factory" >&2; exit 1; }
 # timeout 0 (from the profile): no menu, the default boots at once.
 grep -qx 'timeout 0' "$loader" || { echo "apply.sh: $loader would show a menu" >&2; exit 1; }
+# No entry editor: with the menu open (a key held at boot), 'e' would let a
+# person retype script= to auto-install.sh, which is still on the image.
+sed -i '/^editor /d' "$loader"
+echo 'editor no' >>"$loader"
 
 cp -a "$here/airootfs/." "$profile/airootfs/"
 cat "$here/packages.x86_64" >>"$profile/packages.x86_64"

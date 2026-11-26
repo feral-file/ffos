@@ -541,6 +541,10 @@ grep -qx 'default archiso-x86_64-linux-factory-check.conf' "$factory_profile/arc
   printf 'the factory ISO must boot the Factory check entry by default\n' >&2
   exit 1
 }
+grep -qx 'editor no' "$factory_profile/archiso-ff1/efiboot/loader/loader.conf" || {
+  printf 'the factory ISO must disable the boot entry editor (it could retype script= to auto-install.sh)\n' >&2
+  exit 1
+}
 grep -qx kmscon "$factory_profile/archiso-ff1/packages.x86_64" || {
   printf 'the factory ISO must install kmscon\n' >&2
   exit 1
