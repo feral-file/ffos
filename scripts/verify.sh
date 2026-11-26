@@ -500,6 +500,49 @@ for unit in plymouth-quit-wait plymouth-quit; do
   }
 done
 
+log "Checking the factory ISO overlay"
+bash -n factory-iso/apply.sh
+shellcheck factory-iso/apply.sh
+grep -q 'needs: \[permission-check, factory-branch-guard\]' .github/workflows/build-image-to-cf.yml || {
+  printf 'build-image-to-cf.yml must refuse a factory ISO on a device channel before anything publishes\n' >&2
+  exit 1
+}
+grep -q './factory-iso/apply.sh /build/archiso-ff1' .github/workflows/build-image-to-cf.yml || {
+  printf 'build-image-to-cf.yml no longer applies factory-iso/apply.sh\n' >&2
+  exit 1
+}
+# shellcheck disable=SC2016 # a literal workflow expression
+grep -q 'if: ${{ !inputs.factory_check }}' .github/workflows/build-image-to-cf.yml || {
+  printf 'build-image-to-cf.yml must not update version-info.json for a factory ISO\n' >&2
+  exit 1
+}
+factory_profile="$(mktemp -d)"
+cp -r archiso-ff1 "$factory_profile/"
+factory-iso/apply.sh "$factory_profile/archiso-ff1"
+[ "$(ls "$factory_profile/archiso-ff1/efiboot/loader/entries")" = archiso-x86_64-linux-factory-check.conf ] || {
+  printf 'the factory ISO must carry the Factory check entry and nothing else (Auto Install wipes the NVMe unasked)\n' >&2
+  exit 1
+}
+grep -qx 'default archiso-x86_64-linux-factory-check.conf' "$factory_profile/archiso-ff1/efiboot/loader/loader.conf" || {
+  printf 'the factory ISO must boot the Factory check entry by default\n' >&2
+  exit 1
+}
+grep -qx kmscon "$factory_profile/archiso-ff1/packages.x86_64" || {
+  printf 'the factory ISO must install kmscon\n' >&2
+  exit 1
+}
+for f in efiboot/loader/entries/archiso-x86_64-linux-factory-check.conf airootfs/etc/systemd/system/kmsconvt@tty1.service.d/factory-check.conf; do
+  grep -q '/home/feralfile/scripts/factory-check.sh' "$factory_profile/archiso-ff1/$f" || {
+    printf '%s: kmscon and the getty@tty1 fallback must run the same factory-check.sh\n' "$f" >&2
+    exit 1
+  }
+done
+rm -rf "$factory_profile"
+grep -qx kmscon archiso-ff1/packages.x86_64 && {
+  printf 'kmscon belongs to the factory ISO only (factory-iso/packages.x86_64)\n' >&2
+  exit 1
+}
+
 log "Checking README workflow inventory"
 while IFS= read -r workflow; do
   grep -q "$(basename "$workflow")" README.md || {
