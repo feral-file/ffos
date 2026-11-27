@@ -38,11 +38,19 @@ FF1_KERNEL_OPTS="ipv6.disable=1 rw quiet splash plymouth.ignore-serial-consoles 
 #                       entropy.
 #   arch.conf           FF1, the default.
 #   factory_reset.conf  rollback=factory (btrfs-rollback hook).
-#   ff1_burnin.conf     the factory burn-in (ffos-user ff1-burnin.sh): boots
-#                       ff1-burnin.target instead of the default target, so
-#                       the kiosk, controld, the watchdog and the updaters
+#   ff1_factory_panel.conf, ff1_factory_hardware.conf, ff1_factory_fields.conf
+#                       the three factory tests (ffos-user ff1-burnin.sh): each
+#                       boots ff1-burnin.target instead of the default target,
+#                       so the kiosk, controld, the watchdog and the updaters
 #                       never start; ff1.burnin is the word the updater
-#                       drop-ins test. Menu only, like the factory reset.
+#                       drop-ins and the service test, ff1.factory= picks the
+#                       test. Menu only, like the factory reset.
+#                         panel     load until 10 min of power-on, then the
+#                                   Panel Check's black/gray loop
+#                         hardware  Wi-Fi, Bluetooth, speakers, brightness
+#                         fields    the nine-point chart and the white, gray,
+#                                   black, red, green, blue fields, one per
+#                                   key press
 ff1_write_boot_set() {
     local boot=$1 partuuid=$2 root
     root="root=PARTUUID=$partuuid root_partuuid=$partuuid"
@@ -56,8 +64,16 @@ random-seed-mode off
 LOADER
     ff1_write_entry "$boot" arch.conf "FF1" "$root $FF1_KERNEL_OPTS" || return 1
     ff1_write_entry "$boot" factory_reset.conf "FF1 - Factory Reset" "rollback=factory $root $FF1_KERNEL_OPTS" || return 1
-    ff1_write_entry "$boot" ff1_burnin.conf "FF1 - Factory burn-in (factory use only)" \
-        "systemd.unit=ff1-burnin.target ff1.burnin $root $FF1_KERNEL_OPTS" || return 1
+    local mode title
+    for mode in panel hardware fields; do
+        case $mode in
+            panel) title="FF1 - Factory: panel check, black/gray (factory use only)" ;;
+            hardware) title="FF1 - Factory: hardware test (factory use only)" ;;
+            fields) title="FF1 - Factory: nine-point and color fields (factory use only)" ;;
+        esac
+        ff1_write_entry "$boot" "ff1_factory_$mode.conf" "$title" \
+            "systemd.unit=ff1-burnin.target ff1.burnin ff1.factory=$mode $root $FF1_KERNEL_OPTS" || return 1
+    done
     chmod 644 "$boot"/loader/entries/*.conf
 }
 
