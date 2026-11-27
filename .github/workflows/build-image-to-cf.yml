@@ -211,8 +211,9 @@ jobs:
         with:
           pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
 
-      # A pinned snapshot has one Server, archive.archlinux.org, which can stall
-      # for long stretches (all three attempts of one run died on it). Its
+      # A pinned snapshot is served by archive.archlinux.org, with umea as the
+      # CI fallback (setup-pacman); both can stall for long stretches (all
+      # three attempts of one run died on the archive before umea was added). Its
       # packages never change for a given date, so the ones this job has
       # already downloaded are kept in the Actions cache per snapshot and put
       # back into pacman's cache here; pacman then only fetches what is missing.
