@@ -83,16 +83,24 @@ hardware.
    device-touching feature under `user@1000`, check whether its udev rule
    relies on `uaccess` and add a group membership the same way.
 
-## The factory burn-in boot
+## The factory test boots
 
 The installed boot menu (hold a key at power-on; `timeout 0` hides it
-otherwise) has a third entry, **FF1 - Factory burn-in**, next to the
-factory reset. Its cmdline carries `systemd.unit=ff1-burnin.target
-ff1.burnin`, so the boot reaches `ff1-burnin.target` instead of the default
-target, and only the target's list starts:
+otherwise) has three factory entries next to the factory reset:
+
+| Entry | `ff1.factory=` | Test |
+|---|---|---|
+| FF1 - Factory: panel check, black/gray | `panel` | load until 10 min of power-on, then the Panel Check's black/gray loop until the power is pulled |
+| FF1 - Factory: hardware test | `hardware` | Wi-Fi, Bluetooth, speakers, brightness once; the result stays on screen |
+| FF1 - Factory: nine-point and color fields | `fields` | the nine-point chart, then white, gray, black, red, green, blue, one per key press |
+
+Each cmdline carries `systemd.unit=ff1-burnin.target ff1.burnin
+ff1.factory=<test>`, so the boot reaches `ff1-burnin.target` instead of the
+default target, and only the target's list starts:
 - NetworkManager, bluetooth, logind, systemd-user-sessions, seatd, nftables;
-- `ff1-burnin.service`, which runs ffos-user `ff1-burnin.sh` on tty1 (checks
-  once, then the display test until the power is pulled).
+- `ff1-burnin.service`, which runs ffos-user `ff1-burnin.sh` on tty1; the
+  script reads `ff1.factory=` (none, as in a boot set saved before these
+  entries, runs the panel test).
 
 The kiosk startup, owner guard, tailscale and the OTA subvolume manager never
 start. `basic.target` still brings `timers.target`, so `feral-updater@`,
@@ -114,7 +122,7 @@ writer of the installed boot set.
 | Piece | Path |
 |---|---|
 | Kernel options, installed boot set (`ff1_write_boot_set`) | `archiso-ff1/airootfs/root/scripts/ff1-boot-options.sh` |
-| Factory burn-in boot | `archiso-ff1/airootfs/etc/systemd/system/ff1-burnin.{target,service}`, `*.service.d/10-not-in-burnin.conf` |
+| Factory test boots | `archiso-ff1/airootfs/etc/systemd/system/ff1-burnin.{target,service}`, `*.service.d/10-not-in-burnin.conf` |
 | Kiosk startup unit | `archiso-ff1/airootfs/etc/systemd/system/feral-kiosk-startup.service` |
 | Fallback screen unit | `archiso-ff1/airootfs/etc/systemd/system/feral-kiosk-fallback.service` |
 | Live-ISO-only autologin | `archiso-ff1/airootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf` |

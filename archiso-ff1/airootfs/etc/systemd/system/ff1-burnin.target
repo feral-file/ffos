@@ -1,5 +1,5 @@
-# The factory burn-in boot (boot entry ff1_burnin.conf, written by
-# ff1-boot-options.sh): systemd.unit=ff1-burnin.target replaces the default
+# The factory test boots (boot entries ff1_factory_{panel,hardware,fields}.conf,
+# written by ff1-boot-options.sh): systemd.unit=ff1-burnin.target replaces the default
 # target, so only what this file names starts. Not multi-user.target: the
 # kiosk startup, owner guard, tailscale, the OTA subvolume manager and every
 # feral user service stay off, so nothing updates, reboots or changes the
@@ -18,7 +18,7 @@
 #   seatd                      cage's display, as for the kiosk
 #   nftables                   the firewall, as on every boot
 [Unit]
-Description=FF1 factory burn-in
+Description=FF1 factory test
 Documentation=https://github.com/feral-file/ffos-user/blob/develop/docs/plans/factory-burnin.md
 Requires=basic.target
 After=basic.target

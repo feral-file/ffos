@@ -453,7 +453,7 @@ for script in install-to-disk.sh auto-install.sh post-extraction.sh; do
     printf '%s must write the boot set with ff1_write_boot_set\n' "$f" >&2
     exit 1
   }
-  if grep -qE 'loader/entries/(arch|factory_reset|ff1_burnin)\.conf|loader/loader\.conf <<' "$f"; then
+  if grep -qE 'loader/entries/(arch|factory_reset|ff1_burnin|ff1_factory_[a-z]+)\.conf|loader/loader\.conf <<' "$f"; then
     printf '%s writes loader.conf or an installed entry itself; ff1_write_boot_set is the only writer\n' "$f" >&2
     exit 1
   fi
@@ -466,8 +466,9 @@ boot_tmp=$(mktemp -d)
 }
 # shellcheck source=/dev/null
 kernel_opts=$(source "$BOOT_OPTS" && printf '%s' "$FF1_KERNEL_OPTS")
-[ "$(find "$boot_tmp/loader/entries" -type f -printf '%f\n' | sort | tr '\n' ' ')" = "arch.conf factory_reset.conf ff1_burnin.conf " ] || {
-  printf 'the installed boot set must be exactly arch.conf factory_reset.conf ff1_burnin.conf\n' >&2
+boot_set="arch.conf factory_reset.conf ff1_factory_fields.conf ff1_factory_hardware.conf ff1_factory_panel.conf "
+[ "$(find "$boot_tmp/loader/entries" -type f -printf '%f\n' | sort | tr '\n' ' ')" = "$boot_set" ] || {
+  printf 'the installed boot set must be exactly %s\n' "$boot_set" >&2
   exit 1
 }
 [ "$(cat "$boot_tmp/loader/loader.conf")" = $'default arch.conf\ntimeout 0\neditor no\nrandom-seed-mode off' ] || {
@@ -477,7 +478,9 @@ kernel_opts=$(source "$BOOT_OPTS" && printf '%s' "$FF1_KERNEL_OPTS")
 root_words="root=PARTUUID=PUUID root_partuuid=PUUID"
 for want in "arch.conf:$root_words $kernel_opts" \
             "factory_reset.conf:rollback=factory $root_words $kernel_opts" \
-            "ff1_burnin.conf:systemd.unit=ff1-burnin.target ff1.burnin $root_words $kernel_opts"; do
+            "ff1_factory_panel.conf:systemd.unit=ff1-burnin.target ff1.burnin ff1.factory=panel $root_words $kernel_opts" \
+            "ff1_factory_hardware.conf:systemd.unit=ff1-burnin.target ff1.burnin ff1.factory=hardware $root_words $kernel_opts" \
+            "ff1_factory_fields.conf:systemd.unit=ff1-burnin.target ff1.burnin ff1.factory=fields $root_words $kernel_opts"; do
   grep -qxF "options ${want#*:}" "$boot_tmp/loader/entries/${want%%:*}" || {
     printf '%s: wrong options line\n' "${want%%:*}" >&2
     exit 1
@@ -611,7 +614,7 @@ for unit in plymouth-quit-wait plymouth-quit; do
 done
 
 log "Checking the factory ISO and the soak test stay deleted"
-# The factory burn-in (ff1_burnin.conf on the installed unit) replaced the
+# The factory test entries (ff1_factory_*.conf on the installed unit) replaced the
 # factory ISO, its Factory/Display check entries and the 24H soak test. A
 # returning live-ISO test entry would boot a bare unit into a path nothing
 # maintains, so none of their pieces may come back.
