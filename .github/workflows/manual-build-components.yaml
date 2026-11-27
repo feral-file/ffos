@@ -110,12 +110,12 @@ jobs:
       - name: Install Go Dependencies
         if: steps.build-type.outputs.type == 'go'
         run: |
-          pacman -S --noconfirm go git base-devel shadow gnupg
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" go git base-devel shadow gnupg
 
       - name: Install Rust Dependencies
         if: steps.build-type.outputs.type == 'rust'
         run: |
-          pacman -S --noconfirm rust cargo git base-devel shadow gnupg
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" rust cargo git base-devel shadow gnupg
 
       - name: Set Version
         id: set-version
@@ -264,7 +264,7 @@ jobs:
       - name: Rclone to r2
         working-directory: ffos-user/components/${{ inputs.component }}
         run: |
-          pacman -S --noconfirm rclone
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" rclone
 
           # Configure rclone
           mkdir -p ~/.config/rclone
