@@ -33,6 +33,9 @@ done
 log "Running shellcheck"
 shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/airootfs/root/scripts/internet-check.sh archiso-ff1/airootfs/root/scripts/ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
 
+log "Checking OTA feed eligibility"
+bash scripts/test-version-info.sh
+
 log "Checking native player OOM accounting"
 bash scripts/test-earlyoom-player.sh
 
