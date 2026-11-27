@@ -73,12 +73,15 @@ if [[ -x /usr/bin/ff-player-native && ! -e /home/feralfile/.state/player/state.s
       -d /home/feralfile/.config/chromium/Default ]]; then
     playback=$(unshare --net sh -ec 'ip link set lo up
         exec runuser -u feralfile -- env HOME=/home/feralfile python3 /home/feralfile/scripts/migrate-legacy-playback.py')
-    case "$playback" in
-        active) touch /etc/FF_OS_OTA_EXPECT_PLAYBACK ;;
-        idle|skip) ;;
-        *) echo "Unrecognized playback migration result" >&2; exit 1 ;;
-    esac
-    echo "Legacy playback migration: $playback"
+    if [[ $playback =~ ^[0-9a-f]{64}[[:blank:]][0-9]{1,4}[[:blank:]][0-9a-f]{64}$ ]]; then
+        printf '%s\n' "$playback" > /etc/FF_OS_OTA_EXPECT_PLAYBACK
+        echo "Legacy playback migration: active"
+    elif [[ $playback == idle || $playback == skip ]]; then
+        echo "Legacy playback migration: $playback"
+    else
+        echo "Unrecognized playback migration result" >&2
+        exit 1
+    fi
 fi
 
 # --- Step 3: Write boot entries ---
