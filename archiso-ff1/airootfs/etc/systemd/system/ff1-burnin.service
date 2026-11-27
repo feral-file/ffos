@@ -1,6 +1,8 @@
-# Runs ffos-user's ff1-burnin.sh on tty1 for the factory burn-in boot
-# (ff1-burnin.target). The script runs the unit checks once, then loops the
-# display test until the power is pulled.
+# Runs ffos-user's ff1-burnin.sh on tty1 for the three factory test boots
+# (ff1-burnin.target). The entry's ff1.factory= word picks the test: panel
+# (load, then the Panel Check's black/gray loop until the power is pulled),
+# hardware (the unit checks once, result held), fields (the nine-point chart
+# and color fields, one per key press).
 #
 # Ordering:
 #   plymouth-quit, plymouth-quit-wait  Wants= as well as After=: on this boot
@@ -15,7 +17,7 @@
 # because root has no logind session here; the script also writes its status
 # there.
 [Unit]
-Description=FF1 factory burn-in (ffos-user ff1-burnin.sh)
+Description=FF1 factory test (ffos-user ff1-burnin.sh)
 ConditionKernelCommandLine=ff1.burnin
 Wants=plymouth-quit.service plymouth-quit-wait.service user@1000.service systemd-user-sessions.service seatd.service NetworkManager.service bluetooth.service
 After=plymouth-quit.service plymouth-quit-wait.service user@1000.service systemd-user-sessions.service systemd-logind.service seatd.service NetworkManager.service bluetooth.service
@@ -34,6 +36,6 @@ TTYReset=yes
 TTYVHangup=yes
 # A mismatched build (ffos image without ffos-user's script) shows why rather
 # than a black panel.
-ExecStart=/usr/bin/bash -c 'if [ -r /home/feralfile/scripts/ff1-burnin.sh ]; then exec /usr/bin/bash /home/feralfile/scripts/ff1-burnin.sh; fi; clear; echo "FF1 burn-in: /home/feralfile/scripts/ff1-burnin.sh is not on this image."; exec sleep infinity'
+ExecStart=/usr/bin/bash -c 'if [ -r /home/feralfile/scripts/ff1-burnin.sh ]; then exec /usr/bin/bash /home/feralfile/scripts/ff1-burnin.sh; fi; clear; echo "FF1 factory test: /home/feralfile/scripts/ff1-burnin.sh is not on this image."; exec sleep infinity'
 Restart=always
 RestartSec=5

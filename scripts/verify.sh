@@ -26,12 +26,21 @@ mapfile -t package_shell_files < <(find packages -type f -name '*.sh' | sort)
 log "Checking shell syntax"
 # One file per invocation: `bash -n a b` parses only a and treats b as a
 # positional parameter, so a multi-file call silently checks the first file.
-for f in scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
+for f in scripts/verify.sh scripts/install-build-packages.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
   bash -n "$f"
 done
 
 log "Running shellcheck"
-shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/airootfs/root/scripts/internet-check.sh archiso-ff1/airootfs/root/scripts/ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+shellcheck scripts/verify.sh scripts/install-build-packages.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/airootfs/root/scripts/internet-check.sh archiso-ff1/airootfs/root/scripts/ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+
+log "Checking build-image-from-tags.yml calls no repo script"
+# That workflow checks ffos out at an older tag (inputs.ffos_ref), so a script
+# added under scripts/ after the tag does not exist there and the step dies with
+# exit 127. It retries pacman inline instead (see install-build-packages.sh).
+if grep -nE '/scripts/install-build-packages\.sh' .github/workflows/build-image-from-tags.yml; then
+  echo "build-image-from-tags.yml must not call scripts/install-build-packages.sh; inline the retry" >&2
+  exit 1
+fi
 
 log "Checking owner Tailscale integration"
 bash -n archiso-ff1/airootfs/usr/local/bin/feral-tailscale
@@ -444,7 +453,7 @@ for script in install-to-disk.sh auto-install.sh post-extraction.sh; do
     printf '%s must write the boot set with ff1_write_boot_set\n' "$f" >&2
     exit 1
   }
-  if grep -qE 'loader/entries/(arch|factory_reset|ff1_burnin)\.conf|loader/loader\.conf <<' "$f"; then
+  if grep -qE 'loader/entries/(arch|factory_reset|ff1_burnin|ff1_factory_[a-z]+)\.conf|loader/loader\.conf <<' "$f"; then
     printf '%s writes loader.conf or an installed entry itself; ff1_write_boot_set is the only writer\n' "$f" >&2
     exit 1
   fi
@@ -457,8 +466,9 @@ boot_tmp=$(mktemp -d)
 }
 # shellcheck source=/dev/null
 kernel_opts=$(source "$BOOT_OPTS" && printf '%s' "$FF1_KERNEL_OPTS")
-[ "$(find "$boot_tmp/loader/entries" -type f -printf '%f\n' | sort | tr '\n' ' ')" = "arch.conf factory_reset.conf ff1_burnin.conf " ] || {
-  printf 'the installed boot set must be exactly arch.conf factory_reset.conf ff1_burnin.conf\n' >&2
+boot_set="arch.conf factory_reset.conf ff1_factory_fields.conf ff1_factory_hardware.conf ff1_factory_panel.conf "
+[ "$(find "$boot_tmp/loader/entries" -type f -printf '%f\n' | sort | tr '\n' ' ')" = "$boot_set" ] || {
+  printf 'the installed boot set must be exactly %s\n' "$boot_set" >&2
   exit 1
 }
 [ "$(cat "$boot_tmp/loader/loader.conf")" = $'default arch.conf\ntimeout 0\neditor no\nrandom-seed-mode off' ] || {
@@ -468,7 +478,9 @@ kernel_opts=$(source "$BOOT_OPTS" && printf '%s' "$FF1_KERNEL_OPTS")
 root_words="root=PARTUUID=PUUID root_partuuid=PUUID"
 for want in "arch.conf:$root_words $kernel_opts" \
             "factory_reset.conf:rollback=factory $root_words $kernel_opts" \
-            "ff1_burnin.conf:systemd.unit=ff1-burnin.target ff1.burnin $root_words $kernel_opts"; do
+            "ff1_factory_panel.conf:systemd.unit=ff1-burnin.target ff1.burnin ff1.factory=panel $root_words $kernel_opts" \
+            "ff1_factory_hardware.conf:systemd.unit=ff1-burnin.target ff1.burnin ff1.factory=hardware $root_words $kernel_opts" \
+            "ff1_factory_fields.conf:systemd.unit=ff1-burnin.target ff1.burnin ff1.factory=fields $root_words $kernel_opts"; do
   grep -qxF "options ${want#*:}" "$boot_tmp/loader/entries/${want%%:*}" || {
     printf '%s: wrong options line\n' "${want%%:*}" >&2
     exit 1
@@ -602,7 +614,7 @@ for unit in plymouth-quit-wait plymouth-quit; do
 done
 
 log "Checking the factory ISO and the soak test stay deleted"
-# The factory burn-in (ff1_burnin.conf on the installed unit) replaced the
+# The factory test entries (ff1_factory_*.conf on the installed unit) replaced the
 # factory ISO, its Factory/Display check entries and the 24H soak test. A
 # returning live-ISO test entry would boot a bare unit into a path nothing
 # maintains, so none of their pieces may come back.

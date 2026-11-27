@@ -21,9 +21,16 @@ runs:
           sed -i 's/^#Server/Server/' /etc/pacman.d/mirrorlist
         else
           echo "Using Arch Linux Archive snapshot: $SNAPSHOT"
+          # Two servers for the same dated snapshot: pacman falls through to
+          # the second when archive.archlinux.org stalls, which it does
+          # intermittently for GitHub-hosted runners. umea is the archive's
+          # official mirror and serves identical snapshot databases. This list
+          # is for the CI container only: the ISO workflows drop the umea line
+          # when they copy it into the image (see build-image-to-cf.yml).
           {
             echo "# Arch Linux Archive - ${SNAPSHOT} snapshot"
             echo "Server = https://archive.archlinux.org/repos/${SNAPSHOT}/\$repo/os/\$arch"
+            echo "Server = https://umea.archive.pkgbuild.com/repos/${SNAPSHOT}/\$repo/os/\$arch"
           } > /etc/pacman.d/mirrorlist
         fi
 
