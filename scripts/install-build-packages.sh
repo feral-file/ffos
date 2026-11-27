@@ -40,9 +40,11 @@ for attempt in 1 2 3; do
   fi
   rm -f "$lock"
   # Partial files of a failed attempt: a .part from one server cannot be
-  # resumed on umea (no byte ranges), and a killed sandboxed download leaves
-  # its download-* directory behind. Each attempt starts those files over;
-  # completed packages stay in the cache.
+  # resumed on umea ("does not support byte ranges. Cannot resume" in CI
+  # logs), and a killed sandboxed download leaves its download-* directory
+  # behind. Each attempt starts those files over. Packages a failed attempt
+  # completed stay in the cache, except after a timeout kill: pacman never
+  # moved them out of download-*, so they are fetched again.
   find "$cachedir" -maxdepth 1 -name '*.part' -delete
   find "$cachedir" -maxdepth 1 -type d -name 'download-*' -exec rm -rf {} +
   if (( attempt < 3 )); then
