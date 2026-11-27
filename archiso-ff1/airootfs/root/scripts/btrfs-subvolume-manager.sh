@@ -53,6 +53,15 @@ case "$CURRENT_SUBVOL" in
 
     # OTA-specific: set up auto system test for the next boot
     if [[ "$CURRENT_SUBVOL" == "/@snapshots/@ota_new" ]]; then
+        # 3.0.1 takes the staging snapshot before downloading and continues
+        # to accept casts until reboot. The default root now has Chromium's
+        # final durable state. Its kernel and root are still the fallback.
+        if [[ -x /usr/bin/ff-player-native ]] &&
+           ! unshare --mount --propagation private --net /bin/bash /root/scripts/import-legacy-playback.sh "$ROOT_DEV"; then
+            log_msg "Playback import failed. Returning to the previous root before promotion."
+            systemctl --no-block reboot
+            exit 1
+        fi
         touch /etc/FF_OS_OTA_AUTO_TEST
     fi
 

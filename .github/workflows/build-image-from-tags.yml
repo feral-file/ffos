@@ -159,7 +159,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          sparse-checkout: scripts/verify-native-iso.sh
+          sparse-checkout: |
+            scripts/verify-native-iso.sh
+            scripts/publish-version-info.sh
           sparse-checkout-cone-mode: false
           path: workflow-verifier
           persist-credentials: false
@@ -908,6 +910,17 @@ jobs:
             echo "Error: ISO file not found"
             exit 1
           fi
+
+      - name: Publish Development OTA metadata
+        if: ${{ inputs.environment == 'Development' && needs.determine-local-player.outputs.native == 'true' }}
+        env:
+          BRANCH_ROOT: r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}
+          IMAGE_VERSION: ${{ inputs.version }}
+          ENVIRONMENT: Development
+          UPDATE_REQUIRED: 'false'
+          UPDATE_RUNTIME: 'false'
+          UPDATE_RECOVERY: 'false'
+        run: bash workflow-verifier/scripts/publish-version-info.sh
 
       - name: Cleanup
         if: always()

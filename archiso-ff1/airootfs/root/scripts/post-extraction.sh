@@ -66,24 +66,6 @@ cat > /home/feralfile/.state/environment <<EOF
 live
 EOF
 
-# The running 3.0.1 updater invokes the *candidate* hook. Read its frozen
-# profile as the kiosk user, before arming the candidate. The isolated
-# loopback namespace lets Chromium read only the synthetic storage page.
-if [[ -x /usr/bin/ff-player-native && ! -e /home/feralfile/.state/player/state.sqlite &&
-      -d /home/feralfile/.config/chromium/Default ]]; then
-    playback=$(unshare --net sh -ec 'ip link set lo up
-        exec runuser -u feralfile -- env HOME=/home/feralfile python3 /home/feralfile/scripts/migrate-legacy-playback.py')
-    if [[ $playback =~ ^[0-9a-f]{64}[[:blank:]][0-9]{1,4}[[:blank:]][0-9a-f]{64}$ ]]; then
-        printf '%s\n' "$playback" > /etc/FF_OS_OTA_EXPECT_PLAYBACK
-        echo "Legacy playback migration: active"
-    elif [[ $playback == idle || $playback == skip ]]; then
-        echo "Legacy playback migration: $playback"
-    else
-        echo "Unrecognized playback migration result" >&2
-        exit 1
-    fi
-fi
-
 # --- Step 3: Write boot entries ---
 echo "Detecting root partition PARTUUID..."
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_DEV")
