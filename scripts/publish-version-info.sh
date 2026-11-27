@@ -1,17 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# The download worker recognizes exactly x.y.z and picks the highest ISO.
+# Named trial artifacts are downloadable directly and have no OTA metadata.
+if [[ ! $IMAGE_VERSION =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+    [[ $ENVIRONMENT == Development ]] || exit 1
+    echo "Direct-download trial build; keeping OTA metadata"
+    exit 0
+fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 # A listing error must never look like a new branch and reset an established
 # floor. The branch already exists because the signed ISO has been uploaded.
-existing=$(rclone lsf "$BRANCH_ROOT" --files-only --include /version-info.json)
-if [[ "$existing" == version-info.json ]]; then
+listing=$(rclone lsf "$BRANCH_ROOT" --files-only --max-depth 1)
+newest=$(sed -nE 's/^(FF1|FF-X1)(-(release|demo|develop|staging|other))?(-dev)?(-qemu)?-([0-9]+[.][0-9]+[.][0-9]+)[.](iso|zip)$/\6/p' <<< "$listing" | sort -V | tail -1)
+if [[ $newest != "$IMAGE_VERSION" ]]; then
+    echo "Published version $IMAGE_VERSION is not the latest recognized branch image ($newest); keeping OTA metadata"
+    [[ -n $newest ]] || exit 1
+    exit 0
+fi
+if grep -Fxq version-info.json <<< "$listing"; then
     rclone copyto "$BRANCH_ROOT/version-info.json" "$work/prior"
-elif [[ -z "$existing" ]]; then
-    echo '{}' > "$work/prior"
 else
-    echo "Unexpected version manifest listing" >&2
-    exit 1
+    echo '{}' > "$work/prior"
 fi
 
 floor=$IMAGE_VERSION
