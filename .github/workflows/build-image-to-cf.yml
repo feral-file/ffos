@@ -81,6 +81,7 @@ jobs:
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
@@ -100,6 +101,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
@@ -119,6 +121,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
@@ -138,6 +141,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -161,6 +165,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
@@ -177,6 +182,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
@@ -210,6 +216,7 @@ jobs:
         uses: ./.github/actions/setup-pacman
         with:
           pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+          arch_cache_token: ${{ secrets.ARCH_CACHE_TOKEN }}
 
       # A pinned snapshot is served by archive.archlinux.org, with umea as the
       # CI fallback (setup-pacman); both can stall for long stretches (all
@@ -291,14 +298,12 @@ jobs:
 
           # CRITICAL: Create and set up the mirrorlist for the archiso build environment
           mkdir -p /build/archiso-ff1/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
+          cp /etc/pacman.d/mirrorlist.device /build/archiso-ff1/pacman.d/mirrorlist
 
-          # Also copy mirror list to the final ISO, minus the CI-only umea
-          # fallback (setup-pacman), so the installed image's mirrorlist is
-          # unchanged by that build-reliability fix.
+          # The image ships the device mirrorlist: no cache token, no CI-only
+          # umea fallback (see setup-pacman).
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
-          grep -v '^Server = https://umea\.archive\.pkgbuild\.com/' /etc/pacman.d/mirrorlist \
-            > /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
+          cp /etc/pacman.d/mirrorlist.device /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
           cp /build/archiso-ff1/airootfs/etc/pacman.d/feralfile-pkg-pubkey.asc /etc/pacman.d/feralfile-pkg-pubkey.asc
 
           pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc
@@ -667,6 +672,26 @@ jobs:
         run: |
           cd /build
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
+          # The build container's mirrorlist carries the ff-arch-cache token
+          # (see .github/actions/setup-pacman); an image must ship
+          # mirrorlist.device instead. Checked on the root mkarchiso actually
+          # built, before anything is signed or uploaded, and failing when
+          # that root cannot be found: a leak would publish the token in every
+          # ISO, with no other symptom.
+          image_etc=/build/work/x86_64/airootfs/etc
+          if [ ! -d "$image_etc" ]; then
+            echo "::error::$image_etc is missing; cannot check the image for the arch-cache token"
+            exit 1
+          fi
+          # Only grep's "no match" status (1) passes. 0 is a match, and
+          # anything else means grep could not read part of the tree, which
+          # must not be taken for a clean image.
+          found=0
+          grep -rIlF 'arch-cache.feralfile.io' "$image_etc" || found=$?
+          if [ "$found" -ne 1 ]; then
+            echo "::error::the image would ship the ff-arch-cache mirror (files listed above), or its /etc could not be searched (grep status $found); images must carry /etc/pacman.d/mirrorlist.device"
+            exit 1
+          fi
           ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
           if [ -f "$ISO_FILE" ]; then
             IMAGE_TYPE="${{ inputs.dev_iso && 'dev-' || '' }}"

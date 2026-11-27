@@ -225,6 +225,50 @@ for workflow in .github/workflows/build-image-to-cf.yml .github/workflows/pure-b
   fi
 done
 
+log "Checking images ship the token-free mirrorlist"
+# The build container's /etc/pacman.d/mirrorlist carries the ff-arch-cache
+# access token (.github/actions/setup-pacman). An image must ship
+# mirrorlist.device, and each image workflow checks the root mkarchiso built
+# before it signs or uploads anything. Unpinned, a workflow edit could publish
+# the token in every ISO with no failing build, so pin all three parts: nothing
+# copies the build mirrorlist, every image workflow copies the device one, and
+# the check sits directly after mkarchiso, identical in all three.
+if grep -nE 'cp /etc/pacman\.d/mirrorlist[[:space:]]' .github/workflows/*.yml .github/workflows/*.yaml; then
+  printf 'the lines above copy the build mirrorlist, which carries the arch-cache token; copy /etc/pacman.d/mirrorlist.device\n' >&2
+  exit 1
+fi
+image_token_check() {
+  awk '/^          # The build container.s mirrorlist carries the ff-arch-cache token$/{on=1} on{print} on&&/would ship the ff-arch-cache mirror/{getline; print; getline; print; exit}' "$1"
+}
+reference_token_check=""
+for workflow in .github/workflows/build-image-to-cf.yml .github/workflows/pure-build-image-to-cf.yml .github/workflows/build-image-from-tags.yml; do
+  grep -qF 'cp /etc/pacman.d/mirrorlist.device /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist' "$workflow" || {
+    printf '%s: the image must be given /etc/pacman.d/mirrorlist.device\n' "$workflow" >&2
+    exit 1
+  }
+  block="$(image_token_check "$workflow")"
+  # The status test is part of the contract: `if grep ...; then fail` would
+  # read a grep error (status 2) as a clean image.
+  if ! grep -qF "grep -rIlF 'arch-cache.feralfile.io' \"\$image_etc\" || found=\$?" <<< "$block" ||
+     ! grep -qF "if [ \"\$found\" -ne 1 ]; then" <<< "$block" ||
+     [[ "$(grep -c 'exit 1' <<< "$block")" -ne 2 ]]; then
+    printf '%s: missing the arch-cache token check on the built image\n' "$workflow" >&2
+    exit 1
+  fi
+  if [[ -z "$reference_token_check" ]]; then
+    reference_token_check="$block"
+  elif [[ "$block" != "$reference_token_check" ]]; then
+    printf '%s: the arch-cache token check differs from build-image-to-cf.yml; keep the three copies identical\n' "$workflow" >&2
+    exit 1
+  fi
+  mkarchiso_line="$(grep -n 'mkarchiso -v' "$workflow" | head -n1 | cut -d: -f1)"
+  check_line="$(grep -n 'mirrorlist carries the ff-arch-cache token$' "$workflow" | head -n1 | cut -d: -f1)"
+  if [[ -z "$mkarchiso_line" ]] || (( check_line != mkarchiso_line + 1 )); then
+    printf '%s: the arch-cache token check must directly follow mkarchiso, before the ISO is signed or uploaded\n' "$workflow" >&2
+    exit 1
+  fi
+done
+
 log "Checking FF1 log-stream image configuration"
 log_stream_workflows="$(grep -rl 'write_json .*controld\.json' .github/workflows | sort || true)"
 if [[ "$(printf '%s\n' "$log_stream_workflows" | grep -c .)" -ne 3 ]]; then
