@@ -18,17 +18,12 @@ ROOT_DEV="$1"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting post-extraction configuration (ROOT_DEV: $ROOT_DEV)..."
 
-# --- Step 1: Clean up unwanted files and test users ---
+# --- Step 1: Clean up unwanted files ---
 echo "Cleaning up unwanted files and directories..."
 
 # Remove test/development files that shouldn't be in production
 rm -f /root/.automated_script.sh
 rm -f /root/.bash_profile
-rm -rf /home/soaktest
-rm -f /usr/local/bin/websocat
-# userdel below does not touch sudoers; without this the soak-test NOPASSWD
-# grant shipped on every device (ffos#126).
-rm -f /etc/sudoers.d/soaktest
 
 # feral-system-update.sh protects /home/feralfile/.cache wholesale so the
 # offline artwork blob store survives a full-image update. That inverts the
@@ -50,12 +45,6 @@ rm -rf /home/feralfile/.cache/chromium
 # No getty autologin is written any more (ffos#126): the image's
 # getty@tty1.service.d/autologin.conf only applies to live ISO boots and
 # feral-kiosk-startup.service owns tty1 on installed devices.
-
-echo "Cleaning up test users..."
-if id soaktest &>/dev/null; then
-    userdel -r soaktest 2>/dev/null || true
-    echo "Removed soaktest user."
-fi
 
 echo "Cleanup complete."
 

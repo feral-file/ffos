@@ -109,13 +109,10 @@ mount -o umask=0077 "$BOOT_PART" /mnt/boot
 # ─── Copy root filesystem ──────────────────────────────────────────────
 echo
 echo "Copying root filesystem..."
-rm -rf /home/soaktest
-rm -f /usr/local/bin/websocat
 rsync -aAX --info=progress2 --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/live-efi/*","/media/*","/lost+found"} / /mnt
 # No tty1 autologin on the installed system (ffos#126): the image's
 # getty@tty1 drop-in is conditioned on the live ISO cmdline and
-# feral-kiosk-startup.service owns tty1. Drop the soak-test sudoers grant too.
-rm -f /mnt/etc/sudoers.d/soaktest
+# feral-kiosk-startup.service owns tty1.
 mkdir -p /mnt/home/feralfile/.state
 cat > /mnt/home/feralfile/.state/environment <<EOF
 live
@@ -181,9 +178,6 @@ mount --bind /proc /mnt/proc
 mount --bind /sys /mnt/sys
 
 arch-chroot /mnt /bin/bash <<'EOF'
-echo "Removing soaktest account..."
-id soaktest &>/dev/null && userdel soaktest || true
-
 echo "Overwriting mkinitcpio.conf HOOKS..."
 sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs btrfs-rollback filesystems fsck)/' /etc/mkinitcpio.conf
 

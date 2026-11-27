@@ -584,7 +584,7 @@ grep -q '^Theme=ff1$' "$AIROOTFS/etc/plymouth/plymouthd.conf" || {
   printf 'plymouthd.conf must select Theme=ff1\n' >&2
   exit 1
 }
-# Live ISO boots (installer, soak test) must not run plymouth at all: every
+# Live ISO boots (the installer) must not run plymouth at all: every
 # plymouth unit carries ConditionKernelCommandLine=!plymouth.enable=0, and
 # the installer getty is ordered after plymouth-quit-wait, so a splash daemon
 # that never quits (observed on a live ISO build) would block the install.
@@ -601,70 +601,19 @@ for unit in plymouth-quit-wait plymouth-quit; do
   }
 done
 
-log "Checking the factory ISO overlay"
-bash -n factory-iso/apply.sh
-shellcheck factory-iso/apply.sh
-grep -q 'needs: \[permission-check, factory-branch-guard\]' .github/workflows/build-image-to-cf.yml || {
-  printf 'build-image-to-cf.yml must refuse a factory ISO on a device channel before anything publishes\n' >&2
+log "Checking the factory ISO and the soak test stay deleted"
+# The factory burn-in (ff1_burnin.conf on the installed unit) replaced the
+# factory ISO, its Factory/Display check entries and the 24H soak test. A
+# returning live-ISO test entry would boot a bare unit into a path nothing
+# maintains, so none of their pieces may come back.
+[ ! -e factory-iso ] || {
+  printf 'factory-iso/ is deleted (the factory burn-in replaced it)\n' >&2
   exit 1
 }
-grep -q './factory-iso/apply.sh /build/archiso-ff1' .github/workflows/build-image-to-cf.yml || {
-  printf 'build-image-to-cf.yml no longer applies factory-iso/apply.sh\n' >&2
+if grep -rnE 'soaktest|soak-test|websocat|factory_check|factory-check\.sh|display-check\.sh|kmscon' archiso-ff1 .github/workflows; then
+  printf 'the factory ISO / soak test are deleted; the lines above bring a piece back\n' >&2
   exit 1
-}
-# shellcheck disable=SC2016 # a literal workflow expression
-grep -q 'if: ${{ !inputs.factory_check }}' .github/workflows/build-image-to-cf.yml || {
-  printf 'build-image-to-cf.yml must not update version-info.json for a factory ISO\n' >&2
-  exit 1
-}
-factory_profile="$(mktemp -d)"
-cp -r archiso-ff1 "$factory_profile/"
-factory-iso/apply.sh "$factory_profile/archiso-ff1"
-factory_entries=""
-for f in "$factory_profile"/archiso-ff1/efiboot/loader/entries/*; do factory_entries+="$(basename "$f") "; done
-[ "$factory_entries" = "archiso-x86_64-linux-display-check-assembly.conf archiso-x86_64-linux-display-check-brightness.conf archiso-x86_64-linux-factory-check.conf " ] || {
-  printf 'the factory ISO must carry the Factory check and Display check entries and nothing else (Auto Install wipes the NVMe unasked); got: %s\n' "$factory_entries" >&2
-  exit 1
-}
-# kmscon runs the factory check on tty1 whatever entry booted; a Display check
-# entry that does not mask it never reaches display-check.sh.
-for f in "$factory_profile"/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-display-check-*.conf; do
-  if ! grep -q ' systemd.mask=kmsconvt@tty1.service ' "$f" || ! grep -q ' script=/home/feralfile/scripts/display-check.sh ' "$f"; then
-    printf '%s must mask kmsconvt@tty1 and run display-check.sh\n' "$(basename "$f")" >&2
-    exit 1
-  fi
-done
-grep -q 'script=/home/feralfile/scripts/display-check.sh" /proc/cmdline && echo root' "$AIROOTFS/etc/systemd/system/getty@tty1.service.d/autologin.conf" || {
-  printf 'the getty@tty1 autologin must log root in for the Display check entries\n' >&2
-  exit 1
-}
-grep -qx 'default archiso-x86_64-linux-factory-check.conf' "$factory_profile/archiso-ff1/efiboot/loader/loader.conf" || {
-  printf 'the factory ISO must boot the Factory check entry by default\n' >&2
-  exit 1
-}
-grep -qx 'editor no' "$factory_profile/archiso-ff1/efiboot/loader/loader.conf" || {
-  printf 'the factory ISO must disable the boot entry editor (it could retype script= to auto-install.sh)\n' >&2
-  exit 1
-}
-grep -qx kmscon "$factory_profile/archiso-ff1/packages.x86_64" || {
-  printf 'the factory ISO must install kmscon\n' >&2
-  exit 1
-}
-for f in efiboot/loader/entries/archiso-x86_64-linux-factory-check.conf airootfs/etc/systemd/system/kmsconvt@tty1.service.d/factory-check.conf; do
-  grep -q '/home/feralfile/scripts/factory-check.sh' "$factory_profile/archiso-ff1/$f" || {
-    printf '%s: kmscon and the getty@tty1 fallback must run the same factory-check.sh\n' "$f" >&2
-    exit 1
-  }
-done
-rm -rf "$factory_profile"
-ls archiso-ff1/efiboot/loader/entries/*display-check* >/dev/null 2>&1 && {
-  printf 'Display check entries belong to the factory ISO only (factory-iso/entries): the normal ISO boots Auto Install unless a key is held\n' >&2
-  exit 1
-}
-grep -qx kmscon archiso-ff1/packages.x86_64 && {
-  printf 'kmscon belongs to the factory ISO only (factory-iso/packages.x86_64)\n' >&2
-  exit 1
-}
+fi
 
 log "Checking README workflow inventory"
 while IFS= read -r workflow; do
