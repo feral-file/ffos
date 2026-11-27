@@ -7,14 +7,6 @@ on:
         description: 'Image version'
         required: true
         default: '0.0.1'
-      soak-test:
-        description: 'Include soak test'
-        required: true
-        type: choice
-        options:
-          - true
-          - false
-        default: false
       environment:
         description: "Environment to build"
         required: true
@@ -89,6 +81,7 @@ jobs:
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
@@ -108,6 +101,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
@@ -127,6 +121,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
@@ -146,6 +141,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -169,6 +165,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
@@ -185,6 +182,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
@@ -218,11 +216,66 @@ jobs:
         uses: ./.github/actions/setup-pacman
         with:
           pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+          arch_cache_token: ${{ secrets.ARCH_CACHE_TOKEN }}
 
+      # A pinned snapshot is served by archive.archlinux.org, with umea as the
+      # CI fallback (setup-pacman); both can stall for long stretches (all
+      # three attempts of one run died on the archive before umea was added). Its
+      # packages never change for a given date, so the ones this job has
+      # already downloaded are kept in the Actions cache per snapshot and put
+      # back into pacman's cache here; pacman then only fetches what is missing.
+      #
+      # Development builds only. pacman checks each package's checksum and
+      # signature when it installs, but the cache archive itself is unpacked
+      # before that (actions/cache extracts with tar -P, so an entry can land
+      # anywhere in this privileged container). It is therefore only as
+      # trusted as whoever can write caches this branch reads (its own runs and
+      # the default branch's), which is fine for a Development ISO but not for
+      # a Staging or Production one signed and published to devices.
+      # "latest" is not cached: it moves every day.
+      - name: Restore Arch package cache
+        id: arch-pkg-restore
+        if: ${{ inputs.environment == 'Development' && (inputs.pacman_snapshot || github.event.inputs.pacman_snapshot) != 'latest' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: /var/cache/arch-snapshot-pkg
+          key: arch-pkg-${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: arch-pkg-${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}-
+
+      - name: Seed pacman cache
+        id: arch-pkg-seed
+        if: ${{ steps.arch-pkg-restore.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          cachedir="$(pacman-conf CacheDir | head -n1)"
+          mkdir -p /var/cache/arch-snapshot-pkg "$cachedir"
+          # Moved, not copied: the directory is refilled from pacman's cache
+          # before saving (Collect Arch package cache), so it must start empty.
+          find /var/cache/arch-snapshot-pkg -maxdepth 1 -type f -exec mv -f -t "$cachedir" {} +
+          count="$(find "$cachedir" -maxdepth 1 -type f -name '*.pkg.tar.*' | wc -l)"
+          echo "Restored $count cached package files"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      # Same stall as the prefetch step below (ffos#163), on the build
+      # container's own tools: retry with a pause. Files that did arrive stay
+      # in pacman's cache, so each attempt fetches only what is still missing.
       - name: Install build dependencies
         run: |
-          pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
-            git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli
+          set -euo pipefail
+          cachedir="$(pacman-conf CacheDir | head -n1)"
+          for attempt in 1 2 3; do
+            if pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
+                git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli; then
+              exit 0
+            fi
+            find "$cachedir" -maxdepth 1 -name '*.part' -delete
+            if (( attempt < 3 )); then
+              echo "Build dependency download failed (attempt $attempt/3); retrying in $((attempt * 30)) s"
+              sleep $((attempt * 30))
+            fi
+          done
+          echo "::error::Build dependency download failed after 3 attempts; the failing package is in pacman's output above"
+          exit 1
 
       - name: Apply version-specific patches
         run: |
@@ -243,31 +296,14 @@ jobs:
           # Copy user data from ffos-user repository
           cp -r ffos-user/users/feralfile /build/archiso-ff1/airootfs/home/
 
-          if [ "${{ inputs.soak-test }}" = "false" ]; then
-            # Remove soaktest if not needed
-            rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf
-            rm -f /build/archiso-ff1/airootfs/usr/local/bin/websocat
-          else
-            # Copy soaktest user data
-            cp -r ffos-user/users/soaktest /build/archiso-ff1/airootfs/home/
-
-            cat >> /build/archiso-ff1/packages.x86_64 << EOF
-          # soak test tools
-          foot
-          bc
-          stress-ng
-          mesa-utils
-          python-rich
-          EOF
-          fi
-
           # CRITICAL: Create and set up the mirrorlist for the archiso build environment
           mkdir -p /build/archiso-ff1/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
+          cp /etc/pacman.d/mirrorlist.device /build/archiso-ff1/pacman.d/mirrorlist
 
-          # Also copy mirror list to the final ISO
+          # The image ships the device mirrorlist: no cache token, no CI-only
+          # umea fallback (see setup-pacman).
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
+          cp /etc/pacman.d/mirrorlist.device /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
           cp /build/archiso-ff1/airootfs/etc/pacman.d/feralfile-pkg-pubkey.asc /etc/pacman.d/feralfile-pkg-pubkey.asc
 
           pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc
@@ -593,10 +629,69 @@ jobs:
           echo "::error::Package download failed after 3 attempts; the failing package is in pacman's output above"
           exit 1
 
+      # Runs even when a download failed, so the next attempt starts from what
+      # this one got. Keeps only files the snapshot's own repositories list at
+      # that exact version: [feralfile] packages come from this branch's repo
+      # and can be rebuilt under an unchanged file name, and a stale copy in
+      # the cache would fail the next run's checksum check.
+      - name: Collect Arch package cache
+        id: arch-pkg-collect
+        if: ${{ !cancelled() && steps.arch-pkg-seed.outcome == 'success' }}
+        # An optimisation: a failure here (a full disk, say) must not fail the
+        # ISO build. Save then sees outcome 'failure' and is skipped.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cachedir="$(pacman-conf CacheDir | head -n1)"
+          stage=/var/cache/arch-snapshot-pkg
+          mkdir -p "$stage"
+          # name-version per snapshot package; a file name is that plus
+          # -<arch>.pkg.tar.<ext>[.sig].
+          pacman -Sl | awk '{print $2 "-" $3}' > "$RUNNER_TEMP/snapshot-pkgs"
+          find "$cachedir" -maxdepth 1 -type f -name '*.pkg.tar.*' ! -name '*.part' -printf '%f\n' |
+            awk 'NR == FNR { keep[$0]; next }
+                 { base = $0; sub(/\.sig$/, "", base); sub(/-[^-]*\.pkg\.tar\.[^.]*$/, "", base)
+                   if (base in keep) print }' "$RUNNER_TEMP/snapshot-pkgs" - |
+            while read -r f; do
+              ln -f "$cachedir/$f" "$stage/$f" 2>/dev/null || cp -f "$cachedir/$f" "$stage/$f"
+            done
+          count="$(find "$stage" -maxdepth 1 -type f | wc -l)"
+          echo "Collected $count snapshot package files ($(du -sh "$stage" | cut -f1))"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      # Saved only when this run added files, so repeat builds of an already
+      # cached snapshot do not spend the repository's 10 GB cache quota.
+      - name: Save Arch package cache
+        if: ${{ !cancelled() && steps.arch-pkg-collect.outcome == 'success' && fromJSON(steps.arch-pkg-collect.outputs.count) > fromJSON(steps.arch-pkg-seed.outputs.count) }}
+        uses: actions/cache/save@v4
+        with:
+          path: /var/cache/arch-snapshot-pkg
+          key: ${{ steps.arch-pkg-restore.outputs.cache-primary-key }}
+
       - name: Build, sign and upload ISO Image
         run: |
           cd /build
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
+          # The build container's mirrorlist carries the ff-arch-cache token
+          # (see .github/actions/setup-pacman); an image must ship
+          # mirrorlist.device instead. Checked on the root mkarchiso actually
+          # built, before anything is signed or uploaded, and failing when
+          # that root cannot be found: a leak would publish the token in every
+          # ISO, with no other symptom.
+          image_etc=/build/work/x86_64/airootfs/etc
+          if [ ! -d "$image_etc" ]; then
+            echo "::error::$image_etc is missing; cannot check the image for the arch-cache token"
+            exit 1
+          fi
+          # Only grep's "no match" status (1) passes. 0 is a match, and
+          # anything else means grep could not read part of the tree, which
+          # must not be taken for a clean image.
+          found=0
+          grep -rIlF 'arch-cache.feralfile.io' "$image_etc" || found=$?
+          if [ "$found" -ne 1 ]; then
+            echo "::error::the image would ship the ff-arch-cache mirror (files listed above), or its /etc could not be searched (grep status $found); images must carry /etc/pacman.d/mirrorlist.device"
+            exit 1
+          fi
           ISO_FILE=$(find /build/out -name "*.iso" | head -n 1)
           if [ -f "$ISO_FILE" ]; then
             IMAGE_TYPE="${{ inputs.dev_iso && 'dev-' || '' }}"

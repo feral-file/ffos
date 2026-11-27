@@ -51,6 +51,8 @@ on:
         required: false
       SENTRY_DSN_PLAYER:
         required: false
+      ARCH_CACHE_TOKEN:
+        required: false
 
 permissions:
   id-token: write
@@ -86,10 +88,11 @@ jobs:
         uses: ./.github/actions/setup-pacman
         with:
           pacman_snapshot: ${{ inputs.pacman_snapshot }}
+          arch_cache_token: ${{ secrets.ARCH_CACHE_TOKEN }}
 
       - name: Install build dependencies
         run: |
-          pacman -S --noconfirm git base-devel shadow fakeroot binutils
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" git base-devel shadow fakeroot binutils
 
       - name: Install dependencies
         working-directory: feral-player
@@ -197,7 +200,7 @@ jobs:
       - name: Rclone to r2
         working-directory: /tmp/feral-player-pkg
         run: |
-          pacman -S --noconfirm rclone
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" rclone
 
           mkdir -p ~/.config/rclone
           cat > ~/.config/rclone/rclone.conf << EOF

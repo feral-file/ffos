@@ -20,14 +20,6 @@ on:
         required: false
         default: ""
         type: string
-      soak-test:
-        description: "Include soak test"
-        required: true
-        type: choice
-        options:
-          - true
-          - false
-        default: false
       environment:
         description: "Environment to build"
         required: true
@@ -147,30 +139,66 @@ jobs:
           cache: 'npm'
           cache-dependency-path: feral-player/package-lock.json
 
+      # Inline copy of .github/actions/setup-pacman (this workflow checks ffos
+      # out at an older tag, where the action may predate what it needs). See
+      # the action for why there are two mirrorlists and why the build one must
+      # never reach an image.
       - name: Setup pacman
+        env:
+          SNAPSHOT: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+          ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
         run: |
-          SNAPSHOT="${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}"
+          device=/etc/pacman.d/mirrorlist.device
           if [ "$SNAPSHOT" = "latest" ]; then
             echo "Using latest Arch Linux repositories"
-            curl -o /etc/pacman.d/mirrorlist \
+            curl -o "$device" \
               "https://archlinux.org/mirrorlist/?country=US&protocol=https&ip_version=4&use_mirror_status=on"
-            sed -i 's/^#Server/Server/' /etc/pacman.d/mirrorlist
+            sed -i 's/^#Server/Server/' "$device"
+            cp "$device" /etc/pacman.d/mirrorlist
           else
             echo "Using Arch Linux Archive snapshot: $SNAPSHOT"
             {
               echo "# Arch Linux Archive - ${SNAPSHOT} snapshot"
               echo "Server = https://archive.archlinux.org/repos/${SNAPSHOT}/\$repo/os/\$arch"
+            } > "$device"
+            if [ -n "$ARCH_CACHE_TOKEN" ]; then
+              echo "Using ff-arch-cache ahead of the archive"
+            else
+              echo "::notice::ARCH_CACHE_TOKEN is not set; using the archive servers directly"
+            fi
+            {
+              if [ -n "$ARCH_CACHE_TOKEN" ]; then
+                echo "Server = https://ci:${ARCH_CACHE_TOKEN}@arch-cache.feralfile.io/repos/${SNAPSHOT}/\$repo/os/\$arch"
+              fi
+              cat "$device"
+              echo "Server = https://umea.archive.pkgbuild.com/repos/${SNAPSHOT}/\$repo/os/\$arch"
             } > /etc/pacman.d/mirrorlist
           fi
           pacman-key --init
           pacman-key --populate archlinux
           pacman -Syy
 
+      # Archive downloads stall intermittently for GitHub runners: retry with a
+      # pause. Inline, not scripts/install-build-packages.sh, because ffos is
+      # checked out at an older tag here, where that script does not exist.
       - name: Install build dependencies
         run: |
-          pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
-            git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli \
-            pacman-contrib shadow go rust cargo
+          set -euo pipefail
+          cachedir="$(pacman-conf CacheDir | head -n1)"
+          for attempt in 1 2 3; do
+            if pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
+                git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli \
+                pacman-contrib shadow go rust cargo; then
+              exit 0
+            fi
+            find "$cachedir" -maxdepth 1 -name '*.part' -delete
+            if (( attempt < 3 )); then
+              echo "Build dependency download failed (attempt $attempt/3); retrying in $((attempt * 30)) s"
+              sleep $((attempt * 30))
+            fi
+          done
+          echo "::error::Build dependency download failed after 3 attempts; the failing package is in pacman's output above"
+          exit 1
 
       - name: Build local feral-player bundle
         if: ${{ needs.determine-local-player.outputs.enabled == 'true' }}
@@ -370,7 +398,20 @@ jobs:
           if [ "${{ steps.module-cache.outputs.cache-hit }}" = "true" ]; then
             echo "reusing kernel-module package built earlier for identical inputs (cache hit)"
           else
-            pacman -S --noconfirm --needed base-devel "${MAKEDEPENDS[@]}"
+            # Inline retry (archive stalls); no scripts/ here, see "Install build dependencies".
+            cachedir="$(pacman-conf CacheDir | head -n1)"
+            for attempt in 1 2 3; do
+              if pacman -S --noconfirm --needed base-devel "${MAKEDEPENDS[@]}"; then
+                break
+              fi
+              if (( attempt == 3 )); then
+                echo "::error::makedepends download failed after 3 attempts; the failing package is in pacman's output above"
+                exit 1
+              fi
+              find "$cachedir" -maxdepth 1 -name '*.part' -delete
+              echo "makedepends download failed (attempt $attempt/3); retrying in $((attempt * 30)) s"
+              sleep $((attempt * 30))
+            done
             su builder -c "cd \"$PKGDIR\" && makepkg -f -d --noconfirm"
           fi
           ls -la "$PKGDIR"/amdgpu-vcn-h264-cap-*.pkg.tar.zst
@@ -397,26 +438,13 @@ jobs:
           mkdir -p /build/archiso-ff1/airootfs/home
           cp -r ffos-user/users/feralfile /build/archiso-ff1/airootfs/home/
 
-          if [ "${{ inputs.soak-test }}" = "false" ]; then
-            rm -f /build/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf
-            rm -f /build/archiso-ff1/airootfs/usr/local/bin/websocat
-          else
-            cp -r ffos-user/users/soaktest /build/archiso-ff1/airootfs/home/
-            cat >> /build/archiso-ff1/packages.x86_64 << EOF
-          # soak test tools
-          foot
-          bc
-          stress-ng
-          mesa-utils
-          python-rich
-          EOF
-          fi
-
           mkdir -p /build/archiso-ff1/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
+          cp /etc/pacman.d/mirrorlist.device /build/archiso-ff1/pacman.d/mirrorlist
 
+          # The image ships the device mirrorlist: no cache token, no CI-only
+          # umea fallback (see setup-pacman).
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
+          cp /etc/pacman.d/mirrorlist.device /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
           cp /build/archiso-ff1/airootfs/etc/pacman.d/feralfile-pkg-pubkey.asc /etc/pacman.d/feralfile-pkg-pubkey.asc
 
           pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc
@@ -751,6 +779,26 @@ jobs:
         run: |
           cd /build
           mkarchiso -v -w /build/work -o /build/out /build/archiso-ff1
+          # The build container's mirrorlist carries the ff-arch-cache token
+          # (see .github/actions/setup-pacman); an image must ship
+          # mirrorlist.device instead. Checked on the root mkarchiso actually
+          # built, before anything is signed or uploaded, and failing when
+          # that root cannot be found: a leak would publish the token in every
+          # ISO, with no other symptom.
+          image_etc=/build/work/x86_64/airootfs/etc
+          if [ ! -d "$image_etc" ]; then
+            echo "::error::$image_etc is missing; cannot check the image for the arch-cache token"
+            exit 1
+          fi
+          # Only grep's "no match" status (1) passes. 0 is a match, and
+          # anything else means grep could not read part of the tree, which
+          # must not be taken for a clean image.
+          found=0
+          grep -rIlF 'arch-cache.feralfile.io' "$image_etc" || found=$?
+          if [ "$found" -ne 1 ]; then
+            echo "::error::the image would ship the ff-arch-cache mirror (files listed above), or its /etc could not be searched (grep status $found); images must carry /etc/pacman.d/mirrorlist.device"
+            exit 1
+          fi
           ISO_FILE=$(ls /build/out/*.iso | head -n 1)
           if [ -f "$ISO_FILE" ]; then
             IMAGE_TYPE="${{ inputs.dev_iso && 'dev-' || '' }}"

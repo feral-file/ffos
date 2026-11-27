@@ -24,9 +24,7 @@ hardware.
    `~/.bash_profile` rail. The user manager starts at
    boot because `/var/lib/systemd/linger/feralfile` ships in the image. The
    `getty@tty1` drop-in is conditioned on `archisobasedir` (live ISO only:
-   the installer, soak-test and factory-check entries keep their autologin;
-   the factory check runs ffos-user's `/home/feralfile/scripts/factory-check.sh`
-   as root), and that
+   the installer entries keep their root autologin), and that
    condition is the *only* thing keeping getty off tty1: the startup unit
    deliberately has no `Conflicts=getty@tty1.service`, because systemd
    resolves `Conflicts=` while building the boot transaction, before any
@@ -35,7 +33,7 @@ hardware.
 3. **cage gets DRM through seatd, not logind.** With no session on tty1,
    libseat's logind backend would attach to whatever session logind elects
    for the user (an SSH login, for instance) and fail. `seatd.service` is
-   enabled, `feralfile`/`soaktest` are in the `seat` group and
+   enabled, `feralfile` is in the `seat` group and
    `/etc/systemd/user.conf.d/10-ff1-seatd.conf` pins
    `LIBSEAT_BACKEND=seatd` for every user-manager unit. That is where cage
    runs (`chromium-kiosk.service` under `user@1000`); moving cage into the
@@ -51,7 +49,7 @@ hardware.
    degrades to text mode. Plymouth is **not** in the initramfs HOOKS: the
    console redirect already hides initramfs text and a broken hook would
    brick boot. Live ISO entries carry `plymouth.enable=0`: the installer
-   and soak test want their text console, and a plymouth daemon that never
+   wants its text console, and a plymouth daemon that never
    answered `quit` blocked a live ISO at "Hold until boot process finishes
    up" (the installer getty is ordered after it). On installed devices the
    two quit units are capped at 30 s by drop-ins for the same reason.
@@ -85,11 +83,46 @@ hardware.
    device-touching feature under `user@1000`, check whether its udev rule
    relies on `uaccess` and add a group membership the same way.
 
+## The factory test boots
+
+The installed boot menu (hold a key at power-on; `timeout 0` hides it
+otherwise) has three factory entries next to the factory reset:
+
+| Entry | `ff1.factory=` | Test |
+|---|---|---|
+| FF1 - Factory: panel check, black/gray | `panel` | load until 10 min of power-on, then the Panel Check's black/gray loop until the power is pulled |
+| FF1 - Factory: hardware test | `hardware` | Wi-Fi, Bluetooth, speakers, brightness once; the result stays on screen |
+| FF1 - Factory: nine-point and color fields | `fields` | the nine-point chart, then white, gray, black, red, green, blue, one per key press |
+
+Each cmdline carries `systemd.unit=ff1-burnin.target ff1.burnin
+ff1.factory=<test>`, so the boot reaches `ff1-burnin.target` instead of the
+default target, and only the target's list starts:
+- NetworkManager, bluetooth, logind, systemd-user-sessions, seatd, nftables;
+- `ff1-burnin.service`, which runs ffos-user `ff1-burnin.sh` on tty1; the
+  script reads `ff1.factory=` (none, as in a boot set saved before these
+  entries, runs the panel test).
+
+The kiosk startup, owner guard, tailscale and the OTA subvolume manager never
+start. `basic.target` still brings `timers.target`, so `feral-updater@`,
+`feral-updater-run@` and `feral-recovery-update` carry a
+`ConditionKernelCommandLine=!ff1.burnin` drop-in.
+
+Two units have to be named on this boot, because `multi-user.target` would
+normally pull them:
+- `plymouth-quit`, or plymouth keeps the display;
+- `systemd-user-sessions`, or `/run/nologin` stops `user@1000`, and with it
+  feralfile's PulseAudio.
+
+Plan: ffos-user `docs/plans/factory-burnin.md`. `scripts/verify.sh` pins all
+of this, and pins `ff1_write_boot_set` (ff1-boot-options.sh) as the only
+writer of the installed boot set.
+
 ## Where each piece lives
 
 | Piece | Path |
 |---|---|
-| Kernel options | `archiso-ff1/airootfs/root/scripts/ff1-boot-options.sh` |
+| Kernel options, installed boot set (`ff1_write_boot_set`) | `archiso-ff1/airootfs/root/scripts/ff1-boot-options.sh` |
+| Factory test boots | `archiso-ff1/airootfs/etc/systemd/system/ff1-burnin.{target,service}`, `*.service.d/10-not-in-burnin.conf` |
 | Kiosk startup unit | `archiso-ff1/airootfs/etc/systemd/system/feral-kiosk-startup.service` |
 | Fallback screen unit | `archiso-ff1/airootfs/etc/systemd/system/feral-kiosk-fallback.service` |
 | Live-ISO-only autologin | `archiso-ff1/airootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf` |
@@ -105,7 +138,7 @@ hardware.
 - **OTA from an older release.** The old `feral-system-update.sh` extracts
   the new image, runs the new `post-extraction.sh` in the chroot (it sources
   the new `ff1-boot-options.sh`, enables `seatd`, `feral-kiosk-startup` and
-  `getty@.service tty1 tty2` through `preset-all`, drops `sudoers.d/soaktest`,
+  `getty@.service tty1 tty2` through `preset-all`,
   adds `feralfile` to `seat`) and writes the one-shot candidate entry with
   its own, old, options. That single candidate boot therefore runs the new
   system with `systemd.show_status=auto` and no `console=tty3`: systemd's

@@ -1,0 +1,26 @@
+# The factory test boots (boot entries ff1_factory_{panel,hardware,fields}.conf,
+# written by ff1-boot-options.sh): systemd.unit=ff1-burnin.target replaces the default
+# target, so only what this file names starts. Not multi-user.target: the
+# kiosk startup, owner guard, tailscale, the OTA subvolume manager and every
+# feral user service stay off, so nothing updates, reboots or changes the
+# unit's state while it runs for hours. basic.target still pulls
+# timers.target, which is why feral-updater@.service and
+# feral-recovery-update.service carry a ConditionKernelCommandLine=!ff1.burnin
+# drop-in.
+#
+# What the burn-in needs and multi-user.target would have pulled:
+#   NetworkManager, bluetooth  the Wi-Fi reading and the Bluetooth discovery
+#   systemd-logind, systemd-user-sessions
+#                              user@1000 (feralfile's PulseAudio, for the
+#                              speaker check) cannot start while
+#                              /run/nologin exists, and only
+#                              systemd-user-sessions removes it
+#   seatd                      cage's display, as for the kiosk
+#   nftables                   the firewall, as on every boot
+[Unit]
+Description=FF1 factory test
+Documentation=https://github.com/feral-file/ffos-user/blob/develop/docs/plans/factory-burnin.md
+Requires=basic.target
+After=basic.target
+Wants=NetworkManager.service bluetooth.service systemd-logind.service systemd-user-sessions.service seatd.service nftables.service ff1-burnin.service
+AllowIsolate=yes

@@ -6,24 +6,70 @@ inputs:
     description: 'Pacman repository snapshot (YYYY/MM/DD) or "latest"'
     required: false
     default: 'latest'
+  arch_cache_token:
+    description: 'Token for the ff-arch-cache mirror of pinned snapshots (secrets.ARCH_CACHE_TOKEN). Empty: use the archive directly.'
+    required: false
+    default: ''
 
 runs:
   using: composite
   steps:
+    # Writes two mirrorlists.
+    #
+    # /etc/pacman.d/mirrorlist.device is what an image ships: official servers
+    # only, the same content this step has always written. Devices in the field
+    # sync from the Arch archive directly.
+    #
+    # /etc/pacman.d/mirrorlist is what this build container uses. For a pinned
+    # snapshot it lists, in order:
+    # 1. ff-arch-cache (feral-file/ff-arch-cache: a Cloudflare Worker that
+    #    keeps every snapshot file a build has fetched in R2), when a token is
+    #    given. A file it holds does not depend on the archive at all.
+    # 2. archive.archlinux.org, which stalls intermittently for GitHub-hosted
+    #    runners.
+    # 3. umea.archive.pkgbuild.com, the archive's official mirror, serving
+    #    identical snapshot databases.
+    # pacman falls through the list per file, so a build still works when the
+    # cache is down or refuses the token; its output then shows the failed
+    # retrievals from arch-cache.feralfile.io.
+    #
+    # The cache line carries the access token, and umea is a CI-only fallback,
+    # so the build mirrorlist must never be copied into an image. The image workflows copy
+    # mirrorlist.device and check the built image for the cache's host name;
+    # scripts/verify.sh pins both.
+    #
+    # "latest" moves every day and is not cached: both files are the official
+    # mirror list.
     - name: Configure mirrorlist
       shell: bash
+      env:
+        SNAPSHOT: ${{ inputs.pacman_snapshot }}
+        ARCH_CACHE_TOKEN: ${{ inputs.arch_cache_token }}
       run: |
-        SNAPSHOT="${{ inputs.pacman_snapshot }}"
+        device=/etc/pacman.d/mirrorlist.device
         if [ "$SNAPSHOT" = "latest" ]; then
           echo "Using latest Arch Linux repositories"
-          curl -o /etc/pacman.d/mirrorlist \
+          curl -o "$device" \
             "https://archlinux.org/mirrorlist/?country=US&protocol=https&ip_version=4&use_mirror_status=on"
-          sed -i 's/^#Server/Server/' /etc/pacman.d/mirrorlist
+          sed -i 's/^#Server/Server/' "$device"
+          cp "$device" /etc/pacman.d/mirrorlist
         else
           echo "Using Arch Linux Archive snapshot: $SNAPSHOT"
           {
             echo "# Arch Linux Archive - ${SNAPSHOT} snapshot"
             echo "Server = https://archive.archlinux.org/repos/${SNAPSHOT}/\$repo/os/\$arch"
+          } > "$device"
+          if [ -n "$ARCH_CACHE_TOKEN" ]; then
+            echo "Using ff-arch-cache ahead of the archive"
+          else
+            echo "::notice::ARCH_CACHE_TOKEN is not set; using the archive servers directly"
+          fi
+          {
+            if [ -n "$ARCH_CACHE_TOKEN" ]; then
+              echo "Server = https://ci:${ARCH_CACHE_TOKEN}@arch-cache.feralfile.io/repos/${SNAPSHOT}/\$repo/os/\$arch"
+            fi
+            cat "$device"
+            echo "Server = https://umea.archive.pkgbuild.com/repos/${SNAPSHOT}/\$repo/os/\$arch"
           } > /etc/pacman.d/mirrorlist
         fi
 

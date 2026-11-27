@@ -1,0 +1,41 @@
+# Runs ffos-user's ff1-burnin.sh on tty1 for the three factory test boots
+# (ff1-burnin.target). The entry's ff1.factory= word picks the test: panel
+# (load, then the Panel Check's black/gray loop until the power is pulled),
+# hardware (the unit checks once, result held), fields (the nine-point chart
+# and color fields, one per key press).
+#
+# Ordering:
+#   plymouth-quit, plymouth-quit-wait  Wants= as well as After=: on this boot
+#       nothing else pulls them (multi-user.target does on a normal one), and
+#       plymouth would otherwise keep the display cage needs.
+#   user@1000, systemd-user-sessions   feralfile's PulseAudio for the speaker
+#       check, pulled directly, as feral-kiosk-startup.service does.
+#
+# Runs as root: DDC/CI, wpa_cli and Bluetooth discovery need it, and so
+# Chromium runs with --no-sandbox (an offline local page on a boot an engineer
+# picked from the menu). XDG_RUNTIME_DIR is this unit's own runtime directory,
+# because root has no logind session here; the script also writes its status
+# there.
+[Unit]
+Description=FF1 factory test (ffos-user ff1-burnin.sh)
+ConditionKernelCommandLine=ff1.burnin
+Wants=plymouth-quit.service plymouth-quit-wait.service user@1000.service systemd-user-sessions.service seatd.service NetworkManager.service bluetooth.service
+After=plymouth-quit.service plymouth-quit-wait.service user@1000.service systemd-user-sessions.service systemd-logind.service seatd.service NetworkManager.service bluetooth.service
+
+[Service]
+Type=simple
+Environment=XDG_RUNTIME_DIR=/run/ff1-burnin
+Environment=LIBSEAT_BACKEND=seatd
+RuntimeDirectory=ff1-burnin
+RuntimeDirectoryMode=0700
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+# A mismatched build (ffos image without ffos-user's script) shows why rather
+# than a black panel.
+ExecStart=/usr/bin/bash -c 'if [ -r /home/feralfile/scripts/ff1-burnin.sh ]; then exec /usr/bin/bash /home/feralfile/scripts/ff1-burnin.sh; fi; clear; echo "FF1 factory test: /home/feralfile/scripts/ff1-burnin.sh is not on this image."; exec sleep infinity'
+Restart=always
+RestartSec=5

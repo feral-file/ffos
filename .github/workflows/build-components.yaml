@@ -50,6 +50,8 @@ on:
         required: true
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID:
         required: true
+      ARCH_CACHE_TOKEN:
+        required: false
 
 permissions:
   id-token: write
@@ -77,6 +79,7 @@ jobs:
         uses: ./.github/actions/setup-pacman
         with:
           pacman_snapshot: ${{ inputs.pacman_snapshot }}
+          arch_cache_token: ${{ secrets.ARCH_CACHE_TOKEN }}
 
       - name: Determine Build Type
         id: build-type
@@ -99,12 +102,12 @@ jobs:
       - name: Install Go Dependencies
         if: steps.build-type.outputs.type == 'go'
         run: |
-          pacman -S --noconfirm go git base-devel shadow
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" go git base-devel shadow
 
       - name: Install Rust Dependencies
         if: steps.build-type.outputs.type == 'rust'
         run: |
-          pacman -S --noconfirm rust cargo git base-devel shadow
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" rust cargo git base-devel shadow
 
       - name: Set Version
         id: set-version
@@ -244,7 +247,7 @@ jobs:
       - name: Rclone to r2
         working-directory: ffos-user/components/${{ inputs.component }}
         run: |
-          pacman -S --noconfirm rclone
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" rclone
 
           # Configure rclone
           mkdir -p ~/.config/rclone
