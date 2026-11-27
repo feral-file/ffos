@@ -162,6 +162,10 @@ jobs:
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-image:
+    # These workflows share the branch's ISO listing and version-info object.
+    concurrency:
+      group: ffos-image-publication-${{ github.ref_name }}
+      cancel-in-progress: false
     needs: [permission-check, source, resolve-container, build-native-player, build-feralfile-pacman-repo]
     if: always() && !failure() && !cancelled()
     name: Generate FFOS iso

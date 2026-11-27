@@ -139,6 +139,10 @@ jobs:
       ffos_user_ref: ${{ needs.determine-local-player.outputs.user_sha }}
 
   build-image:
+    # These workflows share the branch's ISO listing and version-info object.
+    concurrency:
+      group: ffos-image-publication-${{ github.ref_name }}
+      cancel-in-progress: false
     name: Generate FFOS iso from tags
     needs: [permission-check, resolve-container, determine-local-player, native]
     if: always() && !failure() && !cancelled()
