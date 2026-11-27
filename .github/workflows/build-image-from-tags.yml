@@ -152,17 +152,35 @@ jobs:
             {
               echo "# Arch Linux Archive - ${SNAPSHOT} snapshot"
               echo "Server = https://archive.archlinux.org/repos/${SNAPSHOT}/\$repo/os/\$arch"
+              # Fallback for archive stalls; CI only, see setup-pacman.
+              echo "Server = https://umea.archive.pkgbuild.com/repos/${SNAPSHOT}/\$repo/os/\$arch"
             } > /etc/pacman.d/mirrorlist
           fi
           pacman-key --init
           pacman-key --populate archlinux
           pacman -Syy
 
+      # Archive downloads stall intermittently for GitHub runners: retry with a
+      # pause. Inline, not scripts/install-build-packages.sh, because ffos is
+      # checked out at an older tag here, where that script does not exist.
       - name: Install build dependencies
         run: |
-          pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
-            git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli \
-            pacman-contrib shadow go rust cargo
+          set -euo pipefail
+          cachedir="$(pacman-conf CacheDir | head -n1)"
+          for attempt in 1 2 3; do
+            if pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
+                git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli \
+                pacman-contrib shadow go rust cargo; then
+              exit 0
+            fi
+            find "$cachedir" -maxdepth 1 -name '*.part' -delete
+            if (( attempt < 3 )); then
+              echo "Build dependency download failed (attempt $attempt/3); retrying in $((attempt * 30)) s"
+              sleep $((attempt * 30))
+            fi
+          done
+          echo "::error::Build dependency download failed after 3 attempts; the failing package is in pacman's output above"
+          exit 1
 
       - name: Build local feral-player bundle
         if: ${{ needs.determine-local-player.outputs.enabled == 'true' }}
@@ -362,7 +380,20 @@ jobs:
           if [ "${{ steps.module-cache.outputs.cache-hit }}" = "true" ]; then
             echo "reusing kernel-module package built earlier for identical inputs (cache hit)"
           else
-            pacman -S --noconfirm --needed base-devel "${MAKEDEPENDS[@]}"
+            # Inline retry (archive stalls); no scripts/ here, see "Install build dependencies".
+            cachedir="$(pacman-conf CacheDir | head -n1)"
+            for attempt in 1 2 3; do
+              if pacman -S --noconfirm --needed base-devel "${MAKEDEPENDS[@]}"; then
+                break
+              fi
+              if (( attempt == 3 )); then
+                echo "::error::makedepends download failed after 3 attempts; the failing package is in pacman's output above"
+                exit 1
+              fi
+              find "$cachedir" -maxdepth 1 -name '*.part' -delete
+              echo "makedepends download failed (attempt $attempt/3); retrying in $((attempt * 30)) s"
+              sleep $((attempt * 30))
+            done
             su builder -c "cd \"$PKGDIR\" && makepkg -f -d --noconfirm"
           fi
           ls -la "$PKGDIR"/amdgpu-vcn-h264-cap-*.pkg.tar.zst
@@ -392,8 +423,10 @@ jobs:
           mkdir -p /build/archiso-ff1/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
 
+          # The image's own mirrorlist omits the CI-only umea fallback.
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
+          grep -v '^Server = https://umea\.archive\.pkgbuild\.com/' /etc/pacman.d/mirrorlist \
+            > /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
           cp /build/archiso-ff1/airootfs/etc/pacman.d/feralfile-pkg-pubkey.asc /etc/pacman.d/feralfile-pkg-pubkey.asc
 
           pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc

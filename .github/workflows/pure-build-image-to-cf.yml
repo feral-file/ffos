@@ -122,7 +122,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
             git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli
 
       - name: Apply version-specific patches
@@ -148,9 +148,12 @@ jobs:
           mkdir -p /build/archiso-ff1/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
 
-          # Also copy mirror list to the final ISO
+          # Also copy mirror list to the final ISO, minus the CI-only umea
+          # fallback (setup-pacman), so the installed image's mirrorlist is
+          # unchanged by that build-reliability fix.
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
+          grep -v '^Server = https://umea\.archive\.pkgbuild\.com/' /etc/pacman.d/mirrorlist \
+            > /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
           cp /build/archiso-ff1/airootfs/etc/pacman.d/feralfile-pkg-pubkey.asc /etc/pacman.d/feralfile-pkg-pubkey.asc
 
           pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc

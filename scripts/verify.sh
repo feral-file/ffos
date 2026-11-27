@@ -26,12 +26,21 @@ mapfile -t package_shell_files < <(find packages -type f -name '*.sh' | sort)
 log "Checking shell syntax"
 # One file per invocation: `bash -n a b` parses only a and treats b as a
 # positional parameter, so a multi-file call silently checks the first file.
-for f in scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
+for f in scripts/verify.sh scripts/install-build-packages.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"; do
   bash -n "$f"
 done
 
 log "Running shellcheck"
-shellcheck scripts/verify.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/airootfs/root/scripts/internet-check.sh archiso-ff1/airootfs/root/scripts/ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+shellcheck scripts/verify.sh scripts/install-build-packages.sh scripts/agent-iso-build-guard.sh scripts/test-agent-iso-build-guard.sh scripts/verify-agent-hooks-e2e.sh scripts/codex-hook-trust.sh scripts/agent-branch-flow-guard.sh scripts/test-agent-branch-flow-guard.sh scripts/test-ota-download.sh scripts/test-internet-check.sh scripts/test-ota-control-state.sh archiso-ff1/airootfs/root/scripts/ota-download.sh archiso-ff1/airootfs/root/scripts/internet-check.sh archiso-ff1/airootfs/root/scripts/ota-control-state.sh archiso-ff1/profiledef.sh "${package_shell_files[@]}"
+
+log "Checking build-image-from-tags.yml calls no repo script"
+# That workflow checks ffos out at an older tag (inputs.ffos_ref), so a script
+# added under scripts/ after the tag does not exist there and the step dies with
+# exit 127. It retries pacman inline instead (see install-build-packages.sh).
+if grep -nE '/scripts/install-build-packages\.sh' .github/workflows/build-image-from-tags.yml; then
+  echo "build-image-from-tags.yml must not call scripts/install-build-packages.sh; inline the retry" >&2
+  exit 1
+fi
 
 log "Checking owner Tailscale integration"
 bash -n archiso-ff1/airootfs/usr/local/bin/feral-tailscale
