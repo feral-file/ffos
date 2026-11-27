@@ -564,8 +564,38 @@ jobs:
           mapfile -t pkgs < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' /build/archiso-ff1/packages.x86_64 | grep -v '^$')
           dbpath="$(mktemp -d)"
           cachedir="$(pacman-conf CacheDir | head -n1)"
+          config=/build/archiso-ff1/pacman.conf
           for attempt in 1 2 3; do
-            if pacman --config /build/archiso-ff1/pacman.conf --dbpath "$dbpath" \
+            if (( attempt == 2 )); then
+              # A mirror can have the snapshot database but lack its package
+              # links. Use the exact archive filename pacman resolved, including
+              # for detached signatures. Restart each transfer without Range.
+              cat > "$dbpath/fetch" <<'FETCH'
+          #!/bin/bash
+          set -eu
+          url=$1
+          output=$2
+          fetch=(curl --fail --silent --show-error --location --connect-timeout 15
+                 --speed-limit 1 --speed-time 60 --max-time 600 --output "$output")
+          case "$url" in
+            https://archive.archlinux.org/repos/*/*.pkg.tar.*|https://umea.archive.pkgbuild.com/repos/*/*.pkg.tar.*)
+              file=${url##*/}
+              stem=${file%.pkg.tar.*}
+              name=${stem%-*-*-*} # strip pkgver-pkgrel-arch
+              for host in umea.archive.pkgbuild.com archive.archlinux.org; do
+                if "${fetch[@]}" "https://$host/packages/${name:0:1}/$name/$file"; then
+                  exit 0
+                fi
+              done
+              ;;
+          esac
+          exec "${fetch[@]}" "$url"
+          FETCH
+              chmod 755 "$dbpath/fetch"
+              sed "/^\[options\]$/a XferCommand = $dbpath/fetch %u %o" "$config" > "$dbpath/retry.conf"
+              config="$dbpath/retry.conf"
+            fi
+            if pacman --config "$config" --dbpath "$dbpath" \
                 --cachedir "$cachedir" -Syw --noconfirm "${pkgs[@]}"; then
               exit 0
             fi
