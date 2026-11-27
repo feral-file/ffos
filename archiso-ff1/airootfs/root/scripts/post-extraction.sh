@@ -76,43 +76,14 @@ if [[ -z "$PARTUUID" ]]; then
 fi
 
 echo "Writing boot loader configuration (PARTUUID: $PARTUUID)..."
-# Kernel options shared by every FF1 boot entry (single source, ffos#126).
+# The whole boot set: loader.conf and every entry (ff1-boot-options.sh,
+# single source shared with both installers).
 if [[ ! -r /root/scripts/ff1-boot-options.sh ]]; then
     echo "ERROR: /root/scripts/ff1-boot-options.sh missing; refusing to write a boot entry without the shared kernel options" >&2
     exit 1
 fi
 source /root/scripts/ff1-boot-options.sh
-
-# random-seed-mode off: the power-cycle reset gesture (issue #122) invites
-# users to cut power in early boot — exactly when systemd-boot would rewrite
-# the ESP random-seed file, a FAT32 write window of the same corruption class
-# as F-05. With it off, normal boots leave the ESP read-only; x86 RDRAND
-# covers early-boot entropy.
-cat > /boot/loader/loader.conf <<EOF
-default arch.conf
-timeout 0
-editor no
-random-seed-mode off
-EOF
-
-# Clean up old entries if they exist
-rm -rf /boot/loader/entries/*
-
-cat > /boot/loader/entries/arch.conf <<EOF
-title   FF1
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
-initrd  /intel-ucode.img
-options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID $FF1_KERNEL_OPTS
-EOF
-
-cat > /boot/loader/entries/factory_reset.conf <<EOF
-title   FF1 - Factory Reset
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
-initrd  /intel-ucode.img
-options rollback=factory root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID $FF1_KERNEL_OPTS
-EOF
+ff1_write_boot_set /boot "$PARTUUID" || { echo "ERROR: failed to write the boot set" >&2; exit 1; }
 
 # --- Step 4: Configure mkinitcpio hooks ---
 echo "Configuring mkinitcpio hooks..."

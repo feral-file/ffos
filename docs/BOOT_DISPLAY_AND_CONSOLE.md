@@ -89,11 +89,38 @@ hardware.
    device-touching feature under `user@1000`, check whether its udev rule
    relies on `uaccess` and add a group membership the same way.
 
+## The factory burn-in boot
+
+The installed boot menu (hold a key at power-on; `timeout 0` hides it
+otherwise) has a third entry, **FF1 - Factory burn-in**, next to the
+factory reset. Its cmdline carries `systemd.unit=ff1-burnin.target
+ff1.burnin`, so the boot reaches `ff1-burnin.target` instead of the default
+target, and only the target's list starts:
+- NetworkManager, bluetooth, logind, systemd-user-sessions, seatd, nftables;
+- `ff1-burnin.service`, which runs ffos-user `ff1-burnin.sh` on tty1 (checks
+  once, then the display test until the power is pulled).
+
+The kiosk startup, owner guard, tailscale and the OTA subvolume manager never
+start. `basic.target` still brings `timers.target`, so `feral-updater@`,
+`feral-updater-run@` and `feral-recovery-update` carry a
+`ConditionKernelCommandLine=!ff1.burnin` drop-in.
+
+Two units have to be named on this boot, because `multi-user.target` would
+normally pull them:
+- `plymouth-quit`, or plymouth keeps the display;
+- `systemd-user-sessions`, or `/run/nologin` stops `user@1000`, and with it
+  feralfile's PulseAudio.
+
+Plan: ffos-user `docs/plans/factory-burnin.md`. `scripts/verify.sh` pins all
+of this, and pins `ff1_write_boot_set` (ff1-boot-options.sh) as the only
+writer of the installed boot set.
+
 ## Where each piece lives
 
 | Piece | Path |
 |---|---|
-| Kernel options | `archiso-ff1/airootfs/root/scripts/ff1-boot-options.sh` |
+| Kernel options, installed boot set (`ff1_write_boot_set`) | `archiso-ff1/airootfs/root/scripts/ff1-boot-options.sh` |
+| Factory burn-in boot | `archiso-ff1/airootfs/etc/systemd/system/ff1-burnin.{target,service}`, `*.service.d/10-not-in-burnin.conf` |
 | Kiosk startup unit | `archiso-ff1/airootfs/etc/systemd/system/feral-kiosk-startup.service` |
 | Fallback screen unit | `archiso-ff1/airootfs/etc/systemd/system/feral-kiosk-fallback.service` |
 | Live-ISO-only autologin | `archiso-ff1/airootfs/etc/systemd/system/getty@tty1.service.d/autologin.conf` |

@@ -432,6 +432,84 @@ if grep -q '^Conflicts=' "$AIROOTFS/etc/systemd/system/feral-kiosk-startup.servi
   printf 'feral-kiosk-startup.service must not declare Conflicts= (it would drop the live-ISO installer getty job)\n' >&2
   exit 1
 fi
+# The installed boot set has one writer, ff1_write_boot_set in
+# ff1-boot-options.sh: both installers and post-extraction.sh (every OTA) call
+# it, and none writes loader.conf or an entry of its own, so an entry added
+# there reaches every install and every update.
+log "Checking the installed boot set and the factory burn-in boot"
+for script in install-to-disk.sh auto-install.sh post-extraction.sh; do
+  f="$AIROOTFS/root/scripts/$script"
+  # shellcheck disable=SC2016 # a literal $PARTUUID in the script
+  grep -qE '^ff1_write_boot_set (/mnt/boot|/boot) "\$PARTUUID"' "$f" || {
+    printf '%s must write the boot set with ff1_write_boot_set\n' "$f" >&2
+    exit 1
+  }
+  if grep -qE 'loader/entries/(arch|factory_reset|ff1_burnin)\.conf|loader/loader\.conf <<' "$f"; then
+    printf '%s writes loader.conf or an installed entry itself; ff1_write_boot_set is the only writer\n' "$f" >&2
+    exit 1
+  fi
+done
+boot_tmp=$(mktemp -d)
+# shellcheck source=/dev/null
+(source "$BOOT_OPTS" && ff1_write_boot_set "$boot_tmp" PUUID) || {
+  printf 'ff1_write_boot_set failed\n' >&2
+  exit 1
+}
+# shellcheck source=/dev/null
+kernel_opts=$(source "$BOOT_OPTS" && printf '%s' "$FF1_KERNEL_OPTS")
+[ "$(find "$boot_tmp/loader/entries" -type f -printf '%f\n' | sort | tr '\n' ' ')" = "arch.conf factory_reset.conf ff1_burnin.conf " ] || {
+  printf 'the installed boot set must be exactly arch.conf factory_reset.conf ff1_burnin.conf\n' >&2
+  exit 1
+}
+[ "$(cat "$boot_tmp/loader/loader.conf")" = $'default arch.conf\ntimeout 0\neditor no\nrandom-seed-mode off' ] || {
+  printf 'loader.conf must stay: default arch.conf, timeout 0, editor no, random-seed-mode off\n' >&2
+  exit 1
+}
+root_words="root=PARTUUID=PUUID root_partuuid=PUUID"
+for want in "arch.conf:$root_words $kernel_opts" \
+            "factory_reset.conf:rollback=factory $root_words $kernel_opts" \
+            "ff1_burnin.conf:systemd.unit=ff1-burnin.target ff1.burnin $root_words $kernel_opts"; do
+  grep -qxF "options ${want#*:}" "$boot_tmp/loader/entries/${want%%:*}" || {
+    printf '%s: wrong options line\n' "${want%%:*}" >&2
+    exit 1
+  }
+done
+rm -rf "$boot_tmp"
+# The burn-in boot starts only ff1-burnin.target's list. timers.target still
+# comes in through basic.target, so every update path is condition-gated off.
+for unit in feral-updater@.service feral-updater-run@.service feral-recovery-update.service; do
+  grep -qx 'ConditionKernelCommandLine=!ff1.burnin' "$AIROOTFS/etc/systemd/system/$unit.d/10-not-in-burnin.conf" 2>/dev/null || {
+    printf '%s must not run on the burn-in boot (10-not-in-burnin.conf)\n' "$unit" >&2
+    exit 1
+  }
+done
+burnin_target="$AIROOTFS/etc/systemd/system/ff1-burnin.target"
+burnin_service="$AIROOTFS/etc/systemd/system/ff1-burnin.service"
+for want in systemd-user-sessions.service ff1-burnin.service NetworkManager.service bluetooth.service seatd.service nftables.service; do
+  grep -q "^Wants=.*\b$want\b" "$burnin_target" || {
+    printf 'ff1-burnin.target must want %s\n' "$want" >&2
+    exit 1
+  }
+done
+if grep -qE '^(Wants|Requires)=.*(multi-user|graphical)\.target|feral-kiosk-startup' "$burnin_target"; then
+  printf 'ff1-burnin.target must not pull multi-user/graphical or the kiosk\n' >&2
+  exit 1
+fi
+# Nothing else pulls plymouth-quit on this boot: Wants= as well as After=, or
+# plymouth keeps the display. user@1000 cannot start before
+# systemd-user-sessions removes /run/nologin.
+for key in Wants After; do
+  for unit in plymouth-quit.service plymouth-quit-wait.service user@1000.service systemd-user-sessions.service; do
+    grep -q "^$key=.*\b$unit\b" "$burnin_service" || {
+      printf 'ff1-burnin.service needs %s=%s\n' "$key" "$unit" >&2
+      exit 1
+    }
+  done
+done
+grep -qx 'ConditionKernelCommandLine=ff1.burnin' "$burnin_service" || {
+  printf 'ff1-burnin.service must run only on the burn-in boot\n' >&2
+  exit 1
+}
 # getty@.service must list tty1 as well: this file sorts before systemd's own
 # 90-systemd.preset and the first matching rule wins, so omitting tty1 would
 # leave the live ISO without its installer getty.
