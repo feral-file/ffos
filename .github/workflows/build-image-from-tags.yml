@@ -152,6 +152,8 @@ jobs:
             {
               echo "# Arch Linux Archive - ${SNAPSHOT} snapshot"
               echo "Server = https://archive.archlinux.org/repos/${SNAPSHOT}/\$repo/os/\$arch"
+              # Fallback for archive stalls; CI only, see setup-pacman.
+              echo "Server = https://umea.archive.pkgbuild.com/repos/${SNAPSHOT}/\$repo/os/\$arch"
             } > /etc/pacman.d/mirrorlist
           fi
           pacman-key --init
@@ -160,7 +162,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          pacman -S --noconfirm archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" archiso arch-install-scripts dosfstools libisoburn squashfs-tools \
             git curl rclone wget base-devel jq zip unzip fakeroot binutils openssl aws-cli \
             pacman-contrib shadow go rust cargo
 
@@ -362,7 +364,7 @@ jobs:
           if [ "${{ steps.module-cache.outputs.cache-hit }}" = "true" ]; then
             echo "reusing kernel-module package built earlier for identical inputs (cache hit)"
           else
-            pacman -S --noconfirm --needed base-devel "${MAKEDEPENDS[@]}"
+            "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" base-devel "${MAKEDEPENDS[@]}"
             su builder -c "cd \"$PKGDIR\" && makepkg -f -d --noconfirm"
           fi
           ls -la "$PKGDIR"/amdgpu-vcn-h264-cap-*.pkg.tar.zst
@@ -392,8 +394,10 @@ jobs:
           mkdir -p /build/archiso-ff1/pacman.d
           cp /etc/pacman.d/mirrorlist /build/archiso-ff1/pacman.d/mirrorlist
 
+          # The image's own mirrorlist omits the CI-only umea fallback.
           mkdir -p /build/archiso-ff1/airootfs/etc/pacman.d
-          cp /etc/pacman.d/mirrorlist /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
+          grep -v '^Server = https://umea\.archive\.pkgbuild\.com/' /etc/pacman.d/mirrorlist \
+            > /build/archiso-ff1/airootfs/etc/pacman.d/mirrorlist
           cp /build/archiso-ff1/airootfs/etc/pacman.d/feralfile-pkg-pubkey.asc /etc/pacman.d/feralfile-pkg-pubkey.asc
 
           pacman-key --add /etc/pacman.d/feralfile-pkg-pubkey.asc

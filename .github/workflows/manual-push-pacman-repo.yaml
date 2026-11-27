@@ -56,7 +56,7 @@ jobs:
 
       - name: Install Required Packages
         run: |
-          pacman -S --noconfirm rclone pacman-contrib git
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" rclone pacman-contrib git
 
       - name: Configure Rclone
         run: |
