@@ -1,7 +1,0 @@
-
-# Factory ISO only (factory-iso/apply.sh): a console that draws the factory
-# check's Chinese lines with the image's Noto CJK font.
-kmscon
-# kmscon's pango font engine (font-engine=pango in /etc/kmscon/kmscon.conf) is
-# only an optional dependency; today chromium brings it, listed so it stays.
-pango
