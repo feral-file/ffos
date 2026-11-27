@@ -432,6 +432,84 @@ if grep -q '^Conflicts=' "$AIROOTFS/etc/systemd/system/feral-kiosk-startup.servi
   printf 'feral-kiosk-startup.service must not declare Conflicts= (it would drop the live-ISO installer getty job)\n' >&2
   exit 1
 fi
+# The installed boot set has one writer, ff1_write_boot_set in
+# ff1-boot-options.sh: both installers and post-extraction.sh (every OTA) call
+# it, and none writes loader.conf or an entry of its own, so an entry added
+# there reaches every install and every update.
+log "Checking the installed boot set and the factory burn-in boot"
+for script in install-to-disk.sh auto-install.sh post-extraction.sh; do
+  f="$AIROOTFS/root/scripts/$script"
+  # shellcheck disable=SC2016 # a literal $PARTUUID in the script
+  grep -qE '^ff1_write_boot_set (/mnt/boot|/boot) "\$PARTUUID"' "$f" || {
+    printf '%s must write the boot set with ff1_write_boot_set\n' "$f" >&2
+    exit 1
+  }
+  if grep -qE 'loader/entries/(arch|factory_reset|ff1_burnin)\.conf|loader/loader\.conf <<' "$f"; then
+    printf '%s writes loader.conf or an installed entry itself; ff1_write_boot_set is the only writer\n' "$f" >&2
+    exit 1
+  fi
+done
+boot_tmp=$(mktemp -d)
+# shellcheck source=/dev/null
+(source "$BOOT_OPTS" && ff1_write_boot_set "$boot_tmp" PUUID) || {
+  printf 'ff1_write_boot_set failed\n' >&2
+  exit 1
+}
+# shellcheck source=/dev/null
+kernel_opts=$(source "$BOOT_OPTS" && printf '%s' "$FF1_KERNEL_OPTS")
+[ "$(find "$boot_tmp/loader/entries" -type f -printf '%f\n' | sort | tr '\n' ' ')" = "arch.conf factory_reset.conf ff1_burnin.conf " ] || {
+  printf 'the installed boot set must be exactly arch.conf factory_reset.conf ff1_burnin.conf\n' >&2
+  exit 1
+}
+[ "$(cat "$boot_tmp/loader/loader.conf")" = $'default arch.conf\ntimeout 0\neditor no\nrandom-seed-mode off' ] || {
+  printf 'loader.conf must stay: default arch.conf, timeout 0, editor no, random-seed-mode off\n' >&2
+  exit 1
+}
+root_words="root=PARTUUID=PUUID root_partuuid=PUUID"
+for want in "arch.conf:$root_words $kernel_opts" \
+            "factory_reset.conf:rollback=factory $root_words $kernel_opts" \
+            "ff1_burnin.conf:systemd.unit=ff1-burnin.target ff1.burnin $root_words $kernel_opts"; do
+  grep -qxF "options ${want#*:}" "$boot_tmp/loader/entries/${want%%:*}" || {
+    printf '%s: wrong options line\n' "${want%%:*}" >&2
+    exit 1
+  }
+done
+rm -rf "$boot_tmp"
+# The burn-in boot starts only ff1-burnin.target's list. timers.target still
+# comes in through basic.target, so every update path is condition-gated off.
+for unit in feral-updater@.service feral-updater-run@.service feral-recovery-update.service; do
+  grep -qx 'ConditionKernelCommandLine=!ff1.burnin' "$AIROOTFS/etc/systemd/system/$unit.d/10-not-in-burnin.conf" 2>/dev/null || {
+    printf '%s must not run on the burn-in boot (10-not-in-burnin.conf)\n' "$unit" >&2
+    exit 1
+  }
+done
+burnin_target="$AIROOTFS/etc/systemd/system/ff1-burnin.target"
+burnin_service="$AIROOTFS/etc/systemd/system/ff1-burnin.service"
+for want in systemd-user-sessions.service ff1-burnin.service NetworkManager.service bluetooth.service seatd.service nftables.service; do
+  grep -q "^Wants=.*\b$want\b" "$burnin_target" || {
+    printf 'ff1-burnin.target must want %s\n' "$want" >&2
+    exit 1
+  }
+done
+if grep -qE '^(Wants|Requires)=.*(multi-user|graphical)\.target|feral-kiosk-startup' "$burnin_target"; then
+  printf 'ff1-burnin.target must not pull multi-user/graphical or the kiosk\n' >&2
+  exit 1
+fi
+# Nothing else pulls plymouth-quit on this boot: Wants= as well as After=, or
+# plymouth keeps the display. user@1000 cannot start before
+# systemd-user-sessions removes /run/nologin.
+for key in Wants After; do
+  for unit in plymouth-quit.service plymouth-quit-wait.service user@1000.service systemd-user-sessions.service; do
+    grep -q "^$key=.*\b$unit\b" "$burnin_service" || {
+      printf 'ff1-burnin.service needs %s=%s\n' "$key" "$unit" >&2
+      exit 1
+    }
+  done
+done
+grep -qx 'ConditionKernelCommandLine=ff1.burnin' "$burnin_service" || {
+  printf 'ff1-burnin.service must run only on the burn-in boot\n' >&2
+  exit 1
+}
 # getty@.service must list tty1 as well: this file sorts before systemd's own
 # 90-systemd.preset and the first matching rule wins, so omitting tty1 would
 # leave the live ISO without its installer getty.
@@ -506,7 +584,7 @@ grep -q '^Theme=ff1$' "$AIROOTFS/etc/plymouth/plymouthd.conf" || {
   printf 'plymouthd.conf must select Theme=ff1\n' >&2
   exit 1
 }
-# Live ISO boots (installer, soak test) must not run plymouth at all: every
+# Live ISO boots (the installer) must not run plymouth at all: every
 # plymouth unit carries ConditionKernelCommandLine=!plymouth.enable=0, and
 # the installer getty is ordered after plymouth-quit-wait, so a splash daemon
 # that never quits (observed on a live ISO build) would block the install.
@@ -523,70 +601,19 @@ for unit in plymouth-quit-wait plymouth-quit; do
   }
 done
 
-log "Checking the factory ISO overlay"
-bash -n factory-iso/apply.sh
-shellcheck factory-iso/apply.sh
-grep -q 'needs: \[permission-check, factory-branch-guard\]' .github/workflows/build-image-to-cf.yml || {
-  printf 'build-image-to-cf.yml must refuse a factory ISO on a device channel before anything publishes\n' >&2
+log "Checking the factory ISO and the soak test stay deleted"
+# The factory burn-in (ff1_burnin.conf on the installed unit) replaced the
+# factory ISO, its Factory/Display check entries and the 24H soak test. A
+# returning live-ISO test entry would boot a bare unit into a path nothing
+# maintains, so none of their pieces may come back.
+[ ! -e factory-iso ] || {
+  printf 'factory-iso/ is deleted (the factory burn-in replaced it)\n' >&2
   exit 1
 }
-grep -q './factory-iso/apply.sh /build/archiso-ff1' .github/workflows/build-image-to-cf.yml || {
-  printf 'build-image-to-cf.yml no longer applies factory-iso/apply.sh\n' >&2
+if grep -rnE 'soaktest|soak-test|websocat|factory_check|factory-check\.sh|display-check\.sh|kmscon' archiso-ff1 .github/workflows; then
+  printf 'the factory ISO / soak test are deleted; the lines above bring a piece back\n' >&2
   exit 1
-}
-# shellcheck disable=SC2016 # a literal workflow expression
-grep -q 'if: ${{ !inputs.factory_check }}' .github/workflows/build-image-to-cf.yml || {
-  printf 'build-image-to-cf.yml must not update version-info.json for a factory ISO\n' >&2
-  exit 1
-}
-factory_profile="$(mktemp -d)"
-cp -r archiso-ff1 "$factory_profile/"
-factory-iso/apply.sh "$factory_profile/archiso-ff1"
-factory_entries=""
-for f in "$factory_profile"/archiso-ff1/efiboot/loader/entries/*; do factory_entries+="$(basename "$f") "; done
-[ "$factory_entries" = "archiso-x86_64-linux-display-check-assembly.conf archiso-x86_64-linux-display-check-brightness.conf archiso-x86_64-linux-factory-check.conf " ] || {
-  printf 'the factory ISO must carry the Factory check and Display check entries and nothing else (Auto Install wipes the NVMe unasked); got: %s\n' "$factory_entries" >&2
-  exit 1
-}
-# kmscon runs the factory check on tty1 whatever entry booted; a Display check
-# entry that does not mask it never reaches display-check.sh.
-for f in "$factory_profile"/archiso-ff1/efiboot/loader/entries/archiso-x86_64-linux-display-check-*.conf; do
-  if ! grep -q ' systemd.mask=kmsconvt@tty1.service ' "$f" || ! grep -q ' script=/home/feralfile/scripts/display-check.sh ' "$f"; then
-    printf '%s must mask kmsconvt@tty1 and run display-check.sh\n' "$(basename "$f")" >&2
-    exit 1
-  fi
-done
-grep -q 'script=/home/feralfile/scripts/display-check.sh" /proc/cmdline && echo root' "$AIROOTFS/etc/systemd/system/getty@tty1.service.d/autologin.conf" || {
-  printf 'the getty@tty1 autologin must log root in for the Display check entries\n' >&2
-  exit 1
-}
-grep -qx 'default archiso-x86_64-linux-factory-check.conf' "$factory_profile/archiso-ff1/efiboot/loader/loader.conf" || {
-  printf 'the factory ISO must boot the Factory check entry by default\n' >&2
-  exit 1
-}
-grep -qx 'editor no' "$factory_profile/archiso-ff1/efiboot/loader/loader.conf" || {
-  printf 'the factory ISO must disable the boot entry editor (it could retype script= to auto-install.sh)\n' >&2
-  exit 1
-}
-grep -qx kmscon "$factory_profile/archiso-ff1/packages.x86_64" || {
-  printf 'the factory ISO must install kmscon\n' >&2
-  exit 1
-}
-for f in efiboot/loader/entries/archiso-x86_64-linux-factory-check.conf airootfs/etc/systemd/system/kmsconvt@tty1.service.d/factory-check.conf; do
-  grep -q '/home/feralfile/scripts/factory-check.sh' "$factory_profile/archiso-ff1/$f" || {
-    printf '%s: kmscon and the getty@tty1 fallback must run the same factory-check.sh\n' "$f" >&2
-    exit 1
-  }
-done
-rm -rf "$factory_profile"
-ls archiso-ff1/efiboot/loader/entries/*display-check* >/dev/null 2>&1 && {
-  printf 'Display check entries belong to the factory ISO only (factory-iso/entries): the normal ISO boots Auto Install unless a key is held\n' >&2
-  exit 1
-}
-grep -qx kmscon archiso-ff1/packages.x86_64 && {
-  printf 'kmscon belongs to the factory ISO only (factory-iso/packages.x86_64)\n' >&2
-  exit 1
-}
+fi
 
 log "Checking README workflow inventory"
 while IFS= read -r workflow; do

@@ -7,8 +7,8 @@ Description=Feral File kiosk startup
 # script starts the real user units (kiosk, watchdog, controld) inside
 # user@1000, where LIBSEAT_BACKEND=seatd applies and cage reaches DRM through
 # seatd, not logind. Do not move cage into this unit: it would lose that.
-# Live ISO boots (installer, soak test, cmdline carries archisobasedir=) keep
-# their root/soaktest autologin getty instead: see getty@tty1.service.d.
+# Live ISO boots (the installer, cmdline carries archisobasedir=) keep their
+# root autologin getty instead: see getty@tty1.service.d.
 ConditionKernelCommandLine=!archisobasedir
 # No Conflicts=getty@tty1.service here, on purpose. systemd resolves
 # Conflicts= while building the boot transaction, BEFORE conditions are
