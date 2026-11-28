@@ -707,18 +707,18 @@ run_service_update() {
     bash "$SCRIPTS/feral-service-update.sh" test-id
   ) > "$WORK/out" 2>&1 || RC=$?
 }
-all_pkgs="pacman -S --needed --noconfirm feral-controld feral-sys-monitord feral-watchdog"
+all_pkgs="pacman -S --needed --noconfirm feral-controld feral-sys-monitord feral-watchdog feral-display"
 reset_case
 echo None > "$WORK/repo_prov"
 run_service_update
 (( RC == 0 )) || { cat "$WORK/out"; fail "rail: rc=$RC"; }
-grep -qxF -- "pacman -S --needed --noconfirm feral-sys-monitord feral-watchdog" "$WORK/calls" || { cat "$WORK/calls"; fail "rail: controld without the marker not held back with live state"; }
+grep -qxF -- "pacman -S --needed --noconfirm feral-sys-monitord feral-watchdog feral-display" "$WORK/calls" || { cat "$WORK/calls"; fail "rail: controld without the marker not held back with live state"; }
 grep -q "Holding feral-controld: the repository build does not provide feral-controld-control-v1" "$WORK/out" || { cat "$WORK/out"; fail "rail: hold not logged"; }
 ! grep -q "\[ERROR\]" "$WORK/out" || fail "rail: hold logged as an error"
 reset_case
 : > "$WORK/repo_prov"
 run_service_update
-grep -qxF -- "pacman -S --needed --noconfirm feral-sys-monitord feral-watchdog" "$WORK/calls" || { cat "$WORK/calls"; fail "rail: unreadable repo controld not held back"; }
+grep -qxF -- "pacman -S --needed --noconfirm feral-sys-monitord feral-watchdog feral-display" "$WORK/calls" || { cat "$WORK/calls"; fail "rail: unreadable repo controld not held back"; }
 reset_case
 run_service_update
 grep -qxF -- "$all_pkgs" "$WORK/calls" || { cat "$WORK/out" "$WORK/calls"; fail "rail: marker-carrying controld held back"; }
@@ -731,7 +731,7 @@ reset_case
 echo "$LIVE" > "$WORK/stat_eio"
 run_service_update
 (( RC == 0 )) || { cat "$WORK/out"; fail "rail: rc=$RC after a live stat error"; }
-grep -qxF -- "pacman -S --needed --noconfirm feral-sys-monitord feral-watchdog" "$WORK/calls" || { cat "$WORK/calls"; fail "rail: a live stat error must hold controld and update the rest"; }
+grep -qxF -- "pacman -S --needed --noconfirm feral-sys-monitord feral-watchdog feral-display" "$WORK/calls" || { cat "$WORK/calls"; fail "rail: a live stat error must hold controld and update the rest"; }
 
 echo "== arming block"
 # Run the real block from feral-system-update.sh (from the signal trap to the

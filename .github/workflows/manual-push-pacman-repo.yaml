@@ -77,7 +77,7 @@ jobs:
         run: |
           mkdir -p repo/x86_64
           cd repo/x86_64
-          rclone copy "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/os/x86_64/" . --verbose
+          rclone copy "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/native/os/x86_64/" . --verbose
 
       - name: Generate Pacman Database - repo feralfile
         working-directory: repo/x86_64
@@ -118,7 +118,7 @@ jobs:
         working-directory: repo/x86_64
         run: |
           rclone copy . \
-            "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/os/x86_64/" \
+            "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/native/os/x86_64/" \
             --include "feralfile.db*" \
             --include "feralfile.files*" \
             --s3-upload-cutoff=100M \
@@ -137,7 +137,7 @@ jobs:
           find db-extracted -mindepth 1 -maxdepth 1 -type d \
             | sed 's@.*/@@' | sort -u > keep_list.txt
 
-          rclone lsf "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/os/x86_64/" \
+          rclone lsf "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/native/os/x86_64/" \
             --include "*.pkg.tar.zst" > all_packages.txt
 
           while read pkgfile; do
@@ -146,8 +146,8 @@ jobs:
 
             if ! grep -qx "$base" keep_list.txt; then
               echo "Deleting $pkgfile"
-              rclone delete "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/os/x86_64/$pkgfile"
-              rclone delete "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/os/x86_64/$pkgfile.sig" || true
+              rclone delete "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/native/os/x86_64/$pkgfile"
+              rclone delete "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/native/os/x86_64/$pkgfile.sig" || true
             fi
           done < all_packages.txt
 

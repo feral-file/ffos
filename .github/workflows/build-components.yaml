@@ -31,6 +31,10 @@ on:
         required: true
         type: string
         default: 'develop'
+      pacman_snapshot:
+        description: 'Arch snapshot selected for the image'
+        required: true
+        type: string
       container_image:
         description: 'Container image to use for the build'
         required: true
@@ -244,6 +248,12 @@ jobs:
             kmspgp sign "$KMS_KEY_ID" < "$p" > "$p.sig"
           done
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-component-${{ inputs.component }}
+          path: ffos-user/components/${{ inputs.component }}/*.pkg.tar.zst*
+          if-no-files-found: error
+
       - name: Rclone to r2
         working-directory: ffos-user/components/${{ inputs.component }}
         run: |
@@ -263,7 +273,7 @@ jobs:
           EOF
 
           rclone copy . \
-            "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${{ github.ref_name }}/os/x86_64/" \
+            "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${{ github.ref_name }}/native/os/x86_64/" \
             --include="*.pkg.tar.zst" \
             --include="*.pkg.tar.zst.sig" \
             --s3-upload-cutoff=100M \

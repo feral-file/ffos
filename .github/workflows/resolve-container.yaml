@@ -33,7 +33,7 @@ jobs:
         run: |
           case "${{ inputs.pacman_snapshot }}" in
             "2026/07/13")
-              echo "image=archlinux:base-20260712.0.555161" >> $GITHUB_OUTPUT
+              echo "image=archlinux@sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899" >> $GITHUB_OUTPUT
               ;;
             "2025/11/25")
               echo "image=archlinux:base-20251214.0.467559" >> $GITHUB_OUTPUT

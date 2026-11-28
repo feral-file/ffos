@@ -31,11 +31,6 @@ on:
         required: true
         type: string
         default: 'develop'
-      ff_player_ref:
-        description: "feral-player repository reference to build static export"
-        required: true
-        default: "main"
-        type: string
       dev_iso:
         description: "Build development ISO"
         required: true
@@ -58,6 +53,7 @@ on:
         default: false
 permissions:
   id-token: write
+  actions: read
   contents: read
 
 jobs:
@@ -71,11 +67,47 @@ jobs:
     with:
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
 
-  build-feral-player:
-    name: Build feral-player Package
-    needs: [permission-check, resolve-container]
-    if: ${{ inputs.ff_player_ref != '' }}
-    uses: ./.github/workflows/build-feral-player.yaml
+  source:
+    needs: permission-check
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.revision.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: feral-file/ffos-user
+          ref: ${{ inputs.ffos_user_ref }}
+          persist-credentials: false
+      - id: revision
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  build-feral-controld:
+    needs: [permission-check, source, resolve-container]
+    name: Build Feral Controld
+    uses: ./.github/workflows/build-components.yaml
+    secrets:
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+      CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
+      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
+    with:
+      component: feral-controld
+      version: ${{ inputs.version }}
+      description: 'Feral File Controld Service'
+      maintainer: 'Feral File'
+      environment: ${{ inputs.environment }}
+      ffos_user_ref: ${{ needs.source.outputs.sha }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot }}
+      container_image: ${{ needs.resolve-container.outputs.image }}
+
+  build-feral-watchdog:
+    needs: [permission-check, source, resolve-container]
+    name: Build Feral Watchdog
+    uses: ./.github/workflows/build-components.yaml
     secrets:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
@@ -83,19 +115,56 @@ jobs:
       ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
-      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-      SENTRY_DSN_PLAYER: ${{ secrets.SENTRY_DSN_PLAYER }}
     with:
+      component: feral-watchdog
       version: ${{ inputs.version }}
-      description: 'FF Player Static Web Application'
+      description: 'Feral File Watchdog'
       maintainer: 'Feral File'
       environment: ${{ inputs.environment }}
-      ff_player_ref: ${{ inputs.ff_player_ref }}
+      ffos_user_ref: ${{ needs.source.outputs.sha }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot }}
+      container_image: ${{ needs.resolve-container.outputs.image }}
+
+  build-native-player:
+    needs: [permission-check, source, resolve-container]
+    name: Package tested native player
+    uses: ./.github/workflows/build-pkgbuild.yaml
+    secrets:
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+      CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
+      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
+    with:
+      package: feral-display
+      ffos_user_ref: ${{ needs.source.outputs.sha }}
+      environment: ${{ inputs.environment }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot }}
+      container_image: ${{ needs.resolve-container.outputs.image }}
+
+  build-feralfile-pacman-repo:
+    name: Build Feralfile pacman repo
+    needs: [permission-check, resolve-container, build-native-player, build-feral-controld, build-feral-watchdog]
+    uses: ./.github/workflows/pacman-repo.yaml
+    secrets:
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+      CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+      AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
+      AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
+    with:
+      environment: ${{ inputs.environment }}
       pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-image:
-    needs: [permission-check, resolve-container, build-feral-player]
+    # These workflows share the branch's ISO listing and version-info object.
+    concurrency:
+      group: ffos-image-publication-${{ github.ref_name }}
+      cancel-in-progress: false
+    needs: [permission-check, source, resolve-container, build-native-player, build-feralfile-pacman-repo]
     if: always() && !failure() && !cancelled()
     name: Generate FFOS iso
     runs-on: ubuntu-latest
@@ -113,7 +182,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: feral-file/ffos-user
-          ref: ${{ inputs.ffos_user_ref }}
+          ref: ${{ needs.source.outputs.sha }}
           path: ffos-user
 
       - name: Setup pacman
@@ -211,19 +280,30 @@ jobs:
           cat >> /build/archiso-ff1/pacman.conf << EOF
           [feralfile]
           SigLevel = Required DatabaseOptional TrustedOnly
-          Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
+          Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/native/os/\$arch
           EOF
 
           cp /build/archiso-ff1/pacman.conf /build/archiso-ff1/airootfs/etc/pacman.conf
 
-      - name: Copy UI files
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-native-package
+          path: /build/native-repo
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: signed-component-*
+          merge-multiple: true
+          path: /build/native-repo
+
+      - name: Select this build's signed player during image assembly
         run: |
-          # launcher-ui is retired: the kiosk now serves ff-player (feral-player
-          # package) at http://127.0.0.1:8080/, so /opt/feral/ui/launcher is no
-          # longer provisioned into the image.
-          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
-          cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
-          mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
+          cd /build/native-repo
+          repo-add native-build.db.tar.gz ./*.pkg.tar.zst
+          sed -i '/^\[feralfile\]/i [native-build]\nSigLevel = Required DatabaseOptional TrustedOnly\nServer = file:///build/native-repo\n' /build/archiso-ff1/pacman.conf
+
+      - name: Prepare native player session
+        run: mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
 
       - name: Add Configs and Services
         env:
@@ -347,6 +427,7 @@ jobs:
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/controld.json" "$FERAL_CONTROLD_CONFIG_JSON" '
             del(.sentry)
             | del(.raster)
+            | del(.cdp)
             | .logStreaming = ((.logStreaming // {}) + {
                 endpoint: "https://677c668ad85c407fb1f0b68f63f41f21.ingest.cloudflare.com",
                 environment: ($log_stream_environment | ascii_downcase)
@@ -414,7 +495,7 @@ jobs:
           fi
           # end feral-file#3551 control gate
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
-          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version | del(.cdp)'
           write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'
 
       - name: Configure rclone
@@ -465,8 +546,38 @@ jobs:
           mapfile -t pkgs < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' /build/archiso-ff1/packages.x86_64 | grep -v '^$')
           dbpath="$(mktemp -d)"
           cachedir="$(pacman-conf CacheDir | head -n1)"
+          config=/build/archiso-ff1/pacman.conf
           for attempt in 1 2 3; do
-            if pacman --config /build/archiso-ff1/pacman.conf --dbpath "$dbpath" \
+            if (( attempt == 2 )); then
+              # A mirror can have the snapshot database but lack its package
+              # links. Use the exact archive filename pacman resolved, including
+              # for detached signatures. Restart each transfer without Range.
+              cat > "$dbpath/fetch" <<'FETCH'
+          #!/bin/bash
+          set -eu
+          url=$1
+          output=$2
+          fetch=(curl --fail --silent --show-error --location --connect-timeout 15
+                 --speed-limit 1 --speed-time 60 --max-time 600 --output "$output")
+          case "$url" in
+            https://archive.archlinux.org/repos/*/*.pkg.tar.*|https://umea.archive.pkgbuild.com/repos/*/*.pkg.tar.*)
+              file=${url##*/}
+              stem=${file%.pkg.tar.*}
+              name=${stem%-*-*-*} # strip pkgver-pkgrel-arch
+              for host in umea.archive.pkgbuild.com archive.archlinux.org; do
+                if "${fetch[@]}" "https://$host/packages/${name:0:1}/$name/$file"; then
+                  exit 0
+                fi
+              done
+              ;;
+          esac
+          exec "${fetch[@]}" "$url"
+          FETCH
+              chmod 755 "$dbpath/fetch"
+              sed "/^\[options\]$/a XferCommand = $dbpath/fetch %u %o" "$config" > "$dbpath/retry.conf"
+              config="$dbpath/retry.conf"
+            fi
+            if pacman --config "$config" --dbpath "$dbpath" \
                 --cachedir "$cachedir" -Syw --noconfirm "${pkgs[@]}"; then
               exit 0
             fi
@@ -520,6 +631,7 @@ jobs:
             NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version }}.iso"
             mv "$ISO_FILE" "/build/out/$NEW_NAME"
             echo "ISO created: /build/out/$NEW_NAME"
+            bash "$GITHUB_WORKSPACE/scripts/verify-native-iso.sh" "/build/out/$NEW_NAME" "${{ needs.build-native-player.outputs.native_version }}" "${{ inputs.version }}" feral-controld feral-watchdog
 
             cd /build/out
 
@@ -561,104 +673,14 @@ jobs:
           fi
 
       - name: Update version info JSON
-        run: |
-          set -e
-
-          VERSION_INFO_PATH="${{ github.ref_name }}/version-info.json"
-          VERSION_INFO_FILE="/tmp/version-info.json"
-          CURRENT_VERSION="${{ inputs.version }}"
-          UPDATE_MIN_VERSION="${{ inputs.update_min_version }}"
-          UPDATE_REQUIRED_VERSION="${{ inputs.update_required_version }}"
-          UPDATE_RECOVERY_VERSION="${{ inputs.update_recovery_version }}"
-
-          # Try to download existing version info JSON
-          if rclone copyto "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${VERSION_INFO_PATH}" "$VERSION_INFO_FILE" 2>/dev/null; then
-            echo "Downloaded existing version-info.json"
-            # Validate JSON and read existing values
-            if ! jq empty "$VERSION_INFO_FILE" 2>/dev/null; then
-              echo "Warning: Existing JSON is invalid, creating new one"
-              echo '{}' > "$VERSION_INFO_FILE"
-              EXISTING_RECOVERY=""
-              EXISTING_UPGRADEABLE=""
-              EXISTING_RUNTIME=""
-            else
-              EXISTING_UPGRADEABLE=$(jq -r '.min_upgradeable_version // ""' "$VERSION_INFO_FILE" 2>/dev/null || echo "")
-              EXISTING_RUNTIME=$(jq -r '.min_runtime_version // ""' "$VERSION_INFO_FILE" 2>/dev/null || echo "")
-              EXISTING_RECOVERY=$(jq -r '.recovery_version // ""' "$VERSION_INFO_FILE" 2>/dev/null || echo "")
-            fi
-          else
-            echo "No existing version-info.json found, creating new one"
-            EXISTING_RECOVERY=""
-            EXISTING_UPGRADEABLE=""
-            EXISTING_RUNTIME=""
-            echo '{}' > "$VERSION_INFO_FILE"
-          fi
-
-          # Prepare updated JSON - always update latest_version
-          jq --arg latest "$CURRENT_VERSION" '.latest_version = $latest' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
-          mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-
-          # Update min_upgradeable_version if checkbox is checked
-          if [ "$UPDATE_REQUIRED_VERSION" = "true" ] || [ "$UPDATE_REQUIRED_VERSION" = true ]; then
-            jq --arg upgradeable "$CURRENT_VERSION" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
-            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Updated min_upgradeable_version to $CURRENT_VERSION"
-          elif [ -n "$EXISTING_UPGRADEABLE" ] && [ "$EXISTING_UPGRADEABLE" != "null" ] && [ "$EXISTING_UPGRADEABLE" != "" ]; then
-            # Keep existing min_upgradeable_version if not updating
-            jq --arg upgradeable "$EXISTING_UPGRADEABLE" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
-            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Kept existing min_upgradeable_version: $EXISTING_UPGRADEABLE"
-          else
-            # First build on this branch (no existing value): default to current version
-            jq --arg upgradeable "$CURRENT_VERSION" '.min_upgradeable_version = $upgradeable' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
-            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Defaulted min_upgradeable_version to $CURRENT_VERSION (first build)"
-          fi
-
-          # Update min_runtime_version if checkbox is checked
-          if [ "$UPDATE_MIN_VERSION" = "true" ] || [ "$UPDATE_MIN_VERSION" = true ]; then
-            jq --arg runtime "$CURRENT_VERSION" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
-            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Updated min_runtime_version to $CURRENT_VERSION"
-          elif [ -n "$EXISTING_RUNTIME" ] && [ "$EXISTING_RUNTIME" != "null" ] && [ "$EXISTING_RUNTIME" != "" ]; then
-            # Keep existing min_runtime_version if not updating
-            jq --arg runtime "$EXISTING_RUNTIME" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
-            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Kept existing min_runtime_version: $EXISTING_RUNTIME"
-          else
-            # First build on this branch (no existing value): default to current version
-            jq --arg runtime "$CURRENT_VERSION" '.min_runtime_version = $runtime' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
-            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Defaulted min_runtime_version to $CURRENT_VERSION (first build)"
-          fi
-
-          # Update recovery_version if checkbox is checked
-          if [ "$UPDATE_RECOVERY_VERSION" = "true" ] || [ "$UPDATE_RECOVERY_VERSION" = true ]; then
-            jq --arg recovery "$CURRENT_VERSION" '.recovery_version = $recovery' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
-            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Updated recovery_version to $CURRENT_VERSION"
-          elif [ -n "$EXISTING_RECOVERY" ] && [ "$EXISTING_RECOVERY" != "null" ] && [ "$EXISTING_RECOVERY" != "" ]; then
-            # Keep existing recovery_version if not updating
-            jq --arg recovery "$EXISTING_RECOVERY" '.recovery_version = $recovery' "$VERSION_INFO_FILE" > "${VERSION_INFO_FILE}.tmp"
-            mv "${VERSION_INFO_FILE}.tmp" "$VERSION_INFO_FILE"
-            echo "Kept existing recovery_version: $EXISTING_RECOVERY"
-          fi
-
-          # Display final JSON
-          echo "Final version-info.json:"
-          cat "$VERSION_INFO_FILE" | jq .
-
-          # Validate final JSON before uploading
-          if ! jq empty "$VERSION_INFO_FILE" 2>/dev/null; then
-            echo "Error: Generated JSON is invalid"
-            exit 1
-          fi
-
-          # Upload updated JSON to R2
-          rclone copyto "$VERSION_INFO_FILE" \
-            "r2:${{vars.CLOUDFLARE_R2_BUCKET_NAME}}/${VERSION_INFO_PATH}" \
-            --verbose
-          echo "Version info JSON successfully uploaded to R2: ${VERSION_INFO_PATH}"
+        env:
+          BRANCH_ROOT: r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}
+          IMAGE_VERSION: ${{ inputs.version }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          UPDATE_REQUIRED: ${{ inputs.update_required_version }}
+          UPDATE_RUNTIME: ${{ inputs.update_min_version }}
+          UPDATE_RECOVERY: ${{ inputs.update_recovery_version }}
+        run: bash scripts/publish-version-info.sh
 
       - name: Cleanup
         if: always()
