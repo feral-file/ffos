@@ -49,6 +49,7 @@ jobs:
     name: Package tested native player
     uses: ./.github/workflows/build-pkgbuild.yaml
     secrets:
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}

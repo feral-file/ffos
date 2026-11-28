@@ -109,14 +109,11 @@ mount -o umask=0077 "$BOOT_PART" /mnt/boot
 # ─── Copy root filesystem ──────────────────────────────────────────────
 echo
 echo "Copying root filesystem..."
-rm -rf /home/soaktest
-rm -f /usr/local/bin/websocat
 # Preserve shared CEF library and resource inodes on the destination.
 rsync -aHAX --info=progress2 --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/live-efi/*","/media/*","/lost+found"} / /mnt
 # No tty1 autologin on the installed system (ffos#126): the image's
 # getty@tty1 drop-in is conditioned on the live ISO cmdline and
-# feral-kiosk-startup.service owns tty1. Drop the soak-test sudoers grant too.
-rm -f /mnt/etc/sudoers.d/soaktest
+# feral-kiosk-startup.service owns tty1.
 mkdir -p /mnt/home/feralfile/.state
 cat > /mnt/home/feralfile/.state/environment <<EOF
 live
@@ -168,53 +165,20 @@ umount /live-efi
 
 PARTUUID=$(blkid -s PARTUUID -o value "$ROOT_PART")
 
-# Clean up old entries if they exist
-rm -rf /mnt/boot/loader/entries/*
-
-# random-seed-mode off: the power-cycle reset gesture (issue #122) invites
-# users to cut power in early boot — exactly when systemd-boot would rewrite
-# the ESP random-seed file, a FAT32 write window of the same corruption class
-# as F-05. With it off, normal boots leave the ESP read-only; x86 RDRAND
-# covers early-boot entropy.
-cat > /mnt/boot/loader/loader.conf <<EOF
-default arch.conf
-timeout 0
-editor no
-random-seed-mode off
-EOF
-
-# Kernel options shared by every FF1 boot entry (single source, ffos#126).
+# The whole boot set: loader.conf and every entry (ff1-boot-options.sh,
+# single source shared with the other installer and post-extraction.sh).
 if [[ ! -r /root/scripts/ff1-boot-options.sh ]]; then
     echo "ERROR: /root/scripts/ff1-boot-options.sh missing; refusing to write a boot entry without the shared kernel options" >&2
     exit 1
 fi
 source /root/scripts/ff1-boot-options.sh
-cat > /mnt/boot/loader/entries/arch.conf <<EOF
-title   FF1
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
-initrd  /intel-ucode.img
-options root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID $FF1_KERNEL_OPTS
-EOF
-
-cat > /mnt/boot/loader/entries/factory_reset.conf <<EOF
-title   FF1 - Factory Reset
-linux   /vmlinuz-linux
-initrd  /initramfs-linux.img
-initrd  /intel-ucode.img
-options rollback=factory root=PARTUUID=$PARTUUID root_partuuid=$PARTUUID $FF1_KERNEL_OPTS
-EOF
-
-chmod 644 /mnt/boot/loader/entries/*.conf
+ff1_write_boot_set /mnt/boot "$PARTUUID" || { echo "ERROR: failed to write the boot set" >&2; exit 1; }
 
 mount --bind /dev /mnt/dev
 mount --bind /proc /mnt/proc
 mount --bind /sys /mnt/sys
 
 arch-chroot /mnt /bin/bash <<'EOF'
-echo "Removing soaktest account..."
-id soaktest &>/dev/null && userdel soaktest || true
-
 echo "Overwriting mkinitcpio.conf HOOKS..."
 sed -i 's/^HOOKS=.*/HOOKS=(base udev modconf autodetect block keyboard keymap btrfs btrfs-rollback filesystems fsck)/' /etc/mkinitcpio.conf
 

@@ -491,9 +491,9 @@ This keeps v1 devices (root at `@`) and v2 devices (root at `@snapshots/@`) work
 
 `post-extraction.sh` is the shared script run inside a newly populated root (OTA snapshot or recovery candidate). It is invoked by `feral-system-update.sh` and `feral-recovery-update.sh` with the root device as an argument. It:
 
-- Removes test/development files and the soaktest user
-- Removes the soak-test sudoers grant and sets the environment (e.g. "live"); no getty autologin is written (see `docs/BOOT_DISPLAY_AND_CONSOLE.md`)
-- Writes `/boot/loader/loader.conf` and entries (`arch.conf`, `factory_reset.conf`) with the correct PARTUUID and the shared kernel options from `/root/scripts/ff1-boot-options.sh`
+- Removes test/development files (the live ISO's root shell scripts) and stale Chromium cache state
+- Sets the environment (e.g. "live"); no getty autologin is written (see `docs/BOOT_DISPLAY_AND_CONSOLE.md`)
+- Writes `/boot/loader/loader.conf` and entries (`arch.conf`, `factory_reset.conf`, and the three `ff1_factory_*.conf` test entries) with `ff1_write_boot_set` from `/root/scripts/ff1-boot-options.sh` (the same writer the installers use), with the correct PARTUUID and the shared kernel options
 - Configures mkinitcpio (including the btrfs-rollback hook) and runs `mkinitcpio -P`
 - Initializes pacman keys and FeralFile package key; runs `pacman -Syy`
 - Sets TPM udev rules and group membership
@@ -510,6 +510,7 @@ Typical layout under the ESP mount (`/boot`):
 - **loader/loader.conf** — default entry `arch.conf`, timeout 0.
 - **loader/entries/arch.conf** — main entry; boots the default subvolume `@snapshots/@` (known-good root and kernel).
 - **loader/entries/factory_reset.conf** — adds `rollback=factory` and boots the default subvolume so the initcpio hook can perform rollback.
+- **loader/entries/ff1_factory_{panel,hardware,fields}.conf** — the factory tests: each boots the default subvolume into `ff1-burnin.target` (see `docs/BOOT_DISPLAY_AND_CONSOLE.md`). Menu only. Picked at the reboot an OTA armed, one uses up the candidate one-shot; the next normal boot then drops the orphaned `@ota_new` and the update comes back at the next window. A factory reset restores the boot set saved at install time, so on a unit installed before this entry existed, a reset brings back the boot set of that time (no factory entry, or the single `ff1_burnin.conf` of the previous release, which runs the panel test) until the next OTA.
 - **loader/entries/arch-candidate.conf** — created by OTA or factory reset; points to the candidate subvolume and **/candidate/** kernel/initrd. Present only transiently; removed by the subvolume manager after promotion or cleanup.
 - **vmlinuz-linux**, **initramfs-linux.img**, **intel-ucode.img** — current deployed (known-good) kernel.
 - **candidate/** — directory created during OTA or factory reset; holds the new kernel/initrd until promotion or cleanup.

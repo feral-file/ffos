@@ -8,7 +8,11 @@ dosfstools
 rsync
 openssl
 openssh
-reflector
+# Listed because the image relies on it directly: the burn-in's Bluetooth
+# discovery (ffos-user users/feralfile/scripts/unit-checks.sh) holds one D-Bus
+# connection open from python3, since BlueZ ends a discovery when the client
+# that started it disconnects and the image has no bluetoothctl.
+python
 # LTS kernel (6.18 series); boot artifacts keep the legacy vmlinuz-linux /
 # initramfs-linux.img names required by fleet OTA scripts and ESP boot entries
 # (see etc/pacman.d/hooks/60-linux-lts-kernel-compat.hook and
@@ -72,7 +76,7 @@ grim
 # seatd gives cage DRM/input access without a logind session (ffos#126): no
 # getty or login shell runs on tty1, so libseat's logind backend has no session
 # to attach to. Selected through LIBSEAT_BACKEND=seatd in
-# etc/systemd/user.conf.d/10-ff1-seatd.conf; feralfile/soaktest are in `seat`.
+# etc/systemd/user.conf.d/10-ff1-seatd.conf; feralfile is in `seat`.
 seatd
 # Plymouth paints every non-kiosk moment (boot, shutdown, the watchdog's
 # "Something went wrong..." fallback) with the ff1 theme so the framebuffer

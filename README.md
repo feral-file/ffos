@@ -131,7 +131,6 @@ ffos-user/users/ → ISO airootfs/home/ → Final ISO
 ### Configuration Flow
 ```
 ffos-user/users/feralfile/.config/ → ISO /home/feralfile/.config/
-ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 ```
 
 ## Build Configuration
@@ -144,7 +143,6 @@ ffos-user/users/soaktest/ → ISO /home/soaktest/ (conditional)
 ### Build Parameters
 - `version`: ISO version number
 - `ffos_user_ref`: ffos-user repository reference
-- `soak-test`: Include soak test components
 - `environment`: Development/Staging/Production environment
 - `is_development`: Include development tools
 - `install_to_emmc`: Build installation image

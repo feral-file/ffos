@@ -53,10 +53,11 @@ jobs:
         uses: ./.github/actions/setup-pacman
         with:
           pacman_snapshot: ${{ inputs.pacman_snapshot || github.event.inputs.pacman_snapshot }}
+          arch_cache_token: ${{ secrets.ARCH_CACHE_TOKEN }}
 
       - name: Install Required Packages
         run: |
-          pacman -S --noconfirm rclone pacman-contrib git
+          "$GITHUB_WORKSPACE/scripts/install-build-packages.sh" rclone pacman-contrib git
 
       - name: Configure Rclone
         run: |
