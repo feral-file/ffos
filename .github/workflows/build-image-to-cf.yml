@@ -101,6 +101,7 @@ jobs:
       maintainer: 'Feral File'
       environment: ${{ inputs.environment }}
       ffos_user_ref: ${{ needs.source.outputs.sha }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-feral-sys-monitord:
@@ -121,6 +122,7 @@ jobs:
       maintainer: 'Feral File'
       environment: ${{ inputs.environment }}
       ffos_user_ref: ${{ needs.source.outputs.sha }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-feral-watchdog:
@@ -141,6 +143,7 @@ jobs:
       maintainer: 'Feral File'
       environment: ${{ inputs.environment }}
       ffos_user_ref: ${{ needs.source.outputs.sha }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-native-player:

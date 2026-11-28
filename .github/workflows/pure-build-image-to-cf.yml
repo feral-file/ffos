@@ -86,6 +86,7 @@ jobs:
     name: Build Feral Controld
     uses: ./.github/workflows/build-components.yaml
     secrets:
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
@@ -100,6 +101,7 @@ jobs:
       maintainer: 'Feral File'
       environment: ${{ inputs.environment }}
       ffos_user_ref: ${{ needs.source.outputs.sha }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-feral-watchdog:
@@ -120,6 +122,7 @@ jobs:
       maintainer: 'Feral File'
       environment: ${{ inputs.environment }}
       ffos_user_ref: ${{ needs.source.outputs.sha }}
+      pacman_snapshot: ${{ inputs.pacman_snapshot }}
       container_image: ${{ needs.resolve-container.outputs.image }}
 
   build-native-player:
@@ -127,6 +130,7 @@ jobs:
     name: Package tested native player
     uses: ./.github/workflows/build-pkgbuild.yaml
     secrets:
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
@@ -144,6 +148,7 @@ jobs:
     needs: [permission-check, resolve-container, build-native-player, build-feral-controld, build-feral-watchdog]
     uses: ./.github/workflows/pacman-repo.yaml
     secrets:
+      ARCH_CACHE_TOKEN: ${{ secrets.ARCH_CACHE_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
       CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}

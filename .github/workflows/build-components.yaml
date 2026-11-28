@@ -31,6 +31,10 @@ on:
         required: true
         type: string
         default: 'develop'
+      pacman_snapshot:
+        description: 'Arch snapshot selected for the image'
+        required: true
+        type: string
       container_image:
         description: 'Container image to use for the build'
         required: true
