@@ -497,6 +497,8 @@ jobs:
         run: |
           mkdir -p /build
           cp -r archiso-ff1 /build/
+          # Historical profiles include a boot entry whose home is no longer installed.
+          rm -f /build/archiso-ff1/{efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf,airootfs/usr/local/bin/websocat,airootfs/etc/sudoers.d/soaktest}
 
           mkdir -p /build/archiso-ff1/airootfs/home
           cp -r ffos-user/users/feralfile /build/archiso-ff1/airootfs/home/

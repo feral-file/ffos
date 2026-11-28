@@ -672,7 +672,9 @@ log "Checking the factory ISO and the soak test stay deleted"
   printf 'factory-iso/ is deleted (the factory burn-in replaced it)\n' >&2
   exit 1
 }
-if grep -rnE 'soaktest|soak-test|websocat|factory_check|factory-check\.sh|display-check\.sh|kmscon' archiso-ff1 .github/workflows; then
+# The historical-tag workflow may only delete the retired files.
+tag_cleanup='.github/workflows/build-image-from-tags.yml:          rm -f /build/archiso-ff1/{efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf,airootfs/usr/local/bin/websocat,airootfs/etc/sudoers.d/soaktest}'
+if grep -rHE 'soaktest|soak-test|websocat|factory_check|factory-check\.sh|display-check\.sh|kmscon' archiso-ff1 .github/workflows | grep -Fvx -- "$tag_cleanup"; then
   printf 'the factory ISO / soak test are deleted; the lines above bring a piece back\n' >&2
   exit 1
 fi
