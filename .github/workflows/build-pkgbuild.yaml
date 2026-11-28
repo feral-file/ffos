@@ -22,10 +22,17 @@ on:
         required: false
         type: string
         default: 'latest'
+      ffos_user_ref:
+        description: 'Source ref of the matching native player and daemons'
+        type: string
+        required: false
       container_image:
         description: 'Container image to use for the build'
         required: true
         type: string
+    outputs:
+      native_version:
+        value: ${{ jobs.native.outputs.version }}
     secrets:
       CLOUDFLARE_ACCOUNT_ID:
         required: true
@@ -42,10 +49,20 @@ on:
 
 permissions:
   id-token: write
+  actions: read
   contents: read
 
 jobs:
+  native:
+    if: inputs.package == 'feral-display'
+    uses: ./.github/workflows/native-runtime.yaml
+    with:
+      ffos_user_ref: ${{ inputs.ffos_user_ref }}
+      expected_package: ${{ inputs.package }}
+
   build-package:
+    needs: native
+    if: ${{ !cancelled() && (needs.native.result == 'success' || needs.native.result == 'skipped') }}
     environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     container:
@@ -60,6 +77,25 @@ jobs:
         with:
           pacman_snapshot: ${{ inputs.pacman_snapshot }}
           arch_cache_token: ${{ secrets.ARCH_CACHE_TOKEN }}
+
+      - name: Download qualified FF1 runtime
+        if: inputs.package == 'feral-display'
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ needs.native.outputs.repository }}
+          run-id: ${{ needs.native.outputs.run }}
+          github-token: ${{ github.token }}
+          name: feral-display-linux-x86_64
+          path: native-artifact
+
+      - name: Prepare native PKGBUILD
+        if: inputs.package == 'feral-display'
+        run: |
+          ./scripts/install-build-packages.sh python
+          python packages/feral-display/prepare.py --artifact native-artifact/feral-display-linux.tar.gz \
+            --sha256 "$(cut -d' ' -f1 native-artifact/SHA256SUMS)" \
+            --version "${{ needs.native.outputs.version }}" --epoch "${{ needs.native.outputs.epoch }}" --output /tmp/native-package
+          mv /tmp/native-package/* packages/feral-display/
 
       # The artifact is a pure function of the package directory and the
       # pacman snapshot (same sources, same config, same toolchain), so a
@@ -96,7 +132,7 @@ jobs:
           useradd -m builder
 
       - name: Install makedepends
-        if: steps.cache.outputs.cache-hit != 'true'
+        if: inputs.package != 'feral-display' && steps.cache.outputs.cache-hit != 'true'
         working-directory: packages/${{ inputs.package }}
         run: |
           set -euo pipefail
@@ -188,6 +224,13 @@ jobs:
             kmspgp sign "$KMS_KEY_ID" < "$p" > "$p.sig"
           done
 
+      - uses: actions/upload-artifact@v4
+        if: inputs.package == 'feral-display'
+        with:
+          name: signed-native-package
+          path: packages/feral-display/*.pkg.tar.zst*
+          if-no-files-found: error
+
       - name: Rclone to r2
         working-directory: packages/${{ inputs.package }}
         run: |
@@ -206,7 +249,7 @@ jobs:
           EOF
 
           rclone copy . \
-            "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/os/x86_64/" \
+            "r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}/native/os/x86_64/" \
             --include="*.pkg.tar.zst" \
             --include="*.pkg.tar.zst.sig" \
             --s3-upload-cutoff=100M \

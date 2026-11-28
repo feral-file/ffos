@@ -11,7 +11,7 @@ FFOS is the centralized build repository responsible for creating FFOS images. I
 │                 │    │                 │    │                 │
 │ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
 │ │ components/ │ │    │ │   GitHub    │ │    │ │ {branch}/   │ │
-│ │ users/      │ │    │ │  Actions    │ │    │ │ os/x86_64/  │ │
+│ │ users/      │ │    │ │  Actions    │ │    │ │ native/os/x86_64/  │ │
 │ └─────────────┘ │    │ └─────────────┘ │    │ │ *.iso       │ │
 │                 │    │                 │    │ └─────────────┘ │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
@@ -65,7 +65,7 @@ ffos/
 3. Create pacman package with PKGBUILD
 4. Upload package to R2 storage
 
-**Output**: Pacman package uploaded to `{branch}/os/x86_64/`
+**Output**: Pacman package uploaded to `{branch}/native/os/x86_64/`
 
 ### 2. Repository Management Layer (`pacman-repo.yaml`)
 
@@ -120,7 +120,7 @@ ffos/
 
 ### Component Data Flow
 ```
-ffos-user/components/ → ffos build process → R2/{branch}/os/x86_64/
+ffos-user/components/ → ffos build process → R2/{branch}/native/os/x86_64/
 ```
 
 ### User Data Flow
@@ -173,9 +173,15 @@ one minute maximum duration rather than accepting image-time overrides.
 
 ## R2 Storage Structure
 
+Legacy images continue polling the original `{branch}/os/x86_64/` index.
+The full-image update installs the native package repository configuration
+together with the matching kiosk session. Build a full image once on a new
+branch before using the pure-image workflow, which reuses its kernel module
+and system-monitor packages.
+
 ```
 {branch}/
-├── os/x86_64/
+├── native/os/x86_64/
 │   ├── feral-controld-{version}-x86_64.pkg.tar.zst
 │   ├── feral-sys-monitord-{version}-x86_64.pkg.tar.zst
 │   ├── feral-watchdog-{version}-x86_64.pkg.tar.zst
@@ -223,15 +229,15 @@ This workflow is intended for fast repository configuration validation. Release/
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
 | `build-image-to-cf.yml` | `workflow_dispatch` | Full FFOS image pipeline: build component packages, update the pacman repo DB, build/sign/upload the ISO, and update version metadata. |
-| `pure-build-image-to-cf.yml` | `workflow_dispatch` | Build/sign/upload an FFOS image using packages that already exist in the remote pacman repo. |
-| `build-image-from-tags.yml` | `workflow_dispatch` | Build an image from explicit `ffos`, `ffos-user`, and optional `ff-player` refs. Component/player packages are built locally for the image path instead of uploaded first. |
+| `pure-build-image-to-cf.yml` | `workflow_dispatch` | Build the selected `feral-display` package and assemble the image with the existing daemon packages. |
+| `build-image-from-tags.yml` | `workflow_dispatch` | Build an image from explicit `ffos` and `ffos-user` refs. Historical web-player profiles also accept an `ff-player` ref. Component/player packages are built locally for the image path instead of uploaded first. |
 
 ### Manual package and repository operations
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
 | `manual-build-components.yaml` | `workflow_dispatch` | Build and upload one selected `ffos-user` component package. |
-| `manual-build-feral-player.yaml` | `workflow_dispatch` | Build and upload the `feral-player` pacman package from an `ff-player` ref. |
+| `manual-build-feral-player.yaml` | `workflow_dispatch` | Build and upload `feral-display` from the selected `ffos-user` revision. |
 | `manual-push-pacman-repo.yaml` | `workflow_dispatch` | Rebuild and upload the remote pacman repository database from packages already in R2. |
 
 ### Reusable workflows
@@ -240,7 +246,7 @@ This workflow is intended for fast repository configuration validation. Release/
 | --- | --- | --- |
 | `build-components.yaml` | `workflow_call` | Package one `ffos-user` component and upload the package/signature to R2. |
 | `build-pkgbuild.yaml` | `workflow_call` | Build one hand-written `packages/<name>/PKGBUILD` (today: `amdgpu-vcn-h264-cap`, the rebuilt amdgpu module for ffos-user#302), sign it, and upload the package/signature to R2. |
-| `build-feral-player.yaml` | `workflow_call` | Build the `ff-player` static export, package it as `feral-player`, and upload package artifacts to R2. |
+| `native-runtime.yaml` | `workflow_call` | Resolve the selected source revision, reuse its tested native artifact or build it from that revision. |
 | `pacman-repo.yaml` | `workflow_call` | Download packages from R2, rebuild/sign the pacman DB, and upload the DB files. |
 | `permission-check.yaml` | `workflow_call` | Restrict privileged staging/release workflow runs to repository admins. |
 | `resolve-container.yaml` | `workflow_call` | Resolve the Arch Linux container image for a requested pacman snapshot. |

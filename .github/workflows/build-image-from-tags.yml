@@ -46,6 +46,7 @@ on:
         type: boolean
 permissions:
   id-token: write
+  actions: read
   contents: read
 
 jobs:
@@ -65,9 +66,31 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
+      native: ${{ steps.profile.outputs.native }}
+      ffos_sha: ${{ steps.profile.outputs.ffos_sha }}
+      user_sha: ${{ steps.profile.outputs.user_sha }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ffos_ref }}
+      - uses: actions/checkout@v4
+        with:
+          repository: feral-file/ffos-user
+          ref: ${{ inputs.ffos_user_ref }}
+          path: ffos-user
+          persist-credentials: false
+      - id: profile
+        run: |
+          echo "ffos_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "user_sha=$(git -C ffos-user rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if grep -Eqx '(feral-display|ff-player-native)' archiso-ff1/packages.x86_64; then
+            echo native=true >> "$GITHUB_OUTPUT"
+          else
+            echo native=false >> "$GITHUB_OUTPUT"
+          fi
       - name: Check if ffos tag supports local player
         id: check
+        if: steps.profile.outputs.native != 'true'
         env:
           FFOS_REF: ${{ inputs.ffos_ref }}
           FF_PLAYER_REF: ${{ inputs.ff_player_ref }}
@@ -100,9 +123,20 @@ jobs:
             echo "Skipping local player: ffos_ref ${FFOS_REF} is below v${MIN_VERSION}."
           fi
 
+  native:
+    needs: determine-local-player
+    if: needs.determine-local-player.outputs.native == 'true'
+    uses: ./.github/workflows/native-runtime.yaml
+    with:
+      ffos_user_ref: ${{ needs.determine-local-player.outputs.user_sha }}
+
   build-image:
+    # These workflows share the branch's ISO listing and version-info object.
+    concurrency:
+      group: ffos-image-publication-${{ github.ref_name }}
+      cancel-in-progress: false
     name: Generate FFOS iso from tags
-    needs: [permission-check, resolve-container, determine-local-player]
+    needs: [permission-check, resolve-container, determine-local-player, native]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
@@ -114,13 +148,25 @@ jobs:
       - name: Checkout ffos repository at tag/ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ffos_ref }}
+          ref: ${{ needs.determine-local-player.outputs.ffos_sha }}
+
+      - name: Checkout image verification from the workflow revision
+        if: needs.determine-local-player.outputs.native == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: |
+            scripts/verify-native-iso.sh
+            scripts/publish-version-info.sh
+          sparse-checkout-cone-mode: false
+          path: workflow-verifier
+          persist-credentials: false
 
       - name: Checkout ffos-user Repository at tag/ref
         uses: actions/checkout@v4
         with:
           repository: feral-file/ffos-user
-          ref: ${{ inputs.ffos_user_ref }}
+          ref: ${{ needs.determine-local-player.outputs.user_sha }}
           path: ffos-user
 
       - name: Checkout feral-player Repository at ref
@@ -219,6 +265,14 @@ jobs:
           npm ci
           NEXT_PUBLIC_DISABLE_VERSION_CHECK=true npm run build
 
+      - uses: actions/download-artifact@v4
+        if: needs.determine-local-player.outputs.native == 'true'
+        with:
+          name: ${{ needs.native.outputs.package }}-linux-x86_64
+          repository: ${{ needs.native.outputs.repository }}
+          run-id: ${{ needs.native.outputs.run }}
+          github-token: ${{ github.token }}
+          path: native-artifact
       - name: Build local FFOS packages (no R2 upload)
         env:
           PKG_VERSION: ${{ inputs.version }}
@@ -359,6 +413,17 @@ jobs:
             cp ./*.pkg.tar.zst /build/local-repo/x86_64/
           fi
 
+          if [ "${{ needs.determine-local-player.outputs.native }}" = true ]; then
+            cd "$GITHUB_WORKSPACE"
+            native_package="${{ needs.native.outputs.package }}"
+            grep -Fxq "$native_package" archiso-ff1/packages.x86_64 || { echo 'The display source and image profile must use the same package name' >&2; exit 1; }
+            python "packages/$native_package/prepare.py" --artifact "native-artifact/${{ needs.native.outputs.archive }}" \
+              --sha256 "$(cut -d' ' -f1 native-artifact/SHA256SUMS)" --version "${{ needs.native.outputs.version }}" \
+              --epoch "${{ needs.native.outputs.epoch }}" --output /tmp/native-package
+            chown -R builder:builder /tmp/native-package
+            su builder -c 'cd /tmp/native-package && makepkg -df'
+            cp /tmp/native-package/*.pkg.tar.zst /build/local-repo/x86_64/
+          fi
           cd /build/local-repo/x86_64
           repo-add feralfile-local.db.tar.gz ./*.pkg.tar.zst
 
@@ -434,6 +499,8 @@ jobs:
         run: |
           mkdir -p /build
           cp -r archiso-ff1 /build/
+          # Historical profiles include a boot entry whose home is no longer installed.
+          rm -f /build/archiso-ff1/{efiboot/loader/entries/archiso-x86_64-linux-soak-test.conf,airootfs/usr/local/bin/websocat,airootfs/etc/sudoers.d/soaktest}
 
           mkdir -p /build/archiso-ff1/airootfs/home
           cp -r ffos-user/users/feralfile /build/archiso-ff1/airootfs/home/
@@ -477,6 +544,8 @@ jobs:
           cp -r ffos-user/components /build/archiso-ff1/airootfs/home/feralfile/src/
 
       - name: Inject pacman.conf for build and runtime
+        env:
+          NATIVE_PROFILE: ${{ needs.determine-local-player.outputs.native }}
         run: |
           set -e
 
@@ -498,9 +567,16 @@ jobs:
           # packages are built locally, so the remote repo is not needed at build time.
           cat >> /build/archiso-ff1/pacman.conf << EOF
           [feralfile-local]
-          SigLevel = Optional TrustAll
+          SigLevel = Required DatabaseOptional TrustedOnly
           Server = file:///build/local-repo/\$arch
           EOF
+
+          # Historical tags retain the package rail compatible with their kiosk.
+          case "$NATIVE_PROFILE" in
+            true) package_path=native/os ;;
+            false) package_path=os ;;
+            *) exit 1 ;;
+          esac
 
           # Runtime pacman config inside ISO should point to remote R2 repo only,
           # so systems can update to latest packages from that channel.
@@ -509,7 +585,7 @@ jobs:
           cat >> /build/archiso-ff1/airootfs/etc/pacman.conf << EOF
           [feralfile]
           SigLevel = Required DatabaseOptional TrustedOnly
-          Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/os/\$arch
+          Server = https://${DOMAIN}/archlinux/${{ github.ref_name }}/${package_path}/\$arch
           EOF
 
       - name: Copy UI files
@@ -517,8 +593,10 @@ jobs:
           # launcher-ui is retired: the kiosk now serves ff-player (feral-player
           # package) at http://127.0.0.1:8080/, so /opt/feral/ui/launcher is no
           # longer provisioned into the image.
-          mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
-          cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
+          if [ "${{ needs.determine-local-player.outputs.native }}" != true ]; then
+            mkdir -p /build/archiso-ff1/airootfs/opt/feral/ui/player
+            cp -r ffos-user/components/player-wrapper-ui/* /build/archiso-ff1/airootfs/opt/feral/ui/player/
+          fi
           mkdir -p /build/archiso-ff1/airootfs/home/feralfile/.logs
 
       - name: Add Configs and Services
@@ -710,7 +788,11 @@ jobs:
           fi
           # end feral-file#3551 control gate
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
-          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" '.sentry.release = $version'
+          watchdog_filter='.sentry.release = $version'
+          if grep -Eqx '(feral-display|ff-player-native)' /build/archiso-ff1/packages.x86_64; then
+            watchdog_filter+=' | del(.cdp)'
+          fi
+          write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" "$watchdog_filter"
           write_json "/build/archiso-ff1/airootfs/home/feralfile/ff1-config.json" "$FERAL_FF1_CONFIG_JSON" '.branch = $branch | .version = $version'
 
       - name: Configure rclone
@@ -732,6 +814,32 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
           aws-region: "ap-northeast-1"
+
+      - name: Install kmspgp
+        run: |
+          # -f: a GitHub release 504 must fail here, not be saved as the
+          # "binary" (it was, and the sign step then died running HTML as a
+          # shell script). --retry rides out those transient 5xx. The pinned
+          # digest proves the file is the v1.1.0 ELF before it runs with the
+          # KMS signing credentials; bump it together with the URL.
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
+            -o /usr/local/bin/kmspgp \
+            https://github.com/hf/kmspgp/releases/download/v1.1.0/kmspgp-v1.1.0-linux-amd64
+          echo "a9e1f438aac06657aa726b65031079f5e27b1d1e41dd1ffa7bf55326a8ca2547  /usr/local/bin/kmspgp" \
+            | sha256sum -c -
+          chmod +x /usr/local/bin/kmspgp
+
+      - name: Sign packages with AWS KMS (OpenPGP)
+        working-directory: /build/local-repo/x86_64
+        env:
+          KMS_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
+        run: |
+          set -euo pipefail
+          for p in *.pkg.tar.zst; do
+            kmspgp sign "$KMS_KEY_ID" < "$p" | gpg --dearmor > "$p.sig"
+            pacman-key --verify "$p.sig" "$p"
+          done
+          repo-add feralfile-local.db.tar.gz ./*.pkg.tar.zst
 
       # ffos#163: pacman gives up on a package after 10 s at under 1 B/s, the
       # [feralfile] repo has a single Server, and pacman itself never retries,
@@ -761,8 +869,38 @@ jobs:
           mapfile -t pkgs < <(sed -e 's/#.*//' -e 's/[[:space:]]//g' /build/archiso-ff1/packages.x86_64 | grep -v '^$')
           dbpath="$(mktemp -d)"
           cachedir="$(pacman-conf CacheDir | head -n1)"
+          config=/build/archiso-ff1/pacman.conf
           for attempt in 1 2 3; do
-            if pacman --config /build/archiso-ff1/pacman.conf --dbpath "$dbpath" \
+            if (( attempt == 2 )); then
+              # A mirror can have the snapshot database but lack its package
+              # links. Use the exact archive filename pacman resolved, including
+              # for detached signatures. Restart each transfer without Range.
+              cat > "$dbpath/fetch" <<'FETCH'
+          #!/bin/bash
+          set -eu
+          url=$1
+          output=$2
+          fetch=(curl --fail --silent --show-error --location --connect-timeout 15
+                 --speed-limit 1 --speed-time 60 --max-time 600 --output "$output")
+          case "$url" in
+            https://archive.archlinux.org/repos/*/*.pkg.tar.*|https://umea.archive.pkgbuild.com/repos/*/*.pkg.tar.*)
+              file=${url##*/}
+              stem=${file%.pkg.tar.*}
+              name=${stem%-*-*-*} # strip pkgver-pkgrel-arch
+              for host in umea.archive.pkgbuild.com archive.archlinux.org; do
+                if "${fetch[@]}" "https://$host/packages/${name:0:1}/$name/$file"; then
+                  exit 0
+                fi
+              done
+              ;;
+          esac
+          exec "${fetch[@]}" "$url"
+          FETCH
+              chmod 755 "$dbpath/fetch"
+              sed "/^\[options\]$/a XferCommand = $dbpath/fetch %u %o" "$config" > "$dbpath/retry.conf"
+              config="$dbpath/retry.conf"
+            fi
+            if pacman --config "$config" --dbpath "$dbpath" \
                 --cachedir "$cachedir" -Syw --noconfirm "${pkgs[@]}"; then
               exit 0
             fi
@@ -816,6 +954,9 @@ jobs:
             NEW_NAME="FF1${IMAGE_TAG}-${IMAGE_TYPE}${{ inputs.version }}.iso"
             mv "$ISO_FILE" "/build/out/$NEW_NAME"
             echo "ISO created: /build/out/$NEW_NAME"
+            if [ "${{ needs.determine-local-player.outputs.native }}" = true ]; then
+              NATIVE_DISPLAY_PACKAGE="${{ needs.native.outputs.package }}" bash "$GITHUB_WORKSPACE/workflow-verifier/scripts/verify-native-iso.sh" "/build/out/$NEW_NAME" "${{ needs.native.outputs.version }}" "${{ inputs.version }}" feral-controld feral-watchdog feral-sys-monitord
+            fi
 
             cd /build/out
             openssl dgst -sha256 -binary "$NEW_NAME" > iso.sha256
@@ -854,6 +995,17 @@ jobs:
             echo "Error: ISO file not found"
             exit 1
           fi
+
+      - name: Publish Development OTA metadata
+        if: ${{ inputs.environment == 'Development' && needs.determine-local-player.outputs.native == 'true' }}
+        env:
+          BRANCH_ROOT: r2:${{ vars.CLOUDFLARE_R2_BUCKET_NAME }}/${{ github.ref_name }}
+          IMAGE_VERSION: ${{ inputs.version }}
+          ENVIRONMENT: Development
+          UPDATE_REQUIRED: 'false'
+          UPDATE_RUNTIME: 'false'
+          UPDATE_RECOVERY: 'false'
+        run: bash workflow-verifier/scripts/publish-version-info.sh
 
       - name: Cleanup
         if: always()

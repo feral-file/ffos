@@ -24,6 +24,24 @@
 #   Safe because this script is the only pacman running in the job's container.
 set -euo pipefail
 
+if [[ ${1:-} == --fetch ]]; then
+  url=$2
+  output=$3
+  fetch=(curl --fail --silent --show-error --location --connect-timeout 15
+         --speed-limit 1 --speed-time 60 --max-time 300 --output "$output")
+  case "$url" in
+    https://archive.archlinux.org/repos/*/*.pkg.tar.*|https://umea.archive.pkgbuild.com/repos/*/*.pkg.tar.*)
+      file=${url##*/}
+      stem=${file%.pkg.tar.*}
+      name=${stem%-*-*-*}
+      for host in umea.archive.pkgbuild.com archive.archlinux.org; do
+        if "${fetch[@]}" "https://$host/packages/${name:0:1}/$name/$file"; then exit 0; fi
+      done
+      ;;
+  esac
+  exec "${fetch[@]}" "$url"
+fi
+
 if (( $# == 0 )); then
   echo "usage: $0 <package>..." >&2
   exit 2
@@ -32,11 +50,21 @@ fi
 lock="$(pacman-conf DBPath)db.lck"
 cachedir="$(pacman-conf CacheDir | head -n1)"
 
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+config=/etc/pacman.conf
 for attempt in 1 2 3; do
+  # On the final attempt also try the archive by exact package filename.
+  if (( attempt == 3 )); then
+    helper=$(realpath "$0")
+    sed "/^\\[options\\]$/a XferCommand = $helper --fetch %u %o" "$config" > "$work/pacman.conf"
+    config="$work/pacman.conf"
+  fi
   # The cap only catches a pacman that stopped making progress without
   # failing; a large set on a slow but moving link must still fit inside it.
-  if timeout 20m pacman -Sw --needed --noconfirm "$@"; then
-    exec pacman -S --needed --noconfirm "$@"
+  if timeout 20m pacman --config "$config" -Sw --needed --noconfirm "$@"; then
+    pacman --config "$config" -S --needed --noconfirm "$@"
+    exit 0
   fi
   rm -f "$lock"
   # Partial files of a failed attempt: a .part from one server cannot be
