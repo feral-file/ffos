@@ -137,7 +137,7 @@ jobs:
       AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNER_ROLE_ARN }}
       AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID: ${{ secrets.AWS_KMS_FF1_RELEASE_SIGNING_KEY_ID }}
     with:
-      package: ff-player-native
+      package: feral-display
       ffos_user_ref: ${{ needs.source.outputs.sha }}
       environment: ${{ inputs.environment }}
       pacman_snapshot: ${{ inputs.pacman_snapshot }}

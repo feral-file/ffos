@@ -13,7 +13,7 @@ printf '#!/bin/sh\nexit 0\n' > "$test_root/bin/logger"
 chmod +x "$test_root/bin/logger"
 export PATH="$test_root/bin:$PATH"
 count=0
-for name in chrome chromium ff-media-worker ff-player-nativ cage; do
+for name in chrome chromium ff-media-worker ff-player-nativ feral-display cage; do
   echo 0 > "$test_root/state/chromium-oom-kill-last-event"
   EARLYOOM_NAME="$name" EARLYOOM_CMDLINE="/$name" bash "$test_root/hook.sh"
   count=$((count+1))

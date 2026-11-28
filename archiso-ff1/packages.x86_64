@@ -109,7 +109,7 @@ earlyoom
 feral-controld
 feral-sys-monitord
 feral-watchdog
-ff-player-native
+feral-display
 
 # Optional, individually enrolled owner access. Never enroll an image.
 tailscale

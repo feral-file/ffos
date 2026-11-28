@@ -54,10 +54,11 @@ permissions:
 
 jobs:
   native:
-    if: inputs.package == 'ff-player-native'
+    if: inputs.package == 'feral-display'
     uses: ./.github/workflows/native-runtime.yaml
     with:
       ffos_user_ref: ${{ inputs.ffos_user_ref }}
+      expected_package: ${{ inputs.package }}
 
   build-package:
     needs: native
@@ -78,23 +79,23 @@ jobs:
           arch_cache_token: ${{ secrets.ARCH_CACHE_TOKEN }}
 
       - name: Download qualified FF1 runtime
-        if: inputs.package == 'ff-player-native'
+        if: inputs.package == 'feral-display'
         uses: actions/download-artifact@v4
         with:
           repository: ${{ needs.native.outputs.repository }}
           run-id: ${{ needs.native.outputs.run }}
           github-token: ${{ github.token }}
-          name: ff-player-native-linux-x86_64
+          name: feral-display-linux-x86_64
           path: native-artifact
 
       - name: Prepare native PKGBUILD
-        if: inputs.package == 'ff-player-native'
+        if: inputs.package == 'feral-display'
         run: |
           ./scripts/install-build-packages.sh python
-          python packages/ff-player-native/prepare.py --artifact native-artifact/ff-player-cef-linux.tar.gz \
+          python packages/feral-display/prepare.py --artifact native-artifact/feral-display-linux.tar.gz \
             --sha256 "$(cut -d' ' -f1 native-artifact/SHA256SUMS)" \
             --version "${{ needs.native.outputs.version }}" --epoch "${{ needs.native.outputs.epoch }}" --output /tmp/native-package
-          mv /tmp/native-package/* packages/ff-player-native/
+          mv /tmp/native-package/* packages/feral-display/
 
       # The artifact is a pure function of the package directory and the
       # pacman snapshot (same sources, same config, same toolchain), so a
@@ -131,7 +132,7 @@ jobs:
           useradd -m builder
 
       - name: Install makedepends
-        if: inputs.package != 'ff-player-native' && steps.cache.outputs.cache-hit != 'true'
+        if: inputs.package != 'feral-display' && steps.cache.outputs.cache-hit != 'true'
         working-directory: packages/${{ inputs.package }}
         run: |
           set -euo pipefail
@@ -224,10 +225,10 @@ jobs:
           done
 
       - uses: actions/upload-artifact@v4
-        if: inputs.package == 'ff-player-native'
+        if: inputs.package == 'feral-display'
         with:
           name: signed-native-package
-          path: packages/ff-player-native/*.pkg.tar.zst*
+          path: packages/feral-display/*.pkg.tar.zst*
           if-no-files-found: error
 
       - name: Rclone to r2

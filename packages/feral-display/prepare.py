@@ -21,7 +21,7 @@ with args.artifact.open('rb') as stream:
     if hashlib.file_digest(stream,'sha256').hexdigest()!=args.sha256:
         raise SystemExit('CEF archive checksum mismatch')
 args.output.mkdir(parents=True)
-shutil.copyfile(args.artifact,args.output/'ff-player-cef-linux.tar.gz')
+shutil.copyfile(args.artifact,args.output/'feral-display-linux.tar.gz')
 template=Path(__file__).with_name('PKGBUILD.cef.in').read_text()
 (args.output/'PKGBUILD').write_text(template.replace('@VERSION@',args.version).replace('@SHA256@',args.sha256))
 (args.output/'SOURCE_DATE_EPOCH').write_text(str(args.epoch)+'\n')

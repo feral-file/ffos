@@ -6,7 +6,7 @@ set -euo pipefail
 previous=$(mktemp -d /run/ff1-previous.XXXXXX)
 trap 'umount "$previous" 2>/dev/null || true; rmdir "$previous"' EXIT
 mount -o ro "$1" "$previous"
-if [[ -d "$previous/usr/lib/ff-player-native" ]]; then exit 0; fi
+if [[ -d "$previous/usr/lib/feral-display" || -d "$previous/usr/lib/ff-player-native" ]]; then exit 0; fi
 ip link set lo up
 playback=$(runuser -u feralfile -- env HOME=/home/feralfile python3 \
     /home/feralfile/scripts/migrate-legacy-playback.py "$previous/home/feralfile/.config/chromium/Default")

@@ -83,7 +83,7 @@ jobs:
         run: |
           echo "ffos_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "user_sha=$(git -C ffos-user rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          if grep -qx ff-player-native archiso-ff1/packages.x86_64; then
+          if grep -Eqx '(feral-display|ff-player-native)' archiso-ff1/packages.x86_64; then
             echo native=true >> "$GITHUB_OUTPUT"
           else
             echo native=false >> "$GITHUB_OUTPUT"
@@ -268,7 +268,7 @@ jobs:
       - uses: actions/download-artifact@v4
         if: needs.determine-local-player.outputs.native == 'true'
         with:
-          name: ff-player-native-linux-x86_64
+          name: ${{ needs.native.outputs.package }}-linux-x86_64
           repository: ${{ needs.native.outputs.repository }}
           run-id: ${{ needs.native.outputs.run }}
           github-token: ${{ github.token }}
@@ -415,7 +415,9 @@ jobs:
 
           if [ "${{ needs.determine-local-player.outputs.native }}" = true ]; then
             cd "$GITHUB_WORKSPACE"
-            python packages/ff-player-native/prepare.py --artifact native-artifact/ff-player-cef-linux.tar.gz \
+            native_package="${{ needs.native.outputs.package }}"
+            grep -Fxq "$native_package" archiso-ff1/packages.x86_64 || { echo 'The display source and image profile must use the same package name' >&2; exit 1; }
+            python "packages/$native_package/prepare.py" --artifact "native-artifact/${{ needs.native.outputs.archive }}" \
               --sha256 "$(cut -d' ' -f1 native-artifact/SHA256SUMS)" --version "${{ needs.native.outputs.version }}" \
               --epoch "${{ needs.native.outputs.epoch }}" --output /tmp/native-package
             chown -R builder:builder /tmp/native-package
@@ -787,7 +789,7 @@ jobs:
           # end feral-file#3551 control gate
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/sys-monitord.json" "$FERAL_SYS_MONITORD_CONFIG_JSON" '.sentry.release = $version'
           watchdog_filter='.sentry.release = $version'
-          if grep -qx ff-player-native /build/archiso-ff1/packages.x86_64; then
+          if grep -Eqx '(feral-display|ff-player-native)' /build/archiso-ff1/packages.x86_64; then
             watchdog_filter+=' | del(.cdp)'
           fi
           write_json "/build/archiso-ff1/airootfs/home/feralfile/.config/watchdog.json" "$FERAL_WATCHDOG_CONFIG_JSON" "$watchdog_filter"
@@ -953,7 +955,7 @@ jobs:
             mv "$ISO_FILE" "/build/out/$NEW_NAME"
             echo "ISO created: /build/out/$NEW_NAME"
             if [ "${{ needs.determine-local-player.outputs.native }}" = true ]; then
-              bash "$GITHUB_WORKSPACE/workflow-verifier/scripts/verify-native-iso.sh" "/build/out/$NEW_NAME" "${{ needs.native.outputs.version }}" "${{ inputs.version }}" feral-controld feral-watchdog feral-sys-monitord
+              NATIVE_DISPLAY_PACKAGE="${{ needs.native.outputs.package }}" bash "$GITHUB_WORKSPACE/workflow-verifier/scripts/verify-native-iso.sh" "/build/out/$NEW_NAME" "${{ needs.native.outputs.version }}" "${{ inputs.version }}" feral-controld feral-watchdog feral-sys-monitord
             fi
 
             cd /build/out

@@ -57,7 +57,7 @@ if [[ -r "$FF1_CONTROL_HELPER" ]]; then
 fi
 
 # This updater ships with the native session on the full-image rail.
-packages+=(ff-player-native)
+packages+=(feral-display)
 output=$(pacman -S --needed --noconfirm "${packages[@]}")
 
 if ! echo "$output" | grep -q "there is nothing to do"; then

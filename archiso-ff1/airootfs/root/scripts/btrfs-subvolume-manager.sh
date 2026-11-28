@@ -56,7 +56,7 @@ case "$CURRENT_SUBVOL" in
         # 3.0.1 takes the staging snapshot before downloading and continues
         # to accept casts until reboot. The default root now has Chromium's
         # final durable state. Its kernel and root are still the fallback.
-        if [[ -x /usr/bin/ff-player-native ]] &&
+        if [[ -x /usr/bin/feral-display ]] &&
            ! unshare --mount --propagation private --net /bin/bash /root/scripts/import-legacy-playback.sh "$ROOT_DEV"; then
             log_msg "Playback import failed. Returning to the previous root before promotion."
             systemctl --no-block reboot

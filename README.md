@@ -229,7 +229,7 @@ This workflow is intended for fast repository configuration validation. Release/
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
 | `build-image-to-cf.yml` | `workflow_dispatch` | Full FFOS image pipeline: build component packages, update the pacman repo DB, build/sign/upload the ISO, and update version metadata. |
-| `pure-build-image-to-cf.yml` | `workflow_dispatch` | Build the selected native player and assemble the image with the existing daemon packages. |
+| `pure-build-image-to-cf.yml` | `workflow_dispatch` | Build the selected `feral-display` package and assemble the image with the existing daemon packages. |
 | `build-image-from-tags.yml` | `workflow_dispatch` | Build an image from explicit `ffos` and `ffos-user` refs. Historical web-player profiles also accept an `ff-player` ref. Component/player packages are built locally for the image path instead of uploaded first. |
 
 ### Manual package and repository operations
@@ -237,7 +237,7 @@ This workflow is intended for fast repository configuration validation. Release/
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
 | `manual-build-components.yaml` | `workflow_dispatch` | Build and upload one selected `ffos-user` component package. |
-| `manual-build-feral-player.yaml` | `workflow_dispatch` | Build and upload `ff-player-native` from the selected `ffos-user` revision. |
+| `manual-build-feral-player.yaml` | `workflow_dispatch` | Build and upload `feral-display` from the selected `ffos-user` revision. |
 | `manual-push-pacman-repo.yaml` | `workflow_dispatch` | Rebuild and upload the remote pacman repository database from packages already in R2. |
 
 ### Reusable workflows

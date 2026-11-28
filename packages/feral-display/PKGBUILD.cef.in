@@ -1,10 +1,12 @@
 # Package the exact runtime tested on FF1 by ffos-user CI.
-pkgname=ff-player-native
+pkgname=feral-display
 pkgver=@VERSION@
 pkgrel=1
 pkgdesc='FF1 native artwork player with libmpv and CEF Views'
 arch=('x86_64')
-conflicts=('feral-player' 'ff-player')
+conflicts=('feral-player' 'ff-player' 'ff-player-native')
+# The native name and kiosk script change on the full-image rail. An old
+# native session must keep its matching package on a package-only upgrade.
 replaces=('feral-player' 'ff-player')
 license=('custom')
 depends=('glibc' 'gcc-libs' 'sqlite' 'sdl2-compat' 'libglvnd' 'mesa'
@@ -14,17 +16,17 @@ depends=('glibc' 'gcc-libs' 'sqlite' 'sdl2-compat' 'libglvnd' 'mesa'
          'libva' 'zlib' 'libjpeg-turbo' 'curl' 'libdisplay-info' 'bubblewrap'
          'ca-certificates' 'ttf-dejavu' 'python' 'wayland>=1.24' 'libdrm>=2.4.129' 'cage')
 options=('!strip' '!debug')
-source=('ff-player-cef-linux.tar.gz')
-noextract=('ff-player-cef-linux.tar.gz')
+source=('feral-display-linux.tar.gz')
+noextract=('feral-display-linux.tar.gz')
 sha256sums=('@SHA256@')
 
 package() {
-  bsdtar -xpf "$srcdir/ff-player-cef-linux.tar.gz" -C "$pkgdir"
-  local root="$pkgdir/usr/lib/ff-player-native"
-  test -x "$root/ff-player-native"
+  bsdtar -xpf "$srcdir/feral-display-linux.tar.gz" -C "$pkgdir"
+  local root="$pkgdir/usr/lib/feral-display"
+  test -x "$root/feral-display"
   test -f "$root/media/libff_decode.so"
   test -f "$root/libff_browser.so"
   chmod 4755 "$root/chrome-sandbox"
   install -dm755 "$pkgdir/usr/bin"
-  ln -s /usr/lib/ff-player-native/ff-player-native "$pkgdir/usr/bin/ff-player-native"
+  ln -s /usr/lib/feral-display/feral-display "$pkgdir/usr/bin/feral-display"
 }
